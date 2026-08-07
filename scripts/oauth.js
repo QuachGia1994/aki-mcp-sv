@@ -24,7 +24,7 @@ function loadTokens() {
     for (const [token, entry] of Object.entries(saved.access ?? {})) accessTokens.set(token, entry);
     for (const [token, entry] of Object.entries(saved.refresh ?? {})) refreshTokens.set(token, entry);
   } catch (e) {
-    console.error(`[oauth] bỏ qua ${TOKENS_FILE} không đọc được (${e.message}) — sẽ cần authorize lại`);
+    console.error(`[oauth] skipping unreadable ${TOKENS_FILE} (${e.message}) — will need to authorize again`);
   }
 }
 
@@ -110,7 +110,7 @@ export async function handleAuthorize(req, res, client, passphrase, origin) {
 
   if (req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Xác nhận kết nối MCP</title><link rel="icon" href="/favicon/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/favicon/icon-192.png"><link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png"><link rel="manifest" href="/favicon/manifest.json"><meta name="theme-color" content="#ff4800">
+    res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Confirm MCP connection</title><link rel="icon" href="/favicon/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/favicon/icon-192.png"><link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png"><link rel="manifest" href="/favicon/manifest.json"><meta name="theme-color" content="#ff4800">
 <style>
 :root { color-scheme: light dark; --bg:#faf9f7; --card:#fff; --line:#e5e2dc; --fg:#1a1a1a; --muted:#6b6b6b; --accent:#ff4800; }
 @media (prefers-color-scheme: dark) { :root { --bg:#1a1817; --card:#232120; --line:#38352f; --fg:#ececec; --muted:#9a948c; } }
@@ -124,9 +124,9 @@ input:focus { outline: none; border-color: var(--accent); }
 button { width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; cursor: pointer; }
 button[disabled] { opacity: .6; cursor: progress; }
 </style></head><body>
-<form method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Đang xác nhận…'">
-<h1>Xác nhận kết nối MCP</h1>
-<p>Nhập passphrase trong <code>${PASSPHRASE_FILE}</code> để cấp quyền cho connector.</p>
+<form method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Confirming…'">
+<h1>Confirm MCP connection</h1>
+<p>Enter the passphrase from <code>${PASSPHRASE_FILE}</code> to grant access to the connector.</p>
 <input type="hidden" name="redirect_uri" value="${redirectUri}">
 <input type="hidden" name="client_id" value="${clientId}">
 <input type="hidden" name="code_challenge" value="${codeChallenge}">
@@ -141,7 +141,7 @@ button[disabled] { opacity: .6; cursor: progress; }
 
   if (!safeEqual(q.get('passphrase'), passphrase)) {
     res.writeHead(401, { 'Content-Type': 'text/plain' });
-    res.end('sai passphrase');
+    res.end('wrong passphrase');
     return;
   }
   const code = randomBytes(24).toString('hex');

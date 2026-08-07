@@ -36,21 +36,21 @@ async function waitUntil(check, timeoutMs) {
 
 async function waitReady() {
   if (await waitUntil(probe, READY_TIMEOUT_MS)) return;
-  throw new Error(`Chrome không mở được cổng debug ${CDP_PORT} sau ${READY_TIMEOUT_MS / 1000}s — thử mở tay: open -a "${CHROME_APP}" --args --remote-debugging-port=${CDP_PORT}`);
+  throw new Error(`Chrome didn't open debug port ${CDP_PORT} within ${READY_TIMEOUT_MS / 1000}s — try opening it manually: open -a "${CHROME_APP}" --args --remote-debugging-port=${CDP_PORT}`);
 }
 
 // Never quits anything. `needsRestart` hands the decision back to the user instead of taking it.
 export async function connectChrome() {
-  if (await probe()) return { state: 'ready', message: 'Chrome đã sẵn sàng' };
+  if (await probe()) return { state: 'ready', message: 'Chrome is ready' };
   if (await isRunning()) {
     return {
       state: 'needsRestart',
-      message: 'Chrome đang mở nhưng chưa bật cổng debug — Chrome chỉ bật được cổng này lúc khởi động, nên phải mở lại mới điều khiển được.',
+      message: 'Chrome is open but its debug port isn\'t enabled — Chrome can only turn that on at launch, so it has to be reopened before it can be controlled.',
     };
   }
   await launchChrome();
   await waitReady();
-  return { state: 'ready', message: 'đã mở Chrome kèm cổng debug' };
+  return { state: 'ready', message: 'opened Chrome with the debug port enabled' };
 }
 
 export async function restartChrome() {
@@ -60,12 +60,12 @@ export async function restartChrome() {
   }
   await launchChrome();
   await waitReady();
-  return { state: 'ready', message: 'Chrome đã mở lại kèm cổng debug, tab cũ được khôi phục' };
+  return { state: 'ready', message: 'Chrome reopened with the debug port enabled, previous tabs restored' };
 }
 
 export async function listTabs() {
   const targets = await probe();
-  if (!targets) throw new Error('chưa kết nối được Chrome — bấm "Kết nối Chrome" trước');
+  if (!targets) throw new Error('Chrome isn\'t connected yet — click "Connect Chrome" first');
   return targets
     .filter((t) => t.type === 'page')
     .map(({ id, title, url, webSocketDebuggerUrl }) => ({ id, title, url, ws: webSocketDebuggerUrl }));
@@ -73,18 +73,18 @@ export async function listTabs() {
 
 export async function evaluate(tabId, expression) {
   const tab = (await listTabs()).find((t) => t.id === tabId);
-  if (!tab) throw new Error(`không tìm thấy tab ${tabId}`);
-  if (!tab.ws) throw new Error('tab không có debugger endpoint');
+  if (!tab) throw new Error(`tab ${tabId} not found`);
+  if (!tab.ws) throw new Error('tab has no debugger endpoint');
 
   const ws = new WebSocket(tab.ws);
   try {
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve, { once: true });
-      ws.addEventListener('error', () => reject(new Error('mở WebSocket CDP thất bại')), { once: true });
+      ws.addEventListener('error', () => reject(new Error('failed to open CDP WebSocket')), { once: true });
     });
     ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }));
     const reply = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('CDP không phản hồi sau 10s')), 10_000);
+      const timer = setTimeout(() => reject(new Error('CDP did not respond within 10s')), 10_000);
       ws.addEventListener('message', (ev) => {
         const msg = JSON.parse(ev.data);
         if (msg.id !== 1) return;

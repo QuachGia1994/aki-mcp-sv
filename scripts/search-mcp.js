@@ -58,9 +58,9 @@ function findPath(query, from, limit) {
   });
   found.sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
   const head = found.slice(0, limit);
-  if (!found.length) return `không có gì khớp "${query}" dưới ${base}`;
-  const note = found.length > head.length ? `\n… ${found.length - head.length} kết quả nữa (tăng limit hoặc thu hẹp query)` : '';
-  return `${found.length} kết quả dưới ${base}:\n${head.join('\n')}${note}`;
+  if (!found.length) return `nothing matched "${query}" under ${base}`;
+  const note = found.length > head.length ? `\n… ${found.length - head.length} more result(s) (raise limit or narrow the query)` : '';
+  return `${found.length} result(s) under ${base}:\n${head.join('\n')}${note}`;
 }
 
 function searchContent(query, from, glob, limit) {
@@ -71,10 +71,10 @@ function searchContent(query, from, glob, limit) {
   return new Promise((resolve) => {
     execFile('grep', args, { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
       const lines = (stdout || '').split('\n').filter(Boolean);
-      if (!lines.length) return resolve(err && stderr ? `lỗi: ${stderr.trim()}` : `không có dòng nào khớp "${query}" dưới ${base}`);
+      if (!lines.length) return resolve(err && stderr ? `error: ${stderr.trim()}` : `no lines matched "${query}" under ${base}`);
       const head = lines.slice(0, limit);
-      const note = lines.length > head.length ? `\n… ${lines.length - head.length} dòng nữa` : '';
-      resolve(`${lines.length} dòng khớp:\n${head.join('\n')}${note}`);
+      const note = lines.length > head.length ? `\n… ${lines.length - head.length} more line(s)` : '';
+      resolve(`${lines.length} matching line(s):\n${head.join('\n')}${note}`);
     });
   });
 }

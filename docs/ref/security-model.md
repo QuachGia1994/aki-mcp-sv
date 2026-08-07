@@ -1,41 +1,41 @@
-# Mô hình bảo mật — OAuth 2.1 tối giản (DCR bị bỏ qua)
+# Security model — minimal OAuth 2.1 (DCR skipped)
 
-Cập nhật 2026-08-07 — thay cho bản token-in-URL trước đó, sau khi phát hiện token-in-URL đâm vào bug OAuth-DCR của claude.ai (chi tiết + link nguồn: `docs/ref/oauth-research-2026-08-07.md`).
+Updated 2026-08-07 — replaces the earlier token-in-URL scheme, after token-in-URL was found to hit a claude.ai OAuth/DCR bug (detail + sources: `docs/ref/oauth-research-2026-08-07.md`).
 
-## Kiến trúc auth hiện tại
+## Current auth architecture
 
 ```
 claude.ai
    │  GET /.well-known/oauth-protected-resource, /.well-known/oauth-authorization-server
-   │  (khám phá endpoint, không cần đăng ký — không có /register)
+   │  (endpoint discovery, no registration needed — no /register)
    ▼
-gatekeeper.js  ── /authorize  → trang xác nhận, cần đúng passphrase (data/.token)
-               ── /token      → đổi code (PKCE S256) lấy access + refresh token
-               ── /mcp        → bắt buộc `Authorization: Bearer <access_token>` hợp lệ
-                                  sai/thiếu → 401 + WWW-Authenticate, đúng → forward mcp-hub
+gatekeeper.js  ── /authorize  → confirmation page, requires the right passphrase (~/.aki/mcpsv/passphrase.txt)
+               ── /token      → exchanges a code (PKCE S256) for access + refresh tokens
+               ── /mcp        → requires a valid `Authorization: Bearer <access_token>`
+                                  wrong/missing → 401 + WWW-Authenticate, correct → forward to mcp-hub
 ```
 
-`scripts/oauth.js` giữ toàn bộ state (auth code, access token, refresh token) **in-memory** — không có DB, không persist qua restart.
+`scripts/oauth.js` keeps all state (auth codes, access tokens, refresh tokens) **in memory** — no DB, nothing persists across a restart.
 
-## Vì sao bỏ qua Dynamic Client Registration (DCR)
+## Why Dynamic Client Registration (DCR) is skipped
 
-claude.ai mặc định thử tự đăng ký client (`POST /register`) trước khi kết nối — server này không có endpoint đó, và metadata `/.well-known/oauth-authorization-server` **cố ý** không quảng cáo `registration_endpoint`. Thay vào đó, `client_id`/`client_secret` được sinh 1 lần (`data/.oauth-client.json`), in ra lúc `npm start`, dán tay vào Advanced settings của dialog — đúng cơ chế "pre-registered client credentials" mà tài liệu Anthropic công nhận là hợp lệ để né DCR hoàn toàn.
+claude.ai defaults to attempting client self-registration (`POST /register`) before connecting — this server has no such endpoint, and `/.well-known/oauth-authorization-server` **deliberately** does not advertise `registration_endpoint`. Instead, `client_id`/`client_secret` are generated once (`~/.aki/mcpsv/oauth-client.json`), printed at `npm start`, and pasted by hand into the dialog's Advanced settings — exactly the "pre-registered client credentials" mechanism Anthropic's own docs recognize as a valid way to skip DCR entirely.
 
-## 2 lớp thật sự chặn truy cập trái phép
+## The 2 layers that actually block unauthorized access
 
-1. **Passphrase ở `/authorize`** (`data/.token`, 10 ký tự ngẫu nhiên từ bảng chữ 32 ký tự không nhầm lẫn — `abcdefghjkmnpqrstuvwxyz23456789`, ~50-bit entropy) — ai không biết passphrase không duyệt được bước consent, không có auth code nào được cấp. Rút gọn từ hex 256-bit ban đầu ngày 2026-08-07 để dễ gõ/copy-paste tay hơn — entropy 50-bit vẫn đủ để giữ nguyên lý luận "không cần rate-limit" bên dưới. **Không đổi thành nút Approve trần không kèm passphrase**: đã cân nhắc và loại — POST `/authorize` là endpoint public qua Funnel, request giả lập (`curl`) gửi đúng field như nút bấm thì server không phân biệt được, nên một "nút" không kèm giá trị bí mật không có tác dụng bảo vệ thật nào.
-2. **PKCE S256** — access token chỉ cấp cho đúng client đã tạo `code_challenge` khớp `code_verifier` gửi lên `/token`; chặn kẻ chặn được authorization code giữa đường (không có verifier thì code vô dụng).
+1. **Passphrase at `/authorize`** (`~/.aki/mcpsv/passphrase.txt`, 10 random characters from a 32-character unambiguous alphabet — `abcdefghjkmnpqrstuvwxyz23456789`, ~50-bit entropy) — anyone who doesn't know the passphrase can't get past the consent step, so no auth code is ever issued. Shortened from the original 256-bit hex on 2026-08-07 to be easier to type/copy by hand — 50-bit entropy still keeps the "no rate-limit needed" reasoning below intact. **Deliberately not a bare Approve button with no passphrase**: considered and rejected — `POST /authorize` is a public endpoint exposed through Funnel, and a simulated request (`curl`) can send the exact same fields a button click would, so the server can't tell them apart; a "button" with no accompanying secret provides no real protection.
+2. **PKCE S256** — an access token is only issued to the exact client whose `code_challenge` matches the `code_verifier` sent to `/token`; this blocks anyone who intercepts the authorization code in transit (without the verifier, the code is useless).
 
-`mcp-hub` thật vẫn chỉ nghe loopback `19999`, `/api/*` không bao giờ được forward — không đổi so với thiết kế gốc.
+The real `mcp-hub` still only listens on loopback `19999`, and `/api/*` is never forwarded — unchanged from the original design.
 
-## Giới hạn thật của cách làm này
+## Real limitations of this approach
 
-- **Không rotate refresh token** — chấp nhận được vì đây là confidential client (có client_secret), không phải public client theo DCR/CIMD (rule rotation trong spec MCP chỉ bắt buộc cho public client).
-- **Restart `npm start` = mất hết session đã cấp** — access/refresh token chỉ ở RAM. claude.ai sẽ cần "Connect" lại. Đánh đổi chấp nhận được cho MVP 1 người dùng, chạy foreground chủ động.
-- **Không rate-limit `/authorize`** — chấp nhận vì passphrase 256-bit khiến brute-force bất khả thi, cùng lý luận entropy đã áp dụng cho token-in-URL trước đây.
+- **No refresh token rotation** — acceptable because this is a confidential client (has a client_secret), not a public client under DCR/CIMD (the MCP spec's rotation rule only applies to public clients).
+- **Restarting `npm start` loses every issued session** — access/refresh tokens live only in RAM. claude.ai will need to "Connect" again. An acceptable tradeoff for a single-user MVP run in the foreground on demand.
+- **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible, the same entropy reasoning previously applied to token-in-URL.
 
 ## Cross-references
-- `docs/ref/oauth-research-2026-08-07.md` — research đầy đủ dẫn tới quyết định này, link nguồn
-- `docs/ref/claude-connector.md` — field thật của dialog claude.ai
-- `docs/plan/init.md` — quyết định kiến trúc gốc
-- `scripts/oauth.js`, `scripts/gatekeeper.js` — implementation thật
+- `docs/ref/oauth-research-2026-08-07.md` — full research behind this decision, sources
+- `docs/ref/claude-connector.md` — the real fields on claude.ai's dialog
+- `docs/plan/init.md` — original architecture decisions
+- `scripts/oauth.js`, `scripts/gatekeeper.js` — actual implementation

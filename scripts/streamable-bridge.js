@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/ref/oauth-research-2026-08-07.md "Vòng debug 7".
+// Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/ref/oauth-research-2026-08-07.md "Debug round 7".
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 

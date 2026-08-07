@@ -1,115 +1,115 @@
 # Research — claude.ai OAuth custom connector (2026-08-07)
 
-Research thật, ngày giờ + link nguồn ghi đầy đủ, không suy đoán.
+Real research, dated with full source links, no speculation.
 
-## Sự kiện khởi phát
+## Triggering event
 
-Chạy thật `npm start` với kiến trúc token-in-URL, dán URL vào claude.ai → lỗi: "Couldn't register with sign-in service... If this persists, share this reference with support: ofid_60b6ac390c8c766a"
+Ran `npm start` for real with the token-in-URL architecture, pasted the URL into claude.ai → error: "Couldn't register with sign-in service... If this persists, share this reference with support: ofid_60b6ac390c8c766a"
 
-## Nguyên nhân — DCR luôn bị claude.ai thử trước
+## Root cause — claude.ai always tries DCR first
 
-claude.ai luôn tự động thử Dynamic Client Registration (DCR) khi thêm custom connector, kể cả khi để trống OAuth Client ID/Secret — không có cách khai báo "server này không dùng OAuth" qua UI thường. Xác nhận qua [anthropics/claude-ai-mcp#457](https://github.com/anthropics/claude-ai-mcp/issues/457), đúng y hệt tình huống repo này.
+claude.ai always attempts Dynamic Client Registration (DCR) automatically when adding a custom connector, even when the OAuth Client ID/Secret fields are left blank — there is no way to declare "this server doesn't use OAuth" through the normal UI. Confirmed via [anthropics/claude-ai-mcp#457](https://github.com/anthropics/claude-ai-mcp/issues/457), the exact same situation as this repo.
 
-## 3 lựa chọn tìm được — chọn OAuth tối giản, bỏ qua DCR
+## 3 options found — chose minimal OAuth, skip DCR
 
-Nguồn: [claude.com/docs/connectors/building/authentication](https://claude.com/docs/connectors/building/authentication) (đọc 2026-08-07).
+Source: [claude.com/docs/connectors/building/authentication](https://claude.com/docs/connectors/building/authentication) (read 2026-08-07).
 
-1. `static_headers` (Request headers, beta) — đúng nhu cầu nhất nhưng "being slowly rolled out to customers; contact Anthropic for early access", không chắc có ngay.
-2. OAuth với client ID/Secret tự cấp, bỏ qua DCR — trích nguyên văn: "Supplying your own pre-registered client ID (and secret...) as static client credentials... avoids dynamic client registration entirely." Field đã có sẵn, không cần beta — **chọn phương án này**.
-3. Báo bug, chờ Anthropic fix — loại vì cần go-live ngay.
+1. `static_headers` (Request headers, beta) — the best fit, but "being slowly rolled out to customers; contact Anthropic for early access", not guaranteed available immediately.
+2. OAuth with a self-issued client ID/Secret, skipping DCR — quoted verbatim: "Supplying your own pre-registered client ID (and secret...) as static client credentials... avoids dynamic client registration entirely." The field already exists, no beta needed — **chosen**.
+3. File a bug and wait for an Anthropic fix — ruled out, need to go live immediately.
 
-## Điều kiện kỹ thuật bắt buộc
+## Required technical conditions
 
-Nguồn cùng trang + [troubleshooting](https://claude.com/docs/connectors/building/troubleshooting) (đọc 2026-08-07):
+Same source page + [troubleshooting](https://claude.com/docs/connectors/building/troubleshooting) (read 2026-08-07):
 
-- AS metadata không có `registration_endpoint`, không đặt `client_id_metadata_document_supported: true` → báo hiệu không DCR/CIMD, buộc claude.ai dùng client ID/Secret dán tay.
-- `code_challenge_methods_supported: ["S256"]` bắt buộc quảng cáo, verify đúng `sha256(code_verifier)` base64url so với `code_challenge`.
-- `401` (không phải `200`) kèm `WWW-Authenticate: Bearer resource_metadata="..."` khi `/mcp` thiếu/sai bearer.
-- `redirect_uri` khớp chính xác `https://claude.ai/api/mcp/auth_callback`.
-- `/token` nhận `Content-Type: application/x-www-form-urlencoded`, không phải JSON.
+- AS metadata must not carry `registration_endpoint`, must not set `client_id_metadata_document_supported: true` → signals no DCR/CIMD, forcing claude.ai to use a manually-pasted client ID/Secret.
+- `code_challenge_methods_supported: ["S256"]` must be advertised, verified as `sha256(code_verifier)` base64url matching `code_challenge`.
+- `401` (not `200`) with `WWW-Authenticate: Bearer resource_metadata="..."` when `/mcp` is missing/wrong bearer.
+- `redirect_uri` must exactly match `https://claude.ai/api/mcp/auth_callback`.
+- `/token` accepts `Content-Type: application/x-www-form-urlencoded`, not JSON.
 
-## Quyết định kiến trúc
+## Architecture decision
 
-Bỏ token-in-URL, tự dựng authorization server tối giản trong `scripts/oauth.js`: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/authorize` (trang xác nhận bằng passphrase, dùng lại `data/.token`), `/token` (PKCE S256, cấp access + refresh token, không rotate refresh vì đây là confidential client). Không có `/register` — dùng client ID/Secret sinh 1 lần (`data/.oauth-client.json`), dán tay vào Advanced settings.
+Drop token-in-URL, build a minimal authorization server in `scripts/oauth.js`: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/authorize` (passphrase confirmation page, reusing `data/.token`), `/token` (PKCE S256, issues access + refresh tokens, no refresh rotation since this is a confidential client). No `/register` — uses a client ID/Secret generated once (`data/.oauth-client.json`), pasted manually into Advanced settings.
 
-## Vòng debug 1 — thiếu `iss` (RFC 9207)
+## Debug round 1 — missing `iss` (RFC 9207)
 
-Test thật: `/authorize` GET → 200, POST → 302 kèm `code` redirect đúng — nhưng log không có `POST /token`, claude.ai báo "Authorization with the MCP server failed".
+Real test: `/authorize` GET → 200, POST → 302 with `code` redirecting correctly — but the log shows no `POST /token`, claude.ai reports "Authorization with the MCP server failed".
 
-Nguồn: [modelcontextprotocol.io/specification/draft/basic/authorization](https://modelcontextprotocol.io/specification/draft/basic/authorization) (đọc 2026-08-07), mục "Authorization Response Validation": AS phát `iss` trong authorization response phải advertise `authorization_response_iss_parameter_supported: true` trong metadata (RFC9207 §2.3).
+Source: [modelcontextprotocol.io/specification/draft/basic/authorization](https://modelcontextprotocol.io/specification/draft/basic/authorization) (read 2026-08-07), section "Authorization Response Validation": an AS issuing `iss` in the authorization response must advertise `authorization_response_iss_parameter_supported: true` in its metadata (RFC 9207 §2.3).
 
-Fix áp dụng: `handleAuthorize` thêm `iss=<origin>` vào redirect; metadata AS thêm `authorization_response_iss_parameter_supported: true`.
+Fix applied: `handleAuthorize` adds `iss=<origin>` to the redirect; AS metadata adds `authorization_response_iss_parameter_supported: true`.
 
-**Retest — vẫn fail y hệt** (`ofid_752081d484c32ef1`, sau đó các `ofid_` khác), log vẫn không có `POST /token`. Giả thuyết thiếu `iss` không phải nguyên nhân duy nhất — cần điều tra thêm, không dừng ở đây.
+**Retest — same failure** (`ofid_752081d484c32ef1`, then other `ofid_` values), log still shows no `POST /token`. Hypothesis that missing `iss` was the sole cause doesn't hold — needs further investigation, not settled yet.
 
-## Vòng debug 2 — thiếu route `/.well-known/oauth-protected-resource/mcp` (RFC 9728 path-insertion)
+## Debug round 2 — missing `/.well-known/oauth-protected-resource/mcp` route (RFC 9728 path-insertion)
 
-Đối chiếu checklist chính thức trong [troubleshooting](https://claude.com/docs/connectors/building/troubleshooting): "If your MCP endpoint includes a path component (such as `https://your-server.example.com/mcp`), append it to the well-known path: `/.well-known/oauth-protected-resource/mcp`." Server này (`/mcp` có path) trước đó chỉ phục vụ metadata ở root `/.well-known/oauth-protected-resource`, không phục vụ ở bản gắn path — sai với RFC 9728 khi resource có path component. Ví dụ connector đang hoạt động (Sentry) trong [issue #215](https://github.com/anthropics/claude-ai-mcp/issues/215) cũng advertise cả 2 dạng trong `WWW-Authenticate`.
+Cross-checked against the official checklist in [troubleshooting](https://claude.com/docs/connectors/building/troubleshooting): "If your MCP endpoint includes a path component (such as `https://your-server.example.com/mcp`), append it to the well-known path: `/.well-known/oauth-protected-resource/mcp`." This server (`/mcp` has a path component) previously only served metadata at the root `/.well-known/oauth-protected-resource`, not at the path-appended form — non-compliant with RFC 9728 for a resource with a path component. A working connector example (Sentry) in [issue #215](https://github.com/anthropics/claude-ai-mcp/issues/215) also advertises both forms in `WWW-Authenticate`.
 
-Fix áp dụng trong `scripts/gatekeeper.js`: phục vụ `protectedResource`/`authorizationServer` ở cả route gốc và route gắn `/mcp`; `WWW-Authenticate` trên `/mcp` trỏ về `resource_metadata` dạng gắn path.
+Fix applied in `scripts/gatekeeper.js`: serve `protectedResource`/`authorizationServer` at both the root route and the `/mcp`-appended route; `WWW-Authenticate` on `/mcp` points to the path-appended `resource_metadata`.
 
-## Vòng debug 3 — thiếu CORS trên `/authorize` và `/token`
+## Debug round 3 — missing CORS on `/authorize` and `/token`
 
-Đọc trực tiếp source code reference implementation chính thức của MCP TypeScript SDK — `packages/server-legacy/src/auth/handlers/authorize.ts` và `handlers/token.ts` tại [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk) (đọc 2026-08-07, qua `gh api`) — đây là code mà các MCP connector claude.ai đang hỗ trợ dùng làm nền. Cả 2 handler đều mount `router.use(cors())` (`Access-Control-Allow-Origin: *`) và `res.setHeader('Cache-Control', 'no-store')` trước khi xử lý request; router `/authorize` khai `allowedMethods(['GET', 'POST'])`, router `/token` khai `allowedMethods(['POST'])` — cả 2 đều đi qua middleware CORS nên đồng thời phục vụ `OPTIONS` preflight. Server này (`scripts/gatekeeper.js`) trước đó không set header CORS nào trên `/authorize`/`/token`/well-known, và không xử lý `OPTIONS` (rơi vào nhánh 404 chung).
+Read the official MCP TypeScript SDK reference implementation source directly — `packages/server-legacy/src/auth/handlers/authorize.ts` and `handlers/token.ts` in [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk) (read 2026-08-07, via `gh api`) — this is the code base the MCP connectors claude.ai supports are built on. Both handlers mount `router.use(cors())` (`Access-Control-Allow-Origin: *`) and `res.setHeader('Cache-Control', 'no-store')` before processing the request; the `/authorize` router declares `allowedMethods(['GET', 'POST'])`, the `/token` router declares `allowedMethods(['POST'])` — both go through CORS middleware and so also serve `OPTIONS` preflight. This server (`scripts/gatekeeper.js`) previously set no CORS headers at all on `/authorize`/`/token`/well-known, and didn't handle `OPTIONS` (fell into the generic 404 branch).
 
-Đây khớp chính xác cơ chế gây triệu chứng đã quan sát: nếu client-side JS của claude.ai gọi `/token` bằng `fetch()` từ trình duyệt, trình duyệt tự chặn request ở tầng CORS trước khi ra mạng nếu thiếu `Access-Control-Allow-Origin` — request thật không bao giờ tới được `/token`, khớp với log gatekeeper không bao giờ ghi nhận `POST /token` dù `/authorize` chạy đúng.
+This matches exactly the mechanism behind the observed symptom: if claude.ai's client-side JS calls `/token` via `fetch()` from the browser, the browser itself blocks the request at the CORS layer before it ever reaches the network if `Access-Control-Allow-Origin` is missing — the real request never reaches `/token`, matching the gatekeeper log never recording `POST /token` even though `/authorize` runs correctly.
 
-Fix áp dụng: `scripts/gatekeeper.js` set `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers` và trả `204` cho `OPTIONS` trên `/token`, `/authorize`, cả 4 route well-known; `scripts/oauth.js` thêm `Cache-Control: no-store` trên response của `handleAuthorize` và `handleToken`.
+Fix applied: `scripts/gatekeeper.js` sets `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers` and returns `204` for `OPTIONS` on `/token`, `/authorize`, and all 4 well-known routes; `scripts/oauth.js` adds `Cache-Control: no-store` to the responses of `handleAuthorize` and `handleToken`.
 
-Chưa retest thật trên claude.ai sau fix này.
+Not yet retested for real on claude.ai after this fix.
 
-## Vòng debug 4 — CORS chỉ áp cho `/token`/`/authorize`, thiếu `/mcp` + `Access-Control-Expose-Headers`
+## Debug round 4 — CORS only applied to `/token`/`/authorize`, missing `/mcp` + `Access-Control-Expose-Headers`
 
-Bằng chứng mới từ chính user: bấm "Add custom connector" xong, claude.ai báo ngay "Connection issue — Couldn't connect to the server" ở bước "checking connection..." — **trước cả khi vào `/authorize`**. Đối chiếu tiếp `examples/oauth/server.ts` trong [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk) (đọc 2026-08-07, qua `gh api`) — app mẫu áp `cors({ origin: '*', exposedHeaders: ['Mcp-Session-Id', 'WWW-Authenticate', 'Last-Event-Id', 'Mcp-Protocol-Version'] })` ở **tầng toàn app**, phủ cả `/mcp`, không chỉ `/token`/`/authorize`. `exposedHeaders` bắt buộc vì trình duyệt mặc định chặn JS đọc response header trừ khi server khai `Access-Control-Expose-Headers` — thiếu nó, JS phía claude.ai gọi thẳng `/mcp` để đọc `WWW-Authenticate` (tìm `resource_metadata`) trong bước "checking connection" sẽ không đọc được gì, sinh đúng lỗi chung chung "couldn't connect" quan sát được.
+New evidence from the user directly: clicking "Add custom connector", claude.ai immediately reports "Connection issue — Couldn't connect to the server" at the "checking connection..." step — **before even reaching `/authorize`**. Cross-checked further against `examples/oauth/server.ts` in [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk) (read 2026-08-07, via `gh api`) — the sample app applies `cors({ origin: '*', exposedHeaders: ['Mcp-Session-Id', 'WWW-Authenticate', 'Last-Event-Id', 'Mcp-Protocol-Version'] })` at the **whole-app level**, covering `/mcp` too, not just `/token`/`/authorize`. `exposedHeaders` is required because browsers block JS from reading response headers by default unless the server declares `Access-Control-Expose-Headers` — without it, claude.ai's client-side JS calling `/mcp` directly to read `WWW-Authenticate` (looking for `resource_metadata`) during the "checking connection" step reads nothing, producing exactly the generic "couldn't connect" error observed.
 
-Fix áp dụng: `scripts/gatekeeper.js` chuyển CORS từ danh sách path cụ thể sang áp cho **mọi** response (kể cả `/mcp`), thêm `Access-Control-Expose-Headers: WWW-Authenticate, Mcp-Session-Id, Mcp-Protocol-Version`.
+Fix applied: `scripts/gatekeeper.js` switches CORS from a specific path list to applying to **every** response (including `/mcp`), adds `Access-Control-Expose-Headers: WWW-Authenticate, Mcp-Session-Id, Mcp-Protocol-Version`.
 
-Ngoài ra, referrer URL user cung cấp (`claude.ai/new?error_code=mcp_token_exchange_failed`) xác nhận claude.ai **có** gọi `/token` phía server-to-server ở một lần thử trước — nhưng log gatekeeper mọi lần đều dừng ở `POST /authorize -> 302`, không có dòng `POST /token`. Test thủ công từ internet thật (`curl`) xác nhận `/token`/`/.well-known/*` reachable, TLS hợp lệ, response đúng format — network path và code `/token` tự nó không sai. Nghĩa là request `/token` bị chặn trước khi tới được gatekeeper — khớp với giả thuyết CORS/pre-check phía trên hơn là lỗi logic trong `handleToken`.
+In addition, the referrer URL the user provided (`claude.ai/new?error_code=mcp_token_exchange_failed`) confirms claude.ai **did** call `/token` server-to-server on one prior attempt — but the gatekeeper log stops at `POST /authorize -> 302` every time, with no `POST /token` line. Manual testing from the real internet (`curl`) confirms `/token`/`/.well-known/*` are reachable, TLS is valid, response format is correct — the network path and the `/token` code itself aren't wrong. This means the `/token` request is being blocked before it reaches the gatekeeper — consistent with the CORS/pre-check hypothesis above rather than a logic bug in `handleToken`.
 
-Chưa retest thật trên claude.ai sau fix này (cần Ctrl+C + `npm start` lại để nạp code mới).
+Not yet retested for real on claude.ai after this fix (needs Ctrl+C + `npm start` again to load the new code).
 
-## Vòng debug 5 — root cause thật: Tailscale Funnel desync với control plane, không phải bug code
+## Debug round 5 — the real root cause: Tailscale Funnel desync with the control plane, not a code bug
 
-Bằng chứng quyết định: mọi lần test trước đều chạy `curl` **từ chính máy Mac đang chạy `npm start`**. Máy này nằm trong cùng tailnet nên hệ điều hành tự dùng resolver nội bộ của Tailscale (`100.100.100.100`, xác nhận qua `scutil --dns`) — DNS trả về IP nội bộ dải CGNAT (`100.72.70.62`), và toàn bộ traffic đi thẳng qua mesh WireGuard, không hề chạm tới hạ tầng Funnel công khai thật sự. Mọi test full round-trip (`/authorize` → `/token`) "thành công" trước đó đều đi đường tắt này — không phản ánh đường đi thật của claude.ai (client hoàn toàn ngoài tailnet).
+Decisive evidence: every prior test ran `curl` **from the same Mac running `npm start`**. That machine is in the same tailnet, so the OS automatically uses Tailscale's internal resolver (`100.100.100.100`, confirmed via `scutil --dns`) — DNS returns an internal CGNAT-range IP (`100.72.70.62`), and all traffic goes straight through the WireGuard mesh, never touching the real public Funnel infrastructure. Every prior "successful" full round-trip test (`/authorize` → `/token`) took this shortcut — it didn't reflect claude.ai's real path (a client entirely outside the tailnet).
 
-Resolve domain bằng DNS công khai (`dig @8.8.8.8`) cho kết quả khác hẳn: IP thật `103.84.155.217` / `103.84.155.153` — đây là edge routing công khai của Tailscale Funnel. `curl --resolve` thẳng vào các IP này (ép bỏ qua resolver nội bộ, mô phỏng đúng đường claude.ai đi) cho kết quả `SSL_ERROR_SYSCALL` — TLS handshake chết giữa chừng, request chưa từng chạm tới code. Khớp chính xác với "checking connection... Connection issue" — bước đầu tiên claude.ai làm, trước cả OAuth.
+Resolving the domain via public DNS (`dig @8.8.8.8`) gives a completely different result: the real IPs are `103.84.155.217` / `103.84.155.153` — Tailscale Funnel's public edge routing. `curl --resolve` directly against these IPs (forcing the internal resolver to be bypassed, correctly simulating claude.ai's actual path) returns `SSL_ERROR_SYSCALL` — the TLS handshake dies mid-way, the request never reaches the code. This matches exactly "checking connection... Connection issue" — the very first thing claude.ai does, before OAuth even starts.
 
-Đối chiếu [tailscale/tailscale#19508](https://github.com/tailscale/tailscale/issues/19508) (đọc 2026-08-07): serve/funnel config có thể lưu đúng cục bộ (`tailscale funnel status` báo "on") nhưng **không được đồng bộ lên control plane** — hạ tầng anycast công khai của Tailscale không nhận được state, nên client thật ngoài internet bị drop ở tầng TLS dù mọi thứ nhìn "on" từ máy chủ. Đây đúng là lớp lỗi quan sát được — không phải bug trong `scripts/oauth.js`/`gatekeeper.js`.
+Cross-referenced with [tailscale/tailscale#19508](https://github.com/tailscale/tailscale/issues/19508) (read 2026-08-07): serve/funnel config can save correctly locally (`tailscale funnel status` reports "on") but **fail to sync to the control plane** — Tailscale's public anycast infrastructure never receives the state, so a real client on the open internet gets dropped at the TLS layer even though everything looks "on" from the host machine. This is exactly the failure class observed — not a bug in `scripts/oauth.js`/`gatekeeper.js`.
 
-Fix áp dụng: chạy lại `tailscale funnel --bg 9999` (ép đẩy lại serve-config lên control plane) — không phải sửa code. Retest full round-trip `/authorize` → `/token` bằng `curl --resolve` thẳng vào IP công khai `103.84.155.217`: **200 OK trọn vẹn**, `access_token` cấp thành công qua đúng đường đi thật.
+Fix applied: re-run `tailscale funnel --bg 9999` (forces the serve-config to re-push to the control plane) — not a code fix. Retested the full `/authorize` → `/token` round trip with `curl --resolve` directly against the public IP `103.84.155.217`: **full 200 OK**, `access_token` issued successfully over the real path.
 
-**Bài học để không tái diễn**: khi debug 1 kiến trúc dùng Tailscale Funnel, luôn test bằng `curl --resolve <host>:443:<public-IP-từ-dig-@8.8.8.8>` thay vì `curl https://<host>` trần — nếu máy test nằm trong cùng tailnet với server, DNS/route nội bộ sẽ che giấu hoàn toàn lỗi desync control-plane này. Dấu hiệu nhận biết: `tailscale funnel status` báo "on" nhưng client thật ngoài internet vẫn không kết nối được — luôn nghi ngờ desync trước, không suy đoán sang lỗi OAuth/code.
+**Lesson to avoid repeating this**: when debugging an architecture that uses Tailscale Funnel, always test with `curl --resolve <host>:443:<public-IP-from-dig-@8.8.8.8>` instead of a bare `curl https://<host>` — if the test machine is in the same tailnet as the server, internal DNS/routing will completely hide this control-plane desync. Tell-tale sign: `tailscale funnel status` says "on" but a real client on the open internet still can't connect — always suspect desync first, don't jump to an OAuth/code bug.
 
-## Vòng debug 6 — sau khi OAuth chạy đúng: thiếu proxy route `/messages` (transport SSE cũ của mcp-hub)
+## Debug round 6 — after OAuth works: missing `/messages` proxy route (mcp-hub's legacy SSE transport)
 
-Sau fix Funnel, log thật lần đầu cho `POST /token -> 200` — OAuth hoàn tất đúng chuẩn. Lỗi tiếp theo: `POST /mcp -> 404` rồi client tự fallback `POST /messages?sessionId=... -> 404`.
+After the Funnel fix, the log shows `POST /token -> 200` for the first time — OAuth completes correctly. Next error: `POST /mcp -> 404`, then the client falls back to `POST /messages?sessionId=... -> 404`.
 
-Kiểm tra trực tiếp `mcp-hub` (upstream thật, `npm ls mcp-hub` → bản `4.2.1`) bằng `curl` bỏ qua gatekeeper: `GET http://127.0.0.1:19999/mcp` trả về SSE stream với `event: endpoint, data: /messages?sessionId=...` — xác nhận `mcp-hub` bản này cài transport **HTTP+SSE cũ** (pre-2025-03-26 MCP spec), không phải Streamable HTTP hiện đại. Theo transport này, `POST /mcp` không bao giờ là route hợp lệ — client bắt buộc phải POST JSON-RPC tới `/messages?sessionId=...` lấy từ event `endpoint` trên SSE stream.
+Checked `mcp-hub` directly (the real upstream, `npm ls mcp-hub` → version `4.2.1`) with `curl`, bypassing the gatekeeper: `GET http://127.0.0.1:19999/mcp` returns an SSE stream with `event: endpoint, data: /messages?sessionId=...` — confirming this version of `mcp-hub` implements the **legacy HTTP+SSE transport** (pre-2025-03-26 MCP spec), not modern Streamable HTTP. Under this transport, `POST /mcp` is never a valid route — the client must POST JSON-RPC to `/messages?sessionId=...`, obtained from the `endpoint` event on the SSE stream.
 
-`scripts/gatekeeper.js` trước đó chỉ proxy đúng path `/mcp` (chủ đích ban đầu: chặn `/api/*` không auth của `mcp-hub` khỏi internet — xem `docs/plan/init.md`), vô tình chặn luôn `/messages` — collateral damage ngoài chủ đích gốc.
+`scripts/gatekeeper.js` previously only proxied the exact path `/mcp` (the original intent: keep `mcp-hub`'s unauthenticated `/api/*` off the internet — see `docs/plan/init.md`), which incidentally also blocked `/messages` — unintended collateral damage.
 
-Fix áp dụng: route filter trong `scripts/gatekeeper.js` mở thêm `path === '/messages'` (cùng bearer-gate, cùng `forwardToHub`), giữ nguyên chặn mọi path khác kể cả `/api/*`. Verify local qua gatekeeper thật (không qua mock): lấy access token thật qua full OAuth flow → mở SSE `/mcp` lấy `sessionId` → POST `/messages?sessionId=...` qua gatekeeper → **202 Accepted**, đúng hành vi transport SSE (kết quả JSON-RPC trả về qua stream, không qua response của POST).
+Fix applied: the route filter in `scripts/gatekeeper.js` now also allows `path === '/messages'` (same bearer-gate, same `forwardToHub`), still blocking every other path including `/api/*`. Verified locally through the real gatekeeper (not a mock): got a real access token via the full OAuth flow → opened SSE `/mcp` to get a `sessionId` → POSTed `/messages?sessionId=...` through the gatekeeper → **202 Accepted**, the correct SSE-transport behavior (the JSON-RPC result comes back over the stream, not in the POST response).
 
-## Vòng debug 7 — sau khi `/messages` mở: claude.ai vẫn "no tools available" vì không dùng đúng dance SSE cũ
+## Debug round 7 — after `/messages` opened up: claude.ai still shows "no tools available" because it doesn't use the old SSE dance
 
-Sau fix vòng 6, connector chuyển từ "Connection issue" sang connect được nhưng "This connector has no tools available." Log gatekeeper đầy đủ từ lúc `npm start` tới lúc UI báo trống tools cho thấy: **không có dòng `GET /mcp` nào cả** — claude.ai không mở kết nối SSE để lấy `endpoint` event. Thay vào đó nó POST thẳng `/mcp` (404, vì `mcp-hub` không có route này), thi thoảng mở được `/messages?sessionId=...` (202, chỉ đủ gửi `initialize`), rồi lại quay về POST `/mcp` liên tục — không bao giờ tới được bước `tools/list`.
+After the round-6 fix, the connector went from "Connection issue" to connecting but reporting "This connector has no tools available." The full gatekeeper log from `npm start` to the UI reporting empty tools shows: **no `GET /mcp` line at all** — claude.ai never opens an SSE connection to get the `endpoint` event. Instead it POSTs `/mcp` directly (404, since `mcp-hub` has no such route), occasionally manages to open `/messages?sessionId=...` (202, just enough to send `initialize`), then goes back to repeatedly POSTing `/mcp` — never reaching the `tools/list` step.
 
-Đối chiếu với reference implementation chính thức của MCP TypeScript SDK (`examples/client/streamableHttpWithSseFallbackClient.ts`, gói `@modelcontextprotocol/sdk@1.30.0` trên npm, đọc 2026-08-07): pattern chuẩn là "học `endpoint` URL đúng 1 lần từ SSE, rồi dùng lại `_endpoint` đó cho **mọi** message sau" (`packages/client/src/client/sse.ts`, hàm `_send`). Hành vi log thật của claude.ai không khớp pattern này — nó thử lại `POST /mcp` (Streamable HTTP) cho từng bước thay vì giữ nguyên kênh `/messages` đã học được. Đây không phải bug của claude.ai để mặc kệ (cấm suy đoán theo hướng đó) — đây là bằng chứng cho thấy `mcp-hub` (chỉ nói được transport HTTP+SSE cũ, pre-2025-03-26) không đủ tương thích với cách một client hiện đại thực tế vận hành, và phần thiếu là ở phía server của ta.
+Cross-checked against the official MCP TypeScript SDK reference implementation (`examples/client/streamableHttpWithSseFallbackClient.ts`, package `@modelcontextprotocol/sdk@1.30.0` on npm, read 2026-08-07): the standard pattern is "learn the `endpoint` URL exactly once from SSE, then reuse that same `_endpoint` for **every** subsequent message" (`packages/client/src/client/sse.ts`, function `_send`). claude.ai's real logged behavior doesn't match this pattern — it retries `POST /mcp` (Streamable HTTP) at every step instead of sticking with the `/messages` channel it already learned. This isn't a claude.ai bug to shrug off (that direction of speculation is off-limits) — it's evidence that `mcp-hub` (which only speaks the legacy HTTP+SSE transport, pre-2025-03-26) isn't compatible enough with how a real modern client actually operates, and the gap is on our server side.
 
-**Root cause thật + fix:** thay vì tiếp tục phụ thuộc vào việc client tự fallback đúng cách, tự viết **shim Streamable HTTP** ngay trong gatekeeper (`scripts/streamable-bridge.js`) — nhận `POST /mcp` (JSON-RPC, đúng chuẩn hiện đại, 1 endpoint duy nhất), bắc cầu nội bộ sang transport cũ của `mcp-hub` (mở `GET /mcp` lấy `sessionId` nội bộ, POST `/messages?sessionId=...`, khớp response theo `id` JSON-RPC qua SSE), trả JSON trực tiếp lại cho client kèm header `Mcp-Session-Id` riêng của gatekeeper. Từ góc nhìn claude.ai, `/mcp` giờ là Streamable HTTP thật — không còn phụ thuộc vào việc client có tự fallback đúng theo cách `mcp-hub` yêu cầu hay không.
+**Real root cause + fix:** instead of continuing to depend on the client falling back correctly on its own, hand-write a **Streamable HTTP shim** directly in the gatekeeper (`scripts/streamable-bridge.js`) — it accepts `POST /mcp` (JSON-RPC, real modern spec, a single endpoint), internally bridges to `mcp-hub`'s legacy transport (opens `GET /mcp` to get an internal `sessionId`, POSTs `/messages?sessionId=...`, matches the response by JSON-RPC `id` over SSE), and returns JSON directly to the client along with the gatekeeper's own `Mcp-Session-Id` header. From claude.ai's point of view, `/mcp` is now real Streamable HTTP — no longer dependent on whether the client falls back correctly the way `mcp-hub` requires.
 
-Verify local: dựng gatekeeper test riêng ở cổng khác (`19998`, trỏ vào đúng `mcp-hub` thật đang chạy ở `19999`, không đụng tiến trình `npm start` thật của user), lấy access token thật qua full OAuth flow, rồi mô phỏng **đúng y hệt** pattern request thật của claude.ai (`POST /mcp` initialize → dùng `Mcp-Session-Id` trả về cho `notifications/initialized` và `tools/list`, không mở `GET /mcp`) → `tools/list` trả đủ **15 tools** đúng tên. `scripts/gatekeeper.js` route `/mcp`: `POST` → shim, `DELETE` → đóng session, `GET` → `405` (không hỗ trợ server-push, chấp nhận được theo spec — `tools/list` không cần kênh này).
+Verified locally: stood up a separate test gatekeeper on another port (`19998`, pointed at the real running `mcp-hub` on `19999`, without touching the user's real `npm start` process), got a real access token via the full OAuth flow, then simulated **exactly** claude.ai's real request pattern (`POST /mcp` initialize → use the returned `Mcp-Session-Id` for `notifications/initialized` and `tools/list`, never opening `GET /mcp`) → `tools/list` returned all **15 tools** with the correct names. `scripts/gatekeeper.js`'s `/mcp` route: `POST` → shim, `DELETE` → close session, `GET` → `405` (no server-push support, acceptable per spec — `tools/list` doesn't need that channel).
 
-## Xác nhận thành công — MVP hoàn thành end-to-end
+## Confirmed success — MVP complete end-to-end
 
-Retest thật trên claude.ai sau fix vòng 7 (restart `npm start`, connector kết nối lại): tools list hiện đủ 15 tools (14 `filesystem__*` + `shell__execute`), gọi tool được bình thường. Toàn bộ chuỗi OAuth → Streamable HTTP shim → mcp-hub → filesystem/shell MCP server hoạt động đúng thiết kế. Checklist đầy đủ: `docs/plan/init.md`.
+Retested for real on claude.ai after the round-7 fix (restarted `npm start`, reconnected the connector): the tools list shows all 15 tools (14 `filesystem__*` + `shell__execute`), tool calls work normally. The full chain — OAuth → Streamable HTTP shim → mcp-hub → filesystem/shell MCP server — works as designed. Full checklist: `docs/plan/init.md`.
 
-## Đánh đổi đã biết, chấp nhận cho MVP 1 người dùng
+## Known tradeoffs, accepted for a single-user MVP
 
-- Access/refresh token chỉ lưu in-memory trong process gatekeeper — restart `npm start` làm mất hết phiên đã cấp, claude.ai cần "Connect" lại. Chấp nhận được vì chạy foreground, chủ động bật/tắt theo quyết định gốc.
-- Không rate-limit `/authorize` — chấp nhận vì passphrase 256-bit, brute-force bất khả thi.
+- Access/refresh tokens are only stored in-memory in the gatekeeper process — restarting `npm start` loses every issued session, claude.ai needs to "Connect" again. Acceptable since it runs in the foreground, actively started/stopped by design.
+- No rate-limiting on `/authorize` — acceptable because of the 256-bit passphrase, making brute-force infeasible.
 
 ## Cross-references
-- `docs/ref/security-model.md` — mô hình bảo mật cập nhật theo kiến trúc OAuth này
-- `docs/plan/init.md` — bảng quyết định kiến trúc
-- `scripts/oauth.js`, `scripts/gatekeeper.js` — implementation thật
+- `docs/ref/security-model.md` — security model updated for this OAuth architecture
+- `docs/plan/init.md` — architecture decision table
+- `scripts/oauth.js`, `scripts/gatekeeper.js` — the real implementation

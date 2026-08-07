@@ -1,60 +1,60 @@
-# REPL bền phiên + get_config — mở rộng process-mcp
+# Persistent-session REPL + get_config — extending process-mcp
 
-## Mục tiêu
-Thêm khả năng chạy session tương tác bền (REPL Python/Node...) và tự dò môi trường (OS/shell/Python-Node version), học theo Desktop Commander (`start_process` / `interact_with_process` / `read_process_output`, `get_config`) — **không** đổi triết lý an toàn hiện có (whitelist thay vì blocklist, không shell thật, mọi request vẫn qua đúng 1 cổng gatekeeper).
+## Goal
+Add the ability to run persistent interactive sessions (Python/Node REPL...) and auto-detect the environment (OS/shell/Python-Node version), inspired by Desktop Commander (`start_process` / `interact_with_process` / `read_process_output`, `get_config`) — **without** changing the existing safety philosophy (whitelist instead of blocklist, no real shell, every request still goes through the single gatekeeper port).
 
-**Ngoài phạm vi (c):** thêm lệnh *ghi* (`git commit`, `npm install`...). Allowlist read-only mở rộng được qua `~/.aki/mcpsv/setting.json` → `shell.allowlist`, nhưng defaults vẫn chỉ-đọc; thêm lệnh ghi vào đó là vượt ranh giới (c), cần plan bảo mật riêng.
+**Out of scope (c):** adding *write* commands (`git commit`, `npm install`...). The read-only allowlist can already be extended via `~/.aki/mcpsv/setting.json` → `shell.allowlist`, but the defaults stay read-only; adding write commands there crosses boundary (c) and needs its own security plan.
 
-## Ràng buộc bắt buộc
-- Không thêm cổng mới, không đổi kiến trúc `gatekeeper → mcp-hub` hiện có — server mới vẫn spawn qua stdio, gộp vào `mcp-hub.config.json` như 2 server hiện tại.
-- Không dùng shell thật (`/bin/sh`) để khởi tiến trình — dùng `spawn(bin, args)` trực tiếp, giữ nguyên tắc đã áp dụng cho `execFile` trong `shell-mcp.js`.
-- Whitelist binary cho REPL **tách riêng** khỏi `ALLOWED` (whitelist đọc) — không dùng chung set, tránh 1 lệnh vô tình lọt cả hai nhóm quyền.
-- Mọi tiến trình REPL bắt buộc có idle-timeout tự kill — server nghe từ internet công khai, không giới hạn = rủi ro giữ tài nguyên vô hạn nếu phiên bị bỏ quên hoặc có truy cập trái phép.
-- Giới hạn số tiến trình đồng thời — tránh mở tràn lan session, đặc biệt qua truy cập từ xa không giám sát chặt theo thời gian thực.
+## Mandatory constraints
+- No new port, no change to the existing `gatekeeper → mcp-hub` architecture — the new server still spawns over stdio, folded into `mcp-hub.config.json` alongside the 2 existing servers.
+- No real shell (`/bin/sh`) to launch processes — use `spawn(bin, args)` directly, keeping the same principle already applied to `execFile` in `shell-mcp.js`.
+- REPL binary whitelist is **separate** from `ALLOWED` (the read whitelist) — don't share a set, to avoid one command accidentally landing in both permission groups.
+- Every REPL process must have an idle-timeout auto-kill — the server listens on the open internet, and no limit means unbounded resource retention if a session is forgotten or accessed without authorization.
+- Cap the number of concurrent processes — avoid unbounded session sprawl, especially from remote access that isn't closely monitored in real time.
 
-## Quyết định kiến trúc
+## Architecture decisions
 
-| Vấn đề | Quyết định | Vì sao |
+| Issue | Decision | Why |
 |---|---|---|
-| File mới hay mở rộng `shell-mcp.js` | File mới `scripts/process-mcp.js`, entry riêng trong `mcp-hub.config.json` | Giữ `shell-mcp.js` đúng tên gọi và đúng nghĩa "read-only" — không lẫn tiến trình sống (có thể nhận input tuỳ ý) vào cùng 1 file/tool. Khớp thói quen hiện có: mỗi concern 1 file (`oauth.js`, `gatekeeper.js`, `streamable-bridge.js`) |
-| Cơ chế giữ tiến trình sống | `child_process.spawn`, lưu vào `Map<pid, ChildProcess>` trong bộ nhớ tiến trình `process-mcp.js` | Giống cơ chế 3 tool REPL của DC — cần state giữa nhiều lần gọi tool; `execFile` không làm được vì chạy xong là kết thúc, không giữ stdin mở |
-| Tool mới | `start_process(command)`, `interact_with_process(pid, input)`, `read_process_output(pid)`, `kill_process(pid)` | Tối thiểu đủ để lái REPL. Không thêm `list_processes` ở bản đầu — 1 người dùng, ít session đồng thời, thêm sau nếu cần |
-| Whitelist binary khởi động REPL | Set riêng, khởi điểm nhỏ: `python3 -i`, `node -i` (đúng chuỗi, không nhận thêm flag/arg từ input) | Học DC ở việc hỗ trợ REPL, nhưng không copy triết lý "chạy bất kỳ lệnh gì" — mỗi binary thêm sau phải cân nhắc riêng, không tự động mở rộng |
-| Idle-timeout | Mặc định 20 phút không tương tác → tự `kill_process`, cùng mốc DC đang dùng cho session | Tránh treo tài nguyên vô thời hạn khi expose qua Funnel |
-| Giới hạn đồng thời | Tối đa 3 tiến trình sống cùng lúc, vượt → từ chối `start_process` kèm thông báo rõ | MVP 1 người dùng, không cần nhiều; giới hạn thấp giảm rủi ro nếu bị lạm dụng |
-| `get_config` | Tool mới, read-only, trả JSON `{platform, shell, pythonVersion, nodeVersion, repoRoot}` — `repoRoot` lấy từ `process.cwd()` lúc chạy, không hardcode | Rẻ, rủi ro gần 0. Gộp luôn `repoRoot` vì đây là kênh đáng tin duy nhất để 1 phiên Claude khác tự định vị repo — xem mục "`instructions` field — vì sao không dùng" bên dưới, không dùng README hay `instructions` field cho việc này |
+| New file vs. extend `shell-mcp.js` | New file `scripts/process-mcp.js`, its own entry in `mcp-hub.config.json` | Keeps `shell-mcp.js`'s name and meaning accurate as "read-only" — don't mix a live process (which can accept arbitrary input) into the same file/tool. Matches the existing convention of one file per concern (`oauth.js`, `gatekeeper.js`, `streamable-bridge.js`) |
+| Mechanism to keep a process alive | `child_process.spawn`, stored in a `Map<pid, ChildProcess>` in `process-mcp.js`'s own process memory | Same mechanism as Desktop Commander's 3 REPL tools — needs state across multiple tool calls; `execFile` can't do this since it exits when done and doesn't keep stdin open |
+| New tools | `start_process(command)`, `interact_with_process(pid, input)`, `read_process_output(pid)`, `kill_process(pid)` | Minimum needed to drive a REPL. No `list_processes` in the first version — single user, few concurrent sessions, add later if needed |
+| REPL launch binary whitelist | Its own small set to start: `python3 -i`, `node -i` (exact string match, no extra flags/args accepted from input) | Borrows DC's REPL support without copying its "run any command" philosophy — every binary added later must be considered individually, no automatic expansion |
+| Idle timeout | Default 20 minutes of no interaction → auto `kill_process`, same threshold DC uses for sessions | Avoids holding resources indefinitely when exposed through Funnel |
+| Concurrency limit | Max 3 live processes at once, beyond that `start_process` is refused with a clear message | Single-user MVP, doesn't need many; a low limit reduces risk if abused |
+| `get_config` | New tool, read-only, returns JSON `{platform, shell, pythonVersion, nodeVersion, repoRoot}` — `repoRoot` comes from `process.cwd()` at run time, not hardcoded | Cheap, near-zero risk. `repoRoot` is bundled in because it's the only reliable channel for another Claude session to locate the repo itself — see "the `instructions` field — why not used" below; neither README nor the `instructions` field is used for this |
 
-## `instructions` field — vì sao không dùng
+## The `instructions` field — why it's not used
 
-Spec MCP có field `instructions` ở `initialize` response (thiết kế để bơm context nền vào system prompt), SDK hỗ trợ. Nhưng **`mcp-hub@4.2.1` không forward** `instructions` từ server con ra client — set gì trong `shell-mcp.js` cũng bị chặn tại lớp aggregate. Ngay cả Claude Desktop cũng chưa đọc field này (`anthropics/claude-code#43749`).
+The MCP spec has an `instructions` field on the `initialize` response (designed to inject background context into the system prompt), and the SDK supports it. But **`mcp-hub@4.2.1` doesn't forward** `instructions` from child servers to the client — anything set in `shell-mcp.js` is blocked at the aggregation layer. Even Claude Desktop doesn't read this field yet (`anthropics/claude-code#43749`).
 
-**Quyết định:** dồn context vào `description` của tool — kênh duy nhất mọi client chắc chắn đọc (qua `tools/list`).
+**Decision:** push context into each tool's `description` instead — the one channel every client is guaranteed to read (via `tools/list`).
 
-## Permission — quyết định
+## Permissions — decisions
 
-| Vấn đề | Quyết định | Cơ chế |
+| Issue | Decision | Mechanism |
 |---|---|---|
-| Whitelist REPL | `python3 -i`, `node -i` — so khớp đúng chuỗi cố định, không parse arg tuỳ ý | trong code `process-mcp.js`, khác cách `shell-mcp.js` parse argv cho lệnh đọc |
-| Idle-timeout | 20 phút, `setTimeout` reset mỗi lần `interact_with_process`/`read_process_output` gọi trúng `pid` | trong `process-mcp.js`, không cần dependency ngoài |
-| Giới hạn đồng thời | 3 tiến trình, kiểm tra `Map.size` trước khi `spawn` mới | trong `process-mcp.js` |
-| Buffer output | Giới hạn kiểu tương tự shell hiện có (~1MB), cắt bớt nếu vượt, báo rõ đã bị cắt | tránh 1 tiến trình in ra vô hạn làm phình bộ nhớ |
+| REPL whitelist | `python3 -i`, `node -i` — exact fixed-string match, no arbitrary arg parsing | in `process-mcp.js` code, different from how `shell-mcp.js` parses argv for read commands |
+| Idle timeout | 20 minutes, `setTimeout` reset on every `interact_with_process`/`read_process_output` call that hits a `pid` | in `process-mcp.js`, no external dependency needed |
+| Concurrency limit | 3 processes, checked against `Map.size` before spawning a new one | in `process-mcp.js` |
+| Output buffering | Same cap style as the existing shell tool (~1MB), truncated with a clear note if exceeded | prevents one process printing without bound from ballooning memory |
 
-## Checklist thực thi
+## Execution checklist
 - [ ] `scripts/process-mcp.js` — `start_process`, `interact_with_process`, `read_process_output`, `kill_process`, `get_config`
-- [ ] Thêm entry `process` vào `mcp-hub.config.json`
-- [ ] Idle-timeout 20 phút + giới hạn 3 tiến trình đồng thời
-- [ ] Test local: mở `python3 -i`, gửi lệnh, đọc kết quả; để idle quá 20 phút → tự kill; mở tiến trình thứ 4 → bị từ chối
-- [ ] Test qua claude.ai thật (giống cách đã verify `shell__run_cmd`) — xác nhận tool mới xuất hiện trong `tools/list`
-- [ ] Cập nhật `README.md` (mục kiến trúc + danh sách tool) sau khi verify xong
+- [ ] Add a `process` entry to `mcp-hub.config.json`
+- [ ] 20-minute idle timeout + 3-process concurrency limit
+- [ ] Local test: open `python3 -i`, send a command, read the result; leave idle past 20 minutes → auto-killed; open a 4th process → rejected
+- [ ] Test through real claude.ai (same way `shell__run_cmd` was verified) — confirm the new tools appear in `tools/list`
+- [ ] Update `README.md` (architecture section + tool list) once verified
 
-## Ngoài phạm vi (để sau)
-- (c) Mở rộng khả năng ghi cho `shell-mcp.js` (vd `git commit`, `npm install`) — thuộc nhóm shell, đổi triết lý "chỉ đọc" hiện tại, cần plan bảo mật riêng.
-- Đọc file cấu trúc (docx/xlsx/pdf) — giá trị thấp hơn cho use case hiện tại, chưa cần.
+## Out of scope (later)
+- (c) Extending `shell-mcp.js` with write capability (e.g. `git commit`, `npm install`) — belongs to the shell group, changes the current "read-only" philosophy, needs its own security plan.
+- Reading structured files (docx/xlsx/pdf) — lower value for the current use case, not needed yet.
 
 ## Cross-references
-- `docs/plan/init.md` — quyết định kiến trúc gốc (mcp-hub + gatekeeper + funnel)
-- `docs/ref/security-model.md` — mô hình bảo mật OAuth hiện tại, không đổi bởi doc này
-- `README.md` — setup; vị trí repo do panel tự in ra theo `process.cwd()`, repo đặt ở đâu cũng được
+- `docs/plan/init.md` — original architecture decisions (mcp-hub + gatekeeper + funnel)
+- `docs/ref/security-model.md` — current OAuth security model, unchanged by this doc
+- `README.md` — setup; the repo location is printed by the panel itself from `process.cwd()`, so the repo can live anywhere
 
 ## Decision
-**Action** → tạo `scripts/process-mcp.js` theo bảng trên, thêm entry vào `mcp-hub.config.json`, chưa động vào `shell-mcp.js`.
+**Action** → build `scripts/process-mcp.js` per the table above, add an entry to `mcp-hub.config.json`, don't touch `shell-mcp.js` yet.

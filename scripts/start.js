@@ -14,17 +14,17 @@ const gatePort = process.env.GATEKEEPER_PORT || '9999';
 const panelPort = process.env.PANEL_PORT || '9998';
 const panelToken = randomBytes(16).toString('hex');
 
-console.log(`[start] cấu hình & khoá: ${USER_DIR}`);
+console.log(`[start] config & keys: ${USER_DIR}`);
 
 const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();
 
 const tailscale = await funnelStatus(gatePort);
 if (!tailscale.installed) {
-  console.error('[start] không gọi được `tailscale` — kiểm tra đã cài và login chưa: https://tailscale.com/download');
+  console.error('[start] could not run `tailscale` — check it is installed and logged in: https://tailscale.com/download');
 } else if (!tailscale.funnel) {
   const { ok, out } = await enableFunnel(gatePort);
-  console[ok ? 'log' : 'error'](`[start] bật funnel ${gatePort}: ${ok ? 'xong' : out.trim()}`);
+  console[ok ? 'log' : 'error'](`[start] enabling funnel ${gatePort}: ${ok ? 'done' : out.trim()}`);
 }
 
 const origin = tailscale.host ? `https://${tailscale.host}` : null;
@@ -33,10 +33,10 @@ if (origin) {
   console.log(`[start] Remote MCP server URL: ${origin}/mcp`);
   console.log(`[start] OAuth Client ID: ${client.clientId}`);
   console.log(`[start] OAuth Client Secret: ${client.clientSecret}`);
-  console.log('[start] dán cả 3 giá trị trên vào Add custom connector (URL + Advanced settings)');
-  console.log(`[start] Passphrase (nhập khi trình duyệt mở trang xác nhận): ${passphrase}`);
+  console.log('[start] paste all 3 values above into Add custom connector (URL + Advanced settings)');
+  console.log(`[start] Passphrase (enter it when the browser opens the confirmation page): ${passphrase}`);
 } else {
-  console.error('[start] không lấy được MagicDNS name — chạy `tailscale status` để tự tra URL');
+  console.error('[start] could not get the MagicDNS name — run `tailscale status` to look up the URL yourself');
 }
 
 let hub;
@@ -70,7 +70,7 @@ const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
 try {
   execFileSync('open', [panelUrl]);
 } catch (e) {
-  console.error(`[start] không tự mở được panel (mở tay: ${panelUrl}): ${e.message}`);
+  console.error(`[start] could not auto-open the panel (open manually: ${panelUrl}): ${e.message}`);
 }
 
 function shutdown() {

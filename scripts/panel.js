@@ -34,7 +34,7 @@ function filesystemPaths(dataDir) {
 async function pickFolders() {
   const script = [
     'activate',
-    'set picked to choose folder with prompt "Chọn thư mục Claude được phép truy cập" with multiple selections allowed',
+    'set picked to choose folder with prompt "Choose folders Claude may access" with multiple selections allowed',
     'set out to ""',
     'repeat with f in picked',
     'set out to out & POSIX path of f & linefeed',
@@ -63,17 +63,17 @@ function setFilesystemPaths(paths) {
 
 // Whatever lands here becomes the gate shell-mcp checks, and a wrong type reads as "no restriction", not as an error.
 function validateAllowlist(allowlist) {
-  if (!allowlist || typeof allowlist !== 'object' || Array.isArray(allowlist)) throw new Error('allowlist phải là một object JSON');
+  if (!allowlist || typeof allowlist !== 'object' || Array.isArray(allowlist)) throw new Error('allowlist must be a JSON object');
   for (const [bin, subs] of Object.entries(allowlist)) {
     const ok = subs === null || (Array.isArray(subs) && subs.every((s) => typeof s === 'string'));
-    if (!ok) throw new Error(`"${bin}": chỉ nhận null (mọi subcommand) hoặc mảng chuỗi`);
+    if (!ok) throw new Error(`"${bin}": must be null (any subcommand) or an array of strings`);
   }
   return allowlist;
 }
 
 function validatePaths(paths) {
   if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && p.startsWith('/'))) {
-    throw new Error('danh sách thư mục phải là các đường dẫn tuyệt đối');
+    throw new Error('folder list must be absolute paths');
   }
   return paths;
 }
@@ -107,7 +107,7 @@ async function installRules() {
     repo = RULES_CLONE_DIR;
   }
   const log = await run('bash', [path.join(repo, 'install.sh')], repo);
-  return `${log.trim().split('\n').pop()} (nguồn: ${repo})`;
+  return `${log.trim().split('\n').pop()} (source: ${repo})`;
 }
 
 const readBody = (req) =>
@@ -134,15 +134,15 @@ const ROUTES = {
   'POST /api/paths': async (body, ctx) => {
     setFilesystemPaths(validatePaths(body.paths));
     ctx.restartHub();
-    return { ok: true, message: 'đã lưu thư mục và restart mcp-hub' };
+    return { ok: true, message: 'saved folders and restarted mcp-hub' };
   },
   'POST /api/allowlist': async (body) => {
     setShellAllowlist(validateAllowlist(body.allowlist));
-    return { ok: true, message: `đã lưu allowlist vào ${SETTINGS_PATH}` };
+    return { ok: true, message: `saved allowlist to ${SETTINGS_PATH}` };
   },
   'POST /api/restart': async (body, ctx) => {
     ctx.restartHub();
-    return { ok: true, message: 'đã restart mcp-hub' };
+    return { ok: true, message: 'restarted mcp-hub' };
   },
   'POST /api/install-rules': async () => ({ ok: true, message: await installRules() }),
   'POST /api/pick-folder': async () => ({ ok: true, folders: await pickFolders() }),
@@ -168,7 +168,7 @@ export function startPanel({ port, token, origin, client, passphrase, dataDir, r
     if (route === 'GET /') {
       if (new URLSearchParams(query).get('t') !== token) {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-        return res.end('sai token — mở URL mà `npm start` in ra');
+        return res.end('wrong token — open the URL that `npm start` printed');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, dataDir, rulesDir: RULES_DIR, userDir: USER_DIR }));

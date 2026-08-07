@@ -66,8 +66,8 @@ function field(label, value, mono = true) {
 }
 
 export function renderPanel({ origin, client, passphrase, token, repoRoot, dataDir, rulesDir, userDir }) {
-  const url = origin ? `${origin}/mcp` : 'chưa có — xem mục 1';
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  const url = origin ? `${origin}/mcp` : 'not available yet — see section 1';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(MCP_NAME)} — panel</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
 <style>
@@ -137,105 +137,105 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 @media (max-width: 560px) { .row { grid-template-columns: 1fr; } .eco-grid { grid-template-columns: 1fr; } }
 </style></head><body><main>
 <h1>${esc(MCP_NAME)}</h1>
-<p class="sub">Panel cục bộ (127.0.0.1) — không đi qua Funnel, không ra internet.<br>Repo đang chạy: <span class="mono">${esc(repoRoot)}</span> · Cấu hình &amp; khoá của bạn: <span class="mono">${esc(userDir)}</span></p>
+<p class="sub">Local panel (127.0.0.1) — never goes through Funnel, never reaches the internet.<br>Running repo: <span class="mono">${esc(repoRoot)}</span> · Your config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
 
-<section><h2>1 · Tailscale — đường để claude.ai với tới máy này</h2>
-<p class="hint">claude.ai cần một địa chỉ để gọi tới máy bạn. Làm 2 bước dưới đây, chỉ một lần.</p>
+<section><h2>1 · Tailscale — how claude.ai reaches this machine</h2>
+<p class="hint">claude.ai needs an address to call your machine. Two steps below, one time only.</p>
 <ol class="steps">
-  <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Cài Tailscale</a> rồi đăng nhập.</li>
-  <li><span class="dot" id="tsFunnel">…</span> Bật <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> cho tailnet — miễn phí ở mọi gói. <code>npm start</code> tự bật giúp; chỉ khi tailnet chưa cho phép thì nó in ra link để bạn duyệt một lần.</li>
+  <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
+  <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet — free on every plan. <code>npm start</code> enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
 </ol>
-<div class="acts"><button data-act="tailscale">Kiểm tra lại</button><span class="msg" id="msgTs"></span></div>
+<div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 </section>
 
-<section id="connector"><h2>2 · Connector — dán vào claude.ai</h2>
-<p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Mở trang Add custom connector</a></p>
+<section id="connector"><h2>2 · Connector — paste into claude.ai</h2>
+<p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
 ${field('MCP Name', MCP_NAME, false)}
 ${field('MCP URL', url)}
 ${field('OAuth Client ID', client.clientId)}
 ${field('OAuth Client Secret', client.clientSecret)}
 ${field('Passphrase', passphrase)}
-<div class="acts"><button class="primary" data-act="copyAll">Copy cả 5 giá trị</button><span class="msg" id="msgConn"></span></div>
+<div class="acts"><button class="primary" data-act="copyAll">Copy all 5 values</button><span class="msg" id="msgConn"></span></div>
 </section>
 
-<section><h2>3 · Thư mục Claude được phép truy cập</h2>
-<p class="hint">Ngoài danh sách này Claude bị từ chối hoàn toàn.</p>
+<section><h2>3 · Folders Claude is allowed to reach</h2>
+<p class="hint">Anything outside this list is fully off-limits to Claude.</p>
 <div class="pathlist" id="paths"></div>
 <div class="acts">
-  <button class="primary" data-act="pickFolder">+ Chọn thư mục…</button>
-  <button data-act="savePaths">Lưu &amp; restart hub</button>
+  <button class="primary" data-act="pickFolder">+ Choose folder…</button>
+  <button data-act="savePaths">Save &amp; restart hub</button>
   <button data-act="restart">Restart hub</button>
   <span class="msg" id="msgPaths"></span>
 </div>
 </section>
 
-<section><h2>4 · Lệnh shell được phép</h2>
-<p class="hint">Bộ mặc định đang chạy, toàn lệnh chỉ-đọc. Xoá một dòng là gỡ quyền chạy lệnh đó. Thêm lệnh ghi (<code>rm</code>, <code>git commit</code>…) là bạn tự mở rộng quyền — cân nhắc.<br>
-<code>null</code> = cho mọi subcommand · mảng = chỉ những subcommand trong mảng.</p>
+<section><h2>4 · Allowed shell commands</h2>
+<p class="hint">The default set running now is read-only commands only. Deleting a line revokes that command. Adding a write command (<code>rm</code>, <code>git commit</code>…) is you deliberately widening access — think it through.<br>
+<code>null</code> = every subcommand allowed · array = only the subcommands listed.</p>
 <textarea id="allowlist" spellcheck="false" style="min-height:170px"></textarea>
-<div class="acts"><button class="primary" data-act="saveAllowlist">Lưu allowlist</button><span class="msg" id="msgAllow"></span></div>
+<div class="acts"><button class="primary" data-act="saveAllowlist">Save allowlist</button><span class="msg" id="msgAllow"></span></div>
 </section>
 
-<section><h2>5 · akidevrule — luật làm việc cho AI (tuỳ chọn)</h2>
-<p class="hint">Mỗi phiên mới, Claude đoán lại từ đầu: viết dài hay ngắn, được tự sửa tới đâu, đặt tên thế nào. <strong>akidevrule</strong> chốt sẵn những thứ đó thành file, nạp đúng lúc cần.</p>
+<section><h2>5 · akidevrule — working rules for the AI (optional)</h2>
+<p class="hint">Every new session, Claude guesses from scratch: how long to write, how far it may self-correct, how to name things. <strong>akidevrule</strong> pins those decisions into files, loaded exactly when needed.</p>
 <div class="stats">
-  <span><b>17</b> file rule — code, docs, UI, DB, SEO, release, bảo mật</span>
-  <span><b>9</b> skill — <code>/akithink</code>, <code>/akilint</code>, <code>/akiflow</code>, <code>/akigitcommit</code>…</span>
-  <span><b>5</b> subagent chuyên trách — tìm, chấm, phản biện, thi công</span>
-  <span>Một lần cài, dùng chung <b>5</b> CLI: Claude Code, Gemini, Codex, Kiro, Grok</span>
+  <span><b>17</b> rule files — code, docs, UI, DB, SEO, release, security</span>
+  <span><b>9</b> skills — <code>/akithink</code>, <code>/akilint</code>, <code>/akiflow</code>, <code>/akigitcommit</code>…</span>
+  <span><b>5</b> dedicated subagents — find, judge, challenge, build</span>
+  <span>Install once, shared across <b>5</b> CLIs: Claude Code, Gemini, Codex, Kiro, Grok</span>
 </div>
-<p class="hint">Nút "Cài / cập nhật" chạy đúng lệnh dưới đây. Không sudo, chỉ ghi vào <span class="mono">~/.aki</span> và <span class="mono">~/.claude</span>, gỡ bằng <code>rm -rf</code>. Bỏ qua mục này mọi thứ còn lại vẫn chạy.</p>
-${field('Lệnh cài', RULES_INSTALL_CMD)}
+<p class="hint">The "Install / update" button runs exactly the command below. No sudo, only writes to <span class="mono">~/.aki</span> and <span class="mono">~/.claude</span>, removable with <code>rm -rf</code>. Skipping this section doesn't affect anything else.</p>
+${field('Install command', RULES_INSTALL_CMD)}
 <div class="acts">
-  <button class="primary" data-act="installRules">Cài / cập nhật</button>
-  <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">Xem repo ↗</a>
+  <button class="primary" data-act="installRules">Install / update</button>
+  <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
   <span class="msg" id="msgRules"></span>
 </div>
 </section>
 
-<section><h2>6 · Instructions — prompt dán vào claude.ai</h2>
-<p class="hint">Dán đoạn dưới vào Settings → General → Personal preferences. Nó dạy Claude dùng đúng tool của server này, và nạp rule nếu bạn đã cài ở mục 5.</p>
-<p class="lnk"><a href="${SETTINGS_URL}" target="_blank" rel="noopener">↗ Mở Settings → General</a></p>
+<section><h2>6 · Instructions — prompt to paste into claude.ai</h2>
+<p class="hint">Paste the text below into Settings → General → Personal preferences. It teaches Claude to use this server's tools correctly, and to load rules if you installed them in section 5.</p>
+<p class="lnk"><a href="${SETTINGS_URL}" target="_blank" rel="noopener">↗ Open Settings → General</a></p>
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:10px">
-  <input type="checkbox" id="loadRules" checked> Bắt đọc rule đầu mỗi phiên
+  <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
 </label>
 <div class="checks" id="ruleChecks"></div>
 <textarea id="prompt" readonly style="min-height:130px"></textarea>
 <div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button></div>
 </section>
 
-<section><h2>7 · Tiện ích</h2>
-<p class="hint"><strong>Claude Token Counter</strong> — extension Chrome hiện thanh hạn mức theo giờ và theo tuần ngay dưới ô nhập của claude.ai, <strong>kể cả tài khoản Free</strong>. claude.ai không hiển thị con số này ở đâu cả.</p>
-<div class="acts"><a class="btnlink" href="${esc(TOKENIZER_URL)}" target="_blank" rel="noopener">Cài từ Chrome Web Store ↗</a></div>
-<figure><img src="/claude-tokenizer-chrome-extension.png" alt="Thanh hạn mức token hiển thị dưới ô nhập của claude.ai" loading="lazy"></figure>
+<section><h2>7 · Utilities</h2>
+<p class="hint"><strong>Claude Token Counter</strong> — a Chrome extension that shows your hourly and weekly usage bar right under claude.ai's input box, <strong>including on the Free plan</strong>. claude.ai doesn't surface that number anywhere itself.</p>
+<div class="acts"><a class="btnlink" href="${esc(TOKENIZER_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
+<figure><img src="/claude-tokenizer-chrome-extension.png" alt="Token usage bar shown under claude.ai's input box" loading="lazy"></figure>
 </section>
 
-<section><h2>8 · Chrome — tuỳ chọn</h2>
-<p class="hint">Kết nối xong, panel điều khiển được tab Chrome của bạn. Không cần mục này thì mọi thứ phía trên vẫn chạy.</p>
+<section><h2>8 · Chrome — optional</h2>
+<p class="hint">Once connected, the panel can control your Chrome tab. Everything above works without this section.</p>
 <div class="acts">
-  <button class="primary" data-act="connect">Kết nối Chrome</button>
-  <button data-act="tabs">Nạp danh sách tab</button>
-  <button data-act="widen">Mở rộng khung chat claude.ai</button>
+  <button class="primary" data-act="connect">Connect Chrome</button>
+  <button data-act="tabs">Load tab list</button>
+  <button data-act="widen">Widen claude.ai chat pane</button>
   <span class="msg" id="msgChrome"></span>
 </div>
 <div class="warn" id="chromeRestart" hidden>
-  <p>Chrome đang mở nhưng chưa bật cổng debug, mà Chrome chỉ bật được cổng này lúc khởi động. Mở lại là cách duy nhất — Chrome sẽ thoát êm và khôi phục lại đúng các tab đang mở.</p>
-  <div class="acts"><button data-act="restartChrome">Mở lại Chrome</button></div>
+  <p>Chrome is open but its debug port isn't enabled, and Chrome can only turn that on at launch. Reopening it is the only way — Chrome will quit cleanly and restore the tabs you had open.</p>
+  <div class="acts"><button data-act="restartChrome">Reopen Chrome</button></div>
 </div>
 <div class="checks" id="tabs" style="margin-top:10px"></div>
-<p class="hint" style="margin:14px 0 0">Không muốn kết nối Chrome thì dán thẳng lệnh dưới vào Console của tab claude.ai (<code>Cmd ⌥ J</code>) — kết quả y hệt nút "Mở rộng khung chat".</p>
-${field('Lệnh mở rộng', WIDEN_SNIPPET)}
+<p class="hint" style="margin:14px 0 0">Don't want to connect Chrome? Paste the snippet below straight into the claude.ai tab's Console (<code>Cmd ⌥ J</code>) — same result as "Widen chat pane".</p>
+${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
 <footer>
   <div class="foot-grid">
     <div class="foot-brand">
       <a class="foot-logo" href="${SITE}" target="_blank" rel="noopener"><img src="${SITE}/favicon/icon-192.png" alt="" width="32" height="32">Aki<b>Tao</b></a>
-      <p class="foot-desc">Công nghệ phát triển, bản sắc thương hiệu không đổi.</p>
+      <p class="foot-desc">Technology moves; the brand's identity doesn't.</p>
       <div class="foot-social">${SOCIAL.map(socialLink).join('')}<a class="social" href="https://zalo.me/0869297957" target="_blank" rel="noopener" aria-label="Zalo" title="Zalo"><img src="${SITE}/img/icon-zalo.png" alt="" width="15" height="15" loading="lazy"></a></div>
     </div>
     <div>
-      <p class="foot-title">Hệ sinh thái</p>
+      <p class="foot-title">Ecosystem</p>
       <div class="eco-grid">
         <ul>${ECOSYSTEM.slice(0, 11).map(ecoLink).join('')}</ul>
         <ul>${ECOSYSTEM.slice(11).map(ecoLink).join('')}</ul>
@@ -267,10 +267,10 @@ async function api(method, path, body) {
     });
   } catch {
     // A dead panel process is the single most likely failure here, and the browser's own wording for it says nothing a user can act on.
-    throw new Error('không gọi được panel — kiểm tra "npm start" còn chạy không');
+    throw new Error('could not reach the panel — check whether "npm start" is still running');
   }
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'lỗi không rõ');
+  if (!res.ok) throw new Error(data.error || 'unknown error');
   return data;
 }
 
@@ -282,7 +282,7 @@ function say(id, text, ok = true) {
 
 async function act(btn, id, fn) {
   const old = btn.textContent;
-  btn.disabled = true; btn.textContent = 'đang chạy…';
+  btn.disabled = true; btn.textContent = 'running…';
   try { say(id, await fn(), true); } catch (e) { say(id, e.message, false); }
   btn.disabled = false; btn.textContent = old;
 }
@@ -295,23 +295,23 @@ function copyText(text, btn) {
 function copyFrom(btn) { copyText(btn.closest('.row').querySelector('[data-copy]').textContent, btn); }
 
 function buildPrompt() {
-  const lines = ['LUÔN TRẢ LỜI NGẮN GỌN, CÔ ĐỌNG, ĐÚNG TRỌNG TÂM. KHÔNG BỊA, KHÔNG SUY DIỄN. Khẳng định phải có căn cứ, tìm kiếm phải có chứng cứ.'];
+  const lines = ['ALWAYS ANSWER SHORT, DENSE, AND ON POINT. NEVER MAKE THINGS UP, NEVER SPECULATE. Every claim needs evidence, every search needs a citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
   if (picked.length) {
-    lines.push('Đầu mỗi phiên có MCP "' + MCP_NAME + '", trước khi trả lời: dùng filesystem tool đọc ' + CLAUDE_DIR + '/CLAUDE.md và các file rule ' + picked.map((f) => RULES_DIR + '/' + f).join(', ') + ', rồi tuân theo cho toàn bộ hội thoại. Router đầy đủ: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
+    lines.push('At the start of every session with MCP "' + MCP_NAME + '", before answering: use the filesystem tool to read ' + CLAUDE_DIR + '/CLAUDE.md and the rule files ' + picked.map((f) => RULES_DIR + '/' + f).join(', ') + ', then follow them for the whole conversation. Full router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
   }
-  lines.push('Tìm file/thư mục: LUÔN dùng tool find_path (quét cả cây trong 1 lần gọi, ra cả thư mục, ~0.2s). Đừng list_directory từng cấp, đừng dùng search_files của filesystem — nó không trả thư mục và hay timeout. Tìm nội dung trong file thì dùng search_content.');
-  lines.push('Muốn chạy git/ls/grep trong một thư mục cụ thể: gọi tool run_cmd kèm tham số cwd (đường dẫn tuyệt đối, nằm dưới ' + DATA_DIR + '), đừng dùng cd hay -C.');
-  lines.push('Repo của chính MCP server này: ' + REPO_ROOT + ' — cần sửa nó thì vào thẳng đường dẫn đó, đừng đi tìm.');
+  lines.push('Finding files/folders: ALWAYS use the find_path tool (scans the whole tree in one call, returns folders too, ~0.2s). Don\\'t list_directory level by level, don\\'t use filesystem\\'s search_files — it doesn\\'t return directories and tends to time out. Use search_content to find text inside files.');
+  lines.push('To run git/ls/grep in a specific folder: call run_cmd with the cwd parameter (an absolute path under ' + DATA_DIR + '), don\\'t use cd or -C.');
+  lines.push('This MCP server\\'s own repo: ' + REPO_ROOT + ' — to edit it, go straight to that path instead of searching for it.');
   document.getElementById('prompt').value = lines.join('\\n');
 }
 
 // Nothing about a folder row says whether it is live or merely typed, so the Save button carries the mark instead.
 function markDirty() {
   document.querySelector('[data-act="savePaths"]').classList.add('primary');
-  say('msgPaths', 'có thay đổi chưa lưu', false);
+  say('msgPaths', 'unsaved changes', false);
 }
 
 function addPath(value, dirty) {
@@ -329,7 +329,7 @@ function addPath(value, dirty) {
 
 function renderTabs(tabs) {
   const box = document.getElementById('tabs');
-  box.innerHTML = tabs.length ? '' : '<span class="empty">Chrome không có tab nào đang mở.</span>';
+  box.innerHTML = tabs.length ? '' : '<span class="empty">Chrome has no open tabs.</span>';
   for (const t of tabs) {
     const label = document.createElement('label');
     label.innerHTML = '<input type="radio" name="tab" value="' + t.id + '">';
@@ -343,14 +343,14 @@ function renderTabs(tabs) {
 // Loading the tab list right after connecting is the proof the connection worked — a success message with an empty box underneath reads as nothing having happened.
 async function showTabs() {
   const { tabs } = await api('GET', '/api/chrome/tabs');
-  return renderTabs(tabs) + ' tab';
+  return renderTabs(tabs) + ' tab(s)';
 }
 
 function renderRuleChecks(files) {
   const checks = document.getElementById('ruleChecks');
   checks.innerHTML = '';
   if (!files.length) {
-    checks.innerHTML = '<span class="empty">Chưa cài akidevrule — cài ở mục 5 phía trên, hoặc bỏ qua và dùng prompt không có rule.</span>';
+    checks.innerHTML = '<span class="empty">akidevrule isn\\'t installed yet — install it in section 5 above, or skip and use the prompt without rules.</span>';
     return;
   }
   for (const f of files) {
@@ -380,9 +380,9 @@ async function loadTailscale() {
   const s = await api('GET', '/api/tailscale');
   mark('tsInstalled', s.installed);
   mark('tsFunnel', s.funnel);
-  if (!s.installed) return 'chưa thấy lệnh tailscale trên máy';
-  if (!s.funnel) return 'đã cài Tailscale, còn thiếu Funnel cho cổng 9999';
-  return 'sẵn sàng: ' + (s.host || 'chưa lấy được tên miền');
+  if (!s.installed) return 'tailscale command not found on this machine';
+  if (!s.funnel) return 'Tailscale is installed, Funnel for port 9999 is still missing';
+  return 'ready: ' + (s.host || 'domain not available yet');
 }
 
 async function pickTab(match) {
@@ -391,7 +391,7 @@ async function pickTab(match) {
   const { tabs } = await api('GET', '/api/chrome/tabs');
   renderTabs(tabs);
   picked = tabs.find(match)?.id;
-  if (!picked) throw new Error('không thấy tab claude.ai — mở một tab claude.ai rồi bấm lại');
+  if (!picked) throw new Error('no claude.ai tab found — open a claude.ai tab and try again');
   return picked;
 }
 
@@ -401,19 +401,19 @@ const ACTIONS = {
     // Scoped to this section: every copyable command elsewhere on the page is a .row too.
     const rows = [...document.querySelectorAll('#connector .row')].map((r) => r.querySelector('label').textContent + ': ' + r.querySelector('[data-copy]').textContent);
     await navigator.clipboard.writeText(rows.join('\\n'));
-    return 'đã copy ' + rows.length + ' giá trị';
+    return 'copied ' + rows.length + ' values';
   }),
   pickFolder: (btn) => act(btn, 'msgPaths', async () => {
     const { folders } = await api('POST', '/api/pick-folder');
-    if (!folders.length) return 'chưa chọn thư mục nào';
+    if (!folders.length) return 'no folder selected';
     const existing = new Set([...document.querySelectorAll('#paths input')].map((i) => i.value));
     const added = folders.filter((f) => !existing.has(f));
     added.forEach((f) => addPath(f, true));
-    return added.length ? 'đã thêm ' + added.length + ' thư mục — bấm Lưu để áp dụng' : 'thư mục đã có trong danh sách';
+    return added.length ? 'added ' + added.length + ' folder(s) — click Save to apply' : 'already in the list';
   }),
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
-    if (!paths.length) throw new Error('danh sách trống sẽ cắt hết quyền đọc file của Claude — thêm ít nhất một thư mục');
+    if (!paths.length) throw new Error('an empty list cuts off all of Claude\\'s file access — add at least one folder');
     const { message } = await api('POST', '/api/paths', { paths });
     btn.classList.remove('primary');
     return message;
@@ -424,7 +424,7 @@ const ACTIONS = {
     try {
       allowlist = JSON.parse(document.getElementById('allowlist').value || '{}');
     } catch {
-      throw new Error('JSON chưa hợp lệ — thường là thiếu dấu phẩy hoặc thừa dấu phẩy ở dòng cuối');
+      throw new Error('invalid JSON — usually a missing comma or a trailing comma on the last line');
     }
     return (await api('POST', '/api/allowlist', { allowlist })).message;
   }),
@@ -447,7 +447,7 @@ const ACTIONS = {
   tabs: (btn) => act(btn, 'msgChrome', showTabs),
   widen: (btn) => act(btn, 'msgChrome', async () => {
     await api('POST', '/api/chrome/eval', { tabId: await pickTab((t) => t.url.includes('claude.ai')), js: WIDEN });
-    return 'đã mở rộng khung chat';
+    return 'chat pane widened';
   }),
 };
 
@@ -455,7 +455,7 @@ document.querySelectorAll('[data-act]').forEach((btn) => (btn.onclick = () => AC
 
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgRules'].forEach((id) => say(id, e.message, false)));
-loadTailscale().then((m) => say('msgTs', m, m.startsWith('sẵn sàng'))).catch((e) => say('msgTs', e.message, false));
+loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
 </script>
 </body></html>`;
 }

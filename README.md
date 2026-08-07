@@ -138,7 +138,7 @@ dig @8.8.8.8 <host> A +short   # real public IP
 curl --resolve <host>:443:<IP-from-above> https://<host>/.well-known/oauth-authorization-server
 ```
 
-If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` saying "on", re-run `tailscale funnel --bg 9999` to force a config re-push (not a code bug). Full writeup: `docs/ref/oauth-research-2026-08-07.md`, section "Vòng debug 5".
+If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` saying "on", re-run `tailscale funnel --bg 9999` to force a config re-push (not a code bug). Full writeup: `docs/ref/oauth-research-2026-08-07.md`, section "Debug round 5".
 
 ## Connecting from Claude web
 
