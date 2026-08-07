@@ -1,6 +1,9 @@
 {
   "name": "mcp-local",
+  "version": "1.0.0",
   "private": true,
+  "description": "MCP server (filesystem + shell + search) cho máy local, expose qua Tailscale Funnel với OAuth 2.1 để claude.ai kết nối bằng custom connector",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "start": "MCP_DATA_DIR=\"${MCP_DATA_DIR:-$HOME}\" node ./scripts/start.js"

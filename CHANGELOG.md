@@ -2,9 +2,9 @@
 
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [SemVer](https://semver.org/lang/vi/).
 
-## [0.2.0] — 2026-08-07
+## [1.0.0] — 2026-08-07
 
-Bản đầu tiên dùng được cho người ngoài: bỏ mọi thứ chỉ đúng trên máy tác giả.
+Bản public đầu tiên: bỏ mọi thứ chỉ đúng trên máy tác giả, ai clone về cũng chạy được.
 
 ### Added
 - `scripts/userdata.js` — mọi dữ liệu người dùng (config đang chạy, OAuth client, passphrase, token) gom về `~/.aki/mcpsv/`, secrets mode 0600. Bản cài cũ ghi trong `<repo>/data/` được copy sang lần chạy đầu.
@@ -26,7 +26,10 @@ Bản đầu tiên dùng được cho người ngoài: bỏ mọi thứ chỉ đ
 - Panel không kiểm tra dữ liệu gửi lên: allowlist sai kiểu làm `Array.isArray` thành false và **âm thầm mở mọi subcommand** của lệnh đó. Nay chặn ngay ở biên kèm thông báo sửa được.
 - Panel hiển thị allowlist rỗng rồi lưu đè lên toàn bộ bộ mặc định.
 - Nút "Copy cả 5 giá trị" quét nhầm mọi ô copy trên trang.
+- Đường dẫn máy tác giả còn sót trong `docs/plan/`.
 
 ## [0.1.0]
+
+Bản nội bộ, chưa phát hành.
 
 - MCP server (filesystem + shell) expose qua Tailscale Funnel với gatekeeper OAuth 2.1.

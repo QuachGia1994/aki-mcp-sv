@@ -4,6 +4,8 @@ Chạy MCP server (filesystem + shell read-only) trên máy local, expose qua Ta
 
 Control panel `npm start` mở ra tự in đường dẫn repo hiện tại vào prompt instruction, nên một phiên claude.ai khác biết ngay chỗ sửa chính MCP này — repo đặt ở đâu cũng được.
 
+Phiên bản: **1.0.0** ([CHANGELOG.md](CHANGELOG.md)) · Giấy phép MIT · macOS.
+
 Quyết định kiến trúc và lý do: xem `docs/plan/init.md`.
 
 ## Kiến trúc
