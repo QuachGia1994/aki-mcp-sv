@@ -4,51 +4,38 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-
-// null = any subcommand allowed; array = only those subcommands. Curated to read-only binaries.
-const DEFAULT_ALLOWLIST = {
-  ls: null, cat: null, pwd: null, find: null, grep: null, head: null, tail: null,
-  wc: null, file: null, stat: null, tree: null, ps: null, df: null, du: null,
-  whoami: null, uname: null,
-  git: ['status', 'log', 'diff', 'show'],
-};
-
-const SETTINGS_PATH = path.join(os.homedir(), '.aki', 'mcpsv', 'setting.json');
-
-// Shell reach = the project volume only (MCP_DATA_DIR); the filesystem MCP adds read paths (~/.aki, ~/.claude/skills) that shell deliberately does not get.
-const ROOT = path.resolve(process.env.MCP_DATA_DIR || '/Volumes/DEV');
-
-function resolveCwd(cwd) {
-  if (!cwd) return ROOT;
-  const abs = path.resolve(ROOT, cwd);
-  if (abs !== ROOT && !abs.startsWith(ROOT + path.sep)) {
-    throw new Error(`cwd is outside the allowed root ${ROOT}`);
-  }
-  return abs;
-}
-
-// Absent settings file is silent (defaults work out of the box); only a malformed one warns.
-function loadAllowlist() {
-  let raw;
-  try {
-    raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
-  } catch {
-    return DEFAULT_ALLOWLIST;
-  }
-  try {
-    const user = JSON.parse(raw)?.shell?.allowlist;
-    return user ? { ...DEFAULT_ALLOWLIST, ...user } : DEFAULT_ALLOWLIST;
-  } catch (e) {
-    process.stderr.write(`[shell] ignoring malformed ${SETTINGS_PATH}: ${e.message}\n`);
-    return DEFAULT_ALLOWLIST;
-  }
-}
+import { loadAllowlist } from './allowlist.js';
+import { ROOT, resolveUnderRoot } from './roots.js';
 
 class Shell {
   static DANGEROUS_CHARS = /[;&|`$<>\n\\]/;
+
+  // Quotes group an argument and are then stripped, as a shell would. Splitting on whitespace alone left them in the argv, so `find -name "*.ts"` silently searched for a name containing quote marks.
+  static tokenize(command) {
+    const tokens = [];
+    let current = '';
+    let started = false;
+    let quote = null;
+    for (const char of command.trim()) {
+      if (quote) {
+        if (char === quote) quote = null;
+        else current += char;
+      } else if (char === '"' || char === "'") {
+        quote = char;
+        started = true;
+      } else if (/\s/.test(char)) {
+        if (started) tokens.push(current);
+        current = '';
+        started = false;
+      } else {
+        current += char;
+        started = true;
+      }
+    }
+    if (quote) throw new Error('unterminated quote');
+    if (started) tokens.push(current);
+    return tokens;
+  }
 
   parse(command) {
     if (typeof command !== 'string' || command.trim() === '') {
@@ -57,7 +44,8 @@ class Shell {
     if (Shell.DANGEROUS_CHARS.test(command)) {
       throw new Error('command chaining/redirection is not allowed');
     }
-    const [bin, ...args] = command.trim().split(/\s+/);
+    const [bin, ...args] = Shell.tokenize(command);
+    if (!bin) throw new Error('empty command');
     return { bin, args };
   }
 
@@ -89,7 +77,7 @@ class Shell {
     try {
       ({ bin, args } = this.parse(command));
       this.checkPermission(bin, args);
-      dir = resolveCwd(cwd);
+      dir = resolveUnderRoot(cwd);
     } catch (e) {
       return { content: [{ type: 'text', text: `rejected: ${e.message}` }], isError: true };
     }
@@ -104,7 +92,7 @@ const server = new McpServer({ name: 'shell', version: '1.0.0' });
 server.registerTool(
   'run_cmd',
   {
-    description: 'Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, find, head, tail, stat, git status/log/diff/show, …), extendable per-machine via ~/.aki/mcpsv/setting.json → shell.allowlist. Pass cwd (absolute or relative to the filesystem root) to run inside any project directory under that root — this is how you target a specific repo. No chaining, no redirection — one command per call.',
+    description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, find, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Pass cwd (absolute, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
     inputSchema: { command: z.string(), cwd: z.string().optional() },
   },
   ({ command, cwd }) => shell.execute(command, cwd),

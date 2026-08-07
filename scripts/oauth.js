@@ -2,10 +2,8 @@
 // Minimal OAuth 2.1 authorization server, DCR skipped via pre-registered client — rationale: docs/ref/security-model.md
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { CLIENT_PATH as CLIENT_FILE, PASSPHRASE_PATH as PASSPHRASE_FILE, TOKENS_PATH as TOKENS_FILE } from './userdata.js';
 
-const CLIENT_FILE = `${process.cwd()}/data/.oauth-client.json`;
-const PASSPHRASE_FILE = `${process.cwd()}/data/.token`;
-const TOKENS_FILE = `${process.cwd()}/data/.tokens.json`;
 const CALLBACK_URI = 'https://claude.ai/api/mcp/auth_callback';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
@@ -128,7 +126,7 @@ button[disabled] { opacity: .6; cursor: progress; }
 </style></head><body>
 <form method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Đang xác nhận…'">
 <h1>Xác nhận kết nối MCP</h1>
-<p>Nhập passphrase trong <code>data/.token</code> để cấp quyền cho connector.</p>
+<p>Nhập passphrase trong <code>${PASSPHRASE_FILE}</code> để cấp quyền cho connector.</p>
 <input type="hidden" name="redirect_uri" value="${redirectUri}">
 <input type="hidden" name="client_id" value="${clientId}">
 <input type="hidden" name="code_challenge" value="${codeChallenge}">
