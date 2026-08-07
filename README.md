@@ -4,6 +4,10 @@ Give Claude on the **web** (claude.ai) read/edit access to files and a whitelist
 
 Version: **1.0.1** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · macOS only.
 
+<img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
+
+<img width="498" height="390" alt="Screenshot 2026-08-07 at 23 06 42" src="https://github.com/user-attachments/assets/94800561-b799-49ce-a7ab-08a52b6dbfde" />
+
 ## Why this exists
 
 Claude.ai's web/Pro plan quota is generous compared to paying per token through the API for the same usage — the API route runs noticeably more expensive for equivalent work. But most real usage is project work: reading, editing, and running commands against files on your own machine, not open-ended chat.
@@ -49,6 +53,7 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
 OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration — details: `docs/ref/oauth-research-2026-08-07.md`.
 
 ## Requirements
+<img width="649" height="689" alt="image" src="https://github.com/user-attachments/assets/c4d50b51-fb2f-4e13-9ee4-4214068d8b3f" />
 
 - macOS with Node.js installed
 - Tailscale — one-time setup:
@@ -188,3 +193,9 @@ See [How this differs from Desktop Commander](#how-this-differs-from-desktop-com
 - **Minimal attack surface** — only the exact commands you've approved can run, nothing more.
 - **Granular down to the subcommand** — `git` is scoped to `status/log/diff/show`; a blocklist can't express that cleanly.
 - **Read-only by default** — the built-in set is read-only commands only; adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
+
+### DEMO img
+ <img width="894" height="756" alt="image" src="https://github.com/user-attachments/assets/d91a86ea-0d3e-4695-95ef-d13861a242e6" />
+ <img width="915" height="957" alt="image" src="https://github.com/user-attachments/assets/d32bd711-6bb7-4bf9-a5b0-d49eea3a9ffc" />
+
+
