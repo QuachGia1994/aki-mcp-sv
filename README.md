@@ -1,26 +1,28 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai) read/edit access to files and a whitelisted shell on your local machine — over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
+Give Claude on the **web** (claude.ai) read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
 
-Version: **1.0.1** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · macOS only.
+Version: **1.0.2** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · macOS only.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
 
 <img width="498" height="390" alt="Screenshot 2026-08-07 at 23 06 42" src="https://github.com/user-attachments/assets/94800561-b799-49ce-a7ab-08a52b6dbfde" />
 
+**Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Finding files](#finding-files) · [Security](#security)
+
 ## Why this exists
 
-Claude.ai's web/Pro plan quota is generous compared to paying per token through the API for the same usage — the API route runs noticeably more expensive for equivalent work. But most real usage is project work: reading, editing, and running commands against files on your own machine, not open-ended chat.
+Claude.ai's web/Pro quota is far cheaper than paying per token via the API for equivalent usage. But most real work is project work: reading, editing, and running commands against files on your machine, not open-ended chat.
 
-The Claude Desktop app can do local file access, but it comes with tradeoffs: usage gets tied to a device ID and other identifiers you don't control, and running multiple accounts means repeated login/logout instead of just switching a Chrome profile.
+The Claude Desktop app already does local file access, but ties usage to a device ID you don't control, and running multiple accounts means repeated login/logout instead of just switching a Chrome profile.
 
 This project routes around both problems: run an MCP server on your machine, expose it over HTTPS through Tailscale Funnel, and connect it to claude.ai as a custom connector. You get local file/shell access from the browser, on the web quota, with no app install and no account lock-in.
 
 ### How this differs from Desktop Commander
 
-[Desktop Commander](https://github.com/wonderwhy-er/DesktopCommanderMCP) is the most widely used MCP terminal server, and solves a related but different problem: it runs locally for **Claude Desktop**, and guards shell access with a **blocklist** (`blockedCommands` — an explicit list of forbidden commands). A blocklist is inherently leaky: you can't enumerate every dangerous command and variant, and the default is *allow* — anything not yet added to the list gets through.
+[Desktop Commander](https://github.com/wonderwhy-er/DesktopCommanderMCP) is the most widely used MCP terminal server. It runs locally for **Claude Desktop** and guards shell access with a **blocklist** (`blockedCommands`, an explicit list of forbidden commands). A blocklist is inherently leaky: you can't enumerate every dangerous command and variant, and the default is *allow*: anything not on the list gets through.
 
-This project targets a different scenario — exposing local access to Claude **on the web**, across the open internet via Funnel — and makes the opposite default choice: a **whitelist**. Nothing runs unless it's explicitly allowed. See [Security](#security) for what that buys you.
+This project targets a different scenario: exposing local access to Claude **on the web**, across the open internet via Funnel. It makes the opposite default choice: a **whitelist**. Nothing runs unless it's explicitly allowed. See [Security](#security) for what that buys you.
 
 ## Architecture
 
@@ -48,17 +50,18 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  install akidevrule, generate the connector prompt, Chrome CDP
 ```
 
-`mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port — `gatekeeper.js` exists specifically so that never reaches the internet. Details: `docs/plan/init.md`.
+`mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/init.md`).
 
-OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration — details: `docs/ref/oauth-research-2026-08-07.md`.
+OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/ref/oauth-research-2026-08-07.md`).
 
 ## Requirements
+
 <img width="649" height="689" alt="image" src="https://github.com/user-attachments/assets/c4d50b51-fb2f-4e13-9ee4-4214068d8b3f" />
 
 - macOS with Node.js installed
-- Tailscale — one-time setup:
+- Tailscale (one-time setup):
   1. [Install Tailscale](https://tailscale.com/download) and sign in (app or `brew install tailscale`, either works as long as `tailscale` is on PATH)
-  2. Enable [Funnel](https://tailscale.com/docs/features/tailscale-funnel) for your tailnet — free on every plan, one-time toggle via the `login.tailscale.com/f/funnel` link `npm start` prints if it isn't on yet
+  2. Enable [Funnel](https://tailscale.com/docs/features/tailscale-funnel) for your tailnet: free on every plan, a one-time toggle via the `login.tailscale.com/f/funnel` link `npm start` prints if it isn't on yet
 
 After that, `npm start` enables Funnel on port 9999 automatically every run.
 
@@ -85,7 +88,7 @@ aki-mcp-sv/
 └── public/                       # favicon + images, served publicly by gatekeeper
 ```
 
-Your data lives outside the repo, at `~/.aki/mcpsv/` — the same convention CLIs like `~/.aws` or `~/.docker` use:
+Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs like `~/.aws` or `~/.docker` use):
 
 ```
 ~/.aki/mcpsv/
@@ -96,7 +99,7 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` — the same convention CLI
 └── tokens.json           # access/refresh tokens (0600)
 ```
 
-A clone stays exactly as checked out — editing folders/allowlist from the panel never produces a diff in the repo.
+A clone stays exactly as checked out: editing folders/allowlist from the panel never produces a diff in the repo.
 
 ## Install
 
@@ -112,31 +115,31 @@ npm install
 npm start
 ```
 
-Nothing needs preparing beforehand — `npm start` handles it:
+Nothing needs preparing beforehand; `npm start` handles it:
 - **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
-- **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent — never toggles an already-enabled port).
+- **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
 - Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
-- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>` — 8 sections in the order you need them: Tailscale, connector, allowed folders, shell allowlist, akidevrule, connector prompt, utilities, Chrome.
+- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`, with 8 sections in the order you need them: Tailscale, connector, allowed folders, shell allowlist, akidevrule, connector prompt, utilities, Chrome.
 
-The default allowed root is your **home directory** (`$HOME`) — the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. Add/remove folders from **panel section 3**: the "Choose folder…" button opens macOS's native picker (multi-select in one pass); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start`.
+The default allowed root is your **home directory** (`$HOME`): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. Add/remove folders from **panel section 3**: the "Choose folder…" button opens macOS's native picker (multi-select in one pass); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start`.
 
-Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does — no copying, no staging.
+Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
 
-`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. Remove the `${HOME}/.claude` line in panel section 3 if you don't want that — claude.ai then loses access to your `CLAUDE.md` too.
+`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. Remove the `${HOME}/.claude` line in panel section 3 if you don't want that; claude.ai then loses access to your `CLAUDE.md` too.
 
-`npm start` runs in the foreground, same as before — Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** — Node doesn't hot-reload.
+`npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
 ## Exposing via Tailscale
 
-`npm start` enables Funnel automatically when needed (see above) — no manual step. Funnel is state stored in `tailscaled` (survives reboots), independent of `npm start`'s own lifecycle; disable it entirely with `tailscale funnel 9999 off`.
+`npm start` enables Funnel automatically when needed (see above), no manual step. Funnel is state stored in `tailscaled` (survives reboots), independent of `npm start`'s own lifecycle; disable it entirely with `tailscale funnel 9999 off`.
 
 **Know before enabling Funnel:**
 - Free on every Tailscale plan, but the tailnet needs a one-time opt-in first (the `login.tailscale.com/f/funnel?node=...` link `tailscale funnel --bg` prints if it's missing).
-- Only 3 ports are fundeable: `443`, `8443`, `10000` — you can't expose an arbitrary port.
+- Only 3 ports are fundeable: `443`, `8443`, `10000`; you can't expose an arbitrary port.
 - Bandwidth is limited; Tailscale doesn't publish an exact number.
-- Don't toggle Funnel on/off repeatedly — re-issuing the certificate too often can hit Let's Encrypt's rate limit (locks you out for ~34h). `start.js` only enables it when it's genuinely off: `tailscale funnel status --json` keys `AllowFunnel` by the **public port (443)**, not the internal one, so it has to look inside `Web[].Handlers[].Proxy` for port 9999 — checking the wrong field makes every run think Funnel is off and re-enable it.
+- Don't toggle Funnel on/off repeatedly: re-issuing the certificate too often can hit Let's Encrypt's rate limit (~34h lockout). `start.js` avoids this by checking `Web[].Handlers[].Proxy` for port 9999 in `tailscale funnel status --json` before deciding Funnel is off (not the `AllowFunnel` key, which reflects the public port 443, not 9999).
 
-**Diagnosing "claude.ai can't connect" even though `tailscale funnel status` says "on":** a real failure mode — the serve-config saves locally correctly but doesn't sync to Tailscale's control plane, so a real client on the open internet gets blocked at the TLS layer while the host machine (routed through the internal mesh) sees everything as fine. **Don't test with a bare `curl https://<host>` from the machine running `npm start`** — that machine is in the tailnet and silently takes the mesh shortcut, so it doesn't reflect the real path. Test correctly instead:
+**Diagnosing "claude.ai can't connect" while `tailscale funnel status` says "on":** the serve-config can save locally but fail to sync to Tailscale's control plane, so a real client on the open internet is blocked at the TLS layer while the host machine, routed through the internal mesh, sees everything as fine. **Don't test with a bare `curl https://<host>` from the machine running `npm start`**: that machine is in the tailnet and silently takes the mesh shortcut. Test the real path instead:
 
 ```bash
 dig @8.8.8.8 <host> A +short   # real public IP
@@ -150,17 +153,17 @@ If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` sa
 1. Go to **claude.ai → Settings → Connectors → Add custom connector**
 2. **Remote MCP server URL**: paste `https://your-machine.your-tailnet.ts.net/mcp` (printed by `npm start`)
 3. **Advanced settings → OAuth Client ID / OAuth Client Secret**: paste the two values `npm start` printed
-4. Click **Connect** — a local confirmation page opens; enter the **passphrase** (contents of `~/.aki/mcpsv/passphrase.txt`) to approve
+4. Click **Connect**: a local confirmation page opens; enter the **passphrase** (contents of `~/.aki/mcpsv/passphrase.txt`) to approve
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/ref/oauth-research-2026-08-07.md`.
 
 claude.ai connects and calls 14 tools: `filesystem__*`, `search__find_path`, `search__search_content`, `shell__run_cmd`.
 
-### Chrome control — why "reconnect" is a separate button
+### Chrome control
 
-Chrome only opens its debug port **at launch**: an already-running Chrome without that flag can't be attached to, it has to be quit and reopened. So the panel splits this in two — "Connect Chrome" never closes anything (opens it if it's not running, warns and stops if it's running without the flag), while quitting Chrome sits behind one button that says exactly what it does. A browser disappearing from a click that never promised that is a UX bug, not a convenience.
+Chrome only opens its debug port **at launch**; an already-running Chrome without that flag can't be attached to and must be quit and reopened. The panel splits this into two actions: "Connect Chrome" never closes anything (opens Chrome if it's not running, warns and stops if it's running without the flag), while quitting Chrome sits behind its own explicit button.
 
-### Connector icon: not controllable from the server
+### Connector icon
 
 claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host:
 
@@ -168,34 +171,33 @@ claude.ai doesn't read the icon from the MCP server. It queries Google's favicon
 https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32
 ```
 
-`<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server does serve `/favicon.ico` publicly, but there's no file we can place to change that result — your subdomain never appears in the query Google receives.
+`<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
 
-## Finding files — use `find_path`, don't browse level by level
+## Finding files
 
-`filesystem__search_files` doesn't return directories and tends to time out on large trees, so a remote session can appear to "not see" the very project it has access to. `search__find_path` scans the whole tree in one call (measured: ~0.2s to find one name across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
+Use `search__find_path`, not `filesystem__search_files`, to locate a file or directory. The built-in `search_files` doesn't return directories and tends to time out on large trees, so a remote session can appear to "not see" the very project it has access to. `find_path` scans the whole tree in one call (measured: ~0.2s across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
 
 ## Security
 
 Minimal OAuth 2.1, Dynamic Client Registration skipped on purpose (self-issued client ID/secret instead of letting claude.ai self-register). Full writeup (real request flow, the two actual barriers, known limits): `docs/ref/security-model.md`.
 
-- `$MCP_DATA_DIR` (default `$HOME`) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files) — fixed at process start, changed via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are in the connector's reach too — a known tradeoff, removable from the panel.
-- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js`; the panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility** — adding a write command (e.g. `git commit`) crosses the "read-only" boundary this project ships with by default. A command can run in any directory under the same allowed roots as the filesystem server, via the `cwd` parameter — that's how you target a specific repo, instead of `cd`/`-C`.
-- `gatekeeper.js` is the single public entry point — the real `mcp-hub` never listens on anything but loopback.
-- `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call — blocking other browser tabs from POSTing to it.
+- `$MCP_DATA_DIR` (default `$HOME`) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff, removable from the panel).
+- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js`; the panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding a write command (e.g. `git commit`) crosses the "read-only" boundary this project ships with by default. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
+- `gatekeeper.js` is the single public entry point; the real `mcp-hub` never listens on anything but loopback.
+- `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
-- Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts — a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
-- Funnel stays enabled in the background for the whole project — `npm start` is the only thing you actively start/stop.
+- Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
+- Funnel stays enabled in the background for the whole project; `npm start` is the only thing you actively start/stop.
 
 ### Why whitelist, not blocklist
 
 See [How this differs from Desktop Commander](#how-this-differs-from-desktop-commander) above for the comparison. For a server that exposes itself to the internet via Funnel, the whitelist choice is a real safety property, not a slogan:
-- **Fail-safe** — an unfamiliar or new command is blocked automatically; nothing has to guess whether it's dangerous first.
-- **Minimal attack surface** — only the exact commands you've approved can run, nothing more.
-- **Granular down to the subcommand** — `git` is scoped to `status/log/diff/show`; a blocklist can't express that cleanly.
-- **Read-only by default** — the built-in set is read-only commands only; adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
+- **Fail-safe**: an unfamiliar or new command is blocked automatically, no guessing required.
+- **Minimal attack surface**: only the exact commands you've approved can run, nothing more.
+- **Granular down to the subcommand**: `git` is scoped to `status/log/diff/show`, something a blocklist can't express cleanly.
+- **Read-only by default**: the built-in set is read-only commands only; adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
 
-### DEMO img
- <img width="894" height="756" alt="image" src="https://github.com/user-attachments/assets/d91a86ea-0d3e-4695-95ef-d13861a242e6" />
- <img width="915" height="957" alt="image" src="https://github.com/user-attachments/assets/d32bd711-6bb7-4bf9-a5b0-d49eea3a9ffc" />
+## Screenshots
 
-
+<img width="894" height="756" alt="image" src="https://github.com/user-attachments/assets/d91a86ea-0d3e-4695-95ef-d13861a242e6" />
+<img width="915" height="957" alt="image" src="https://github.com/user-attachments/assets/d32bd711-6bb7-4bf9-a5b0-d49eea3a9ffc" />
