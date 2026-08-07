@@ -1,47 +1,47 @@
 # Changelog
 
-Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [SemVer](https://semver.org/lang/vi/).
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
 ## [1.0.1] — 2026-08-07
 
 ### Changed
-- `roots.js`: root đơn (`ROOT`) mở rộng thành mảng nhiều root (`ROOTS`), cùng một `resolveUnderRoot` enforce cho cả `shell-mcp.js` lẫn `search-mcp.js`. Lưu thư mục ở panel (`setFilesystemPaths`) giờ tự đồng bộ đúng danh sách đó vào `MCP_DATA_DIR` của `search`/`shell` — một allowlist duy nhất, không phải hai bản dễ lệch nhau.
-- README viết lại toàn bộ bằng tiếng Anh: thêm mục "Why this exists" (kinh tế quota web vs API, vì sao Tailscale+MCP thay vì cài app) và so sánh whitelist-vs-blocklist với Desktop Commander ngay đầu tài liệu thay vì chôn ở cuối.
+- `roots.js`: single root (`ROOT`) widened to an array of roots (`ROOTS`), enforced identically for `shell-mcp.js` and `search-mcp.js` through the same `resolveUnderRoot`. Saving folders in the panel (`setFilesystemPaths`) now syncs that same list into `search`/`shell`'s `MCP_DATA_DIR` — one allowlist, not two copies that can drift apart.
+- README rewritten entirely in English: added a "Why this exists" section (web vs API quota economics, why Tailscale+MCP instead of installing an app) and moved the whitelist-vs-blocklist comparison with Desktop Commander to the top instead of burying it at the end.
 
 ### Removed
-- Cơ chế migrate `<repo>/data/` → `~/.aki/mcpsv/` trong `userdata.js` (thêm ở 1.0.0): đã hết tác dụng ngay sau lần chạy đầu, xoá hẳn thay vì giữ code chết vĩnh viễn. **Rủi ro đã biết**: ai cài bản trước `~/.aki/mcpsv/` ra đời mà chưa từng chạy 1.0.0 sẽ mất OAuth client/passphrase cũ khi lên thẳng bản này — chấp nhận vì 1.0.0 mới release cùng ngày, chưa có người dùng ngoài.
+- The one-time `<repo>/data/` → `~/.aki/mcpsv/` migration in `userdata.js` (added in 1.0.0): it serves no purpose past the first run, removed outright instead of leaving dead code in place permanently. **Known risk**: anyone who installed before `~/.aki/mcpsv/` existed and never ran 1.0.0 loses their old OAuth client/passphrase on upgrading straight to this version — accepted since 1.0.0 shipped the same day, with no external users yet.
 
 ### Fixed
-- `resolveUnderRoot` (`roots.js`) fail-closed khi `MCP_DATA_DIR` rỗng/hỏng (fallback về home) thay vì âm thầm mất containment.
+- `resolveUnderRoot` (`roots.js`) now fails closed when `MCP_DATA_DIR` is empty/malformed (falls back to home) instead of silently losing containment.
 
 ## [1.0.0] — 2026-08-07
 
-Bản public đầu tiên: bỏ mọi thứ chỉ đúng trên máy tác giả, ai clone về cũng chạy được.
+First public release: strip everything that only worked on the author's machine, so anyone can clone and run it.
 
 ### Added
-- `scripts/userdata.js` — mọi dữ liệu người dùng (config đang chạy, OAuth client, passphrase, token) gom về `~/.aki/mcpsv/`, secrets mode 0600.
-- `scripts/tailscale.js` — đọc trạng thái Funnel một chỗ, dùng chung `start.js` và panel.
-- `scripts/allowlist.js` — bộ lệnh shell mặc định thành nguồn duy nhất: server enforce và panel hiển thị cùng một bộ.
-- `scripts/search-mcp.js` — `find_path` / `search_content`, quét cả cây trong một lần gọi.
-- `scripts/chrome.js` — điều khiển Chrome qua CDP, không phụ thuộc package ngoài.
-- Panel: mục Tailscale kèm đèn trạng thái, nút chọn thư mục bằng hộp thoại macOS (chọn nhiều cái một lần), mục akidevrule kèm lệnh cài hiện rõ, footer hệ sinh thái AkiTao.
-- Panel hiển thị nguyên văn mọi lệnh cần copy: lệnh cài akidevrule, lệnh mở rộng khung chat claude.ai.
+- `scripts/userdata.js` — all user data (live config, OAuth client, passphrase, tokens) consolidated under `~/.aki/mcpsv/`, secrets at mode 0600.
+- `scripts/tailscale.js` — reads Funnel status in one place, shared by `start.js` and the panel.
+- `scripts/allowlist.js` — the default shell command set becomes a single source of truth: the server enforces and the panel displays the same set.
+- `scripts/search-mcp.js` — `find_path` / `search_content`, whole tree scanned in one call.
+- `scripts/chrome.js` — Chrome control via CDP, no external package dependency.
+- Panel: Tailscale section with a status indicator, folder picker via macOS's native dialog (multi-select in one pass), akidevrule section showing the install command, AkiTao ecosystem footer.
+- Panel shows every command verbatim for copying: the akidevrule install command, the claude.ai chat-window expansion command.
 
 ### Changed
-- Thư mục gốc mặc định của filesystem MCP: `$HOME` thay cho đường dẫn cứng của tác giả.
-- `mcp-hub.config.json` trong repo trở thành bản mặc định được ship; bản chạy thật nằm ở `~/.aki/mcpsv/` nên sửa gì trong panel cũng không đẻ ra diff.
-- Panel sắp lại theo đúng thứ tự cần làm, Chrome xuống cuối vì là tuỳ chọn.
-- Chrome: "Kết nối" không bao giờ tự thoát Chrome nữa — Chrome chỉ mở cổng debug lúc khởi động, nên việc mở lại nằm sau một nút nói rõ nó sẽ làm gì.
+- Default root for the filesystem MCP server: `$HOME` instead of the author's hardcoded path.
+- `mcp-hub.config.json` in the repo becomes the shipped default; the live copy lives in `~/.aki/mcpsv/`, so nothing edited in the panel shows up as a repo diff.
+- Panel sections reordered to match the actual setup sequence, Chrome moved to the end since it's optional.
+- Chrome: "Connect" no longer quits Chrome on its own — Chrome only opens its debug port at launch, so reopening it now sits behind a button that says exactly what it does.
 
 ### Fixed
-- Funnel bị bật lại mỗi lần `npm start`: `AllowFunnel` khoá theo cổng công khai (443) chứ không theo cổng nội bộ, nên phép so cổng 9999 không bao giờ khớp. Bật lại liên tục có thể dính rate limit chứng chỉ của Let's Encrypt.
-- Panel không kiểm tra dữ liệu gửi lên: allowlist sai kiểu làm `Array.isArray` thành false và **âm thầm mở mọi subcommand** của lệnh đó. Nay chặn ngay ở biên kèm thông báo sửa được.
-- Panel hiển thị allowlist rỗng rồi lưu đè lên toàn bộ bộ mặc định.
-- Nút "Copy cả 5 giá trị" quét nhầm mọi ô copy trên trang.
-- Đường dẫn máy tác giả còn sót trong `docs/plan/`.
+- Funnel re-enabling on every `npm start`: `AllowFunnel` is keyed by the public port (443), not the internal one, so the port-9999 comparison never matched. Repeated toggling risked hitting Let's Encrypt's certificate rate limit.
+- The panel didn't validate incoming data: a wrongly-typed allowlist made `Array.isArray` false and **silently allowed every subcommand** of that binary. Now rejected at the boundary with an actionable error.
+- The panel could show an empty allowlist and then save it over the entire default set.
+- The "Copy all 5 values" button matched every copy field on the page, not just the intended ones.
+- Author-specific paths left over in `docs/plan/`.
 
 ## [0.1.0]
 
-Bản nội bộ, chưa phát hành.
+Internal, never released.
 
-- MCP server (filesystem + shell) expose qua Tailscale Funnel với gatekeeper OAuth 2.1.
+- MCP server (filesystem + shell) exposed via Tailscale Funnel with an OAuth 2.1 gatekeeper.
