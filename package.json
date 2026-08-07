@@ -1,8 +1,8 @@
 {
   "name": "mcp-local",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
-  "description": "MCP server (filesystem + shell + search) cho máy local, expose qua Tailscale Funnel với OAuth 2.1 để claude.ai kết nối bằng custom connector",
+  "description": "Give Claude on the web (claude.ai) local filesystem/search/shell access over Tailscale Funnel + OAuth 2.1 — whitelist-only shell (unlike Desktop Commander's blocklist), no desktop app or device lock-in required",
   "license": "MIT",
   "type": "module",
   "scripts": {

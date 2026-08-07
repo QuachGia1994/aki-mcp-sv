@@ -2,12 +2,24 @@
 
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [SemVer](https://semver.org/lang/vi/).
 
+## [1.0.1] — 2026-08-07
+
+### Changed
+- `roots.js`: root đơn (`ROOT`) mở rộng thành mảng nhiều root (`ROOTS`), cùng một `resolveUnderRoot` enforce cho cả `shell-mcp.js` lẫn `search-mcp.js`. Lưu thư mục ở panel (`setFilesystemPaths`) giờ tự đồng bộ đúng danh sách đó vào `MCP_DATA_DIR` của `search`/`shell` — một allowlist duy nhất, không phải hai bản dễ lệch nhau.
+- README viết lại toàn bộ bằng tiếng Anh: thêm mục "Why this exists" (kinh tế quota web vs API, vì sao Tailscale+MCP thay vì cài app) và so sánh whitelist-vs-blocklist với Desktop Commander ngay đầu tài liệu thay vì chôn ở cuối.
+
+### Removed
+- Cơ chế migrate `<repo>/data/` → `~/.aki/mcpsv/` trong `userdata.js` (thêm ở 1.0.0): đã hết tác dụng ngay sau lần chạy đầu, xoá hẳn thay vì giữ code chết vĩnh viễn. **Rủi ro đã biết**: ai cài bản trước `~/.aki/mcpsv/` ra đời mà chưa từng chạy 1.0.0 sẽ mất OAuth client/passphrase cũ khi lên thẳng bản này — chấp nhận vì 1.0.0 mới release cùng ngày, chưa có người dùng ngoài.
+
+### Fixed
+- `resolveUnderRoot` (`roots.js`) fail-closed khi `MCP_DATA_DIR` rỗng/hỏng (fallback về home) thay vì âm thầm mất containment.
+
 ## [1.0.0] — 2026-08-07
 
 Bản public đầu tiên: bỏ mọi thứ chỉ đúng trên máy tác giả, ai clone về cũng chạy được.
 
 ### Added
-- `scripts/userdata.js` — mọi dữ liệu người dùng (config đang chạy, OAuth client, passphrase, token) gom về `~/.aki/mcpsv/`, secrets mode 0600. Bản cài cũ ghi trong `<repo>/data/` được copy sang lần chạy đầu.
+- `scripts/userdata.js` — mọi dữ liệu người dùng (config đang chạy, OAuth client, passphrase, token) gom về `~/.aki/mcpsv/`, secrets mode 0600.
 - `scripts/tailscale.js` — đọc trạng thái Funnel một chỗ, dùng chung `start.js` và panel.
 - `scripts/allowlist.js` — bộ lệnh shell mặc định thành nguồn duy nhất: server enforce và panel hiển thị cùng một bộ.
 - `scripts/search-mcp.js` — `find_path` / `search_content`, quét cả cây trong một lần gọi.

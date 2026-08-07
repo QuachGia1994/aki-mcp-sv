@@ -50,10 +50,14 @@ async function pickFolders() {
   }
 }
 
+// search/shell enforce path containment via the same list, so it never drifts from what this panel shows as "allowed".
 function setFilesystemPaths(paths) {
   const config = readJson(HUB_CONFIG, {});
   const [flag, pkg] = config.mcpServers.filesystem.args;
   config.mcpServers.filesystem.args = [flag, pkg, ...paths];
+  const rootsEnv = paths.join(',');
+  config.mcpServers.search.env.MCP_DATA_DIR = rootsEnv;
+  config.mcpServers.shell.env.MCP_DATA_DIR = rootsEnv;
   writeFileSync(HUB_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
 }
 

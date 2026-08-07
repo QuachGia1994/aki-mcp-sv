@@ -5,7 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
 import { loadAllowlist } from './allowlist.js';
-import { ROOT, resolveUnderRoot } from './roots.js';
+import { ROOT, ROOTS, resolveUnderRoot } from './roots.js';
 
 class Shell {
   static DANGEROUS_CHARS = /[;&|`$<>\n\\]/;
@@ -92,7 +92,7 @@ const server = new McpServer({ name: 'shell', version: '1.0.0' });
 server.registerTool(
   'run_cmd',
   {
-    description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, find, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Pass cwd (absolute, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
+    description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, find, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Pass cwd (absolute path under one of ${ROOTS.join(', ')}, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
     inputSchema: { command: z.string(), cwd: z.string().optional() },
   },
   ({ command, cwd }) => shell.execute(command, cwd),
