@@ -1,0 +1,13 @@
+{
+  "name": "mcp-local",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "MCP_DATA_DIR=\"${MCP_DATA_DIR:-/Volumes/DEV}\" node ./scripts/start.js"
+  },
+  "dependencies": {
+    "mcp-hub": "^4.2.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.23.8"
+  }
+}

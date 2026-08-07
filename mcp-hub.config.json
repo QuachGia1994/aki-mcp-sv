@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_DATA_DIR}", "${HOME}/.aki", "${HOME}/.claude"]
+    },
+    "shell": {
+      "command": "node",
+      "args": ["./scripts/shell-mcp.js"],
+      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR}" }
+    }
+  }
+}
