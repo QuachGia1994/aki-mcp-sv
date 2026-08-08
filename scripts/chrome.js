@@ -1,14 +1,11 @@
 // Minimal CDP client, no dependency: Node 22 ships WebSocket. Chrome opens its debug port only at launch, so quitting a running Chrome is unavoidable — and confined to restartChrome(); everything else here never closes anything.
-import { execFile } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { IS_MAC, IS_WIN, execCapture, findChrome } from './platform.js';
 
 const CDP_PORT = Number(process.env.CHROME_CDP_PORT || 9222);
 const CDP_BASE = `http://127.0.0.1:${CDP_PORT}`;
 const CHROME_APP = 'Google Chrome';
 const READY_TIMEOUT_MS = 20_000;
-
-const exec = (bin, args) =>
-  new Promise((resolve) => execFile(bin, args, { timeout: 15_000 }, (err, stdout) => resolve(err ? null : stdout)));
 
 async function probe() {
   try {
@@ -18,11 +15,34 @@ async function probe() {
   }
 }
 
-// `quit app` is AppleScript's graceful quit: Chrome writes its session out, so --restore-last-session brings every tab back. A kill would lose them.
-const isRunning = async () => (await exec('pgrep', ['-x', CHROME_APP])) !== null;
-const quitChrome = () => exec('osascript', ['-e', `quit app "${CHROME_APP}"`]);
-const launchChrome = () =>
-  exec('open', ['-a', CHROME_APP, '--args', `--remote-debugging-port=${CDP_PORT}`, '--restore-last-session']);
+// macOS: AppleScript quit so Chrome writes its session out, then --restore-last-session. Windows: taskkill without /F first.
+async function isRunning() {
+  if (IS_MAC) return (await execCapture('pgrep', ['-x', CHROME_APP])) !== null;
+  if (IS_WIN) {
+    const out = await execCapture('tasklist', ['/FI', 'IMAGENAME eq chrome.exe', '/NH']);
+    return !!(out && /chrome\.exe/i.test(out));
+  }
+  return (await execCapture('pgrep', ['-f', 'chrome|chromium'])) !== null;
+}
+
+async function quitChrome() {
+  if (IS_MAC) return execCapture('osascript', ['-e', `quit app "${CHROME_APP}"`]);
+  if (IS_WIN) {
+    await execCapture('taskkill', ['/IM', 'chrome.exe']);
+    return null;
+  }
+  return execCapture('pkill', ['-f', 'chrome|chromium']);
+}
+
+async function launchChrome() {
+  const args = [`--remote-debugging-port=${CDP_PORT}`, '--restore-last-session'];
+  if (IS_MAC) {
+    return execCapture('open', ['-a', CHROME_APP, '--args', ...args]);
+  }
+  const bin = process.env.CHROME_PATH || findChrome();
+  if (!bin) throw new Error('Google Chrome not found — install it or set CHROME_PATH');
+  return execCapture(bin, args);
+}
 
 async function waitUntil(check, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -36,7 +56,7 @@ async function waitUntil(check, timeoutMs) {
 
 async function waitReady() {
   if (await waitUntil(probe, READY_TIMEOUT_MS)) return;
-  throw new Error(`Chrome didn't open debug port ${CDP_PORT} within ${READY_TIMEOUT_MS / 1000}s — try opening it manually: open -a "${CHROME_APP}" --args --remote-debugging-port=${CDP_PORT}`);
+  throw new Error(`Chrome didn't open debug port ${CDP_PORT} within ${READY_TIMEOUT_MS / 1000}s — try opening Chrome with --remote-debugging-port=${CDP_PORT}`);
 }
 
 // Never quits anything. `needsRestart` hands the decision back to the user instead of taking it.

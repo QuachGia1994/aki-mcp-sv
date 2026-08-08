@@ -2,17 +2,17 @@
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_DATA_DIR}", "${HOME}/.aki", "${HOME}/.claude"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_DATA_DIR}", "${userHome}${pathSeparator}.aki", "${userHome}${pathSeparator}.claude"]
     },
     "search": {
       "command": "node",
       "args": ["./scripts/search-mcp.js"],
-      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
+      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${userHome}${pathSeparator}.aki,${userHome}${pathSeparator}.claude" }
     },
     "shell": {
       "command": "node",
       "args": ["./scripts/shell-mcp.js"],
-      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
+      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${userHome}${pathSeparator}.aki,${userHome}${pathSeparator}.claude" }
     }
   }
 }

@@ -3,12 +3,21 @@ import fs from 'node:fs';
 import { SETTINGS_PATH } from './userdata.js';
 
 // null = any subcommand allowed; array = only those subcommands. Curated to read-only binaries.
-export const DEFAULT_ALLOWLIST = {
+// Unix tools work as-is on macOS/Linux and also on Windows when Git for Windows usr\bin is on PATH.
+const UNIX_DEFAULT = {
   ls: null, cat: null, pwd: null, find: null, grep: null, head: null, tail: null,
   wc: null, file: null, stat: null, tree: null, ps: null, df: null, du: null,
   whoami: null, uname: null,
   git: ['status', 'log', 'diff', 'show'],
 };
+
+const WIN_EXTRA = {
+  where: null,
+  findstr: null,
+};
+
+export const DEFAULT_ALLOWLIST =
+  process.platform === 'win32' ? { ...UNIX_DEFAULT, ...WIN_EXTRA } : UNIX_DEFAULT;
 
 export function readSettings() {
   try {

@@ -3,7 +3,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { execFile } from 'node:child_process';
-import { opendirSync } from 'node:fs';
+import { opendirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { ROOT, resolveUnderRoot } from './roots.js';
@@ -63,13 +63,51 @@ function findPath(query, from, limit) {
   return `${found.length} result(s) under ${base}:\n${head.join('\n')}${note}`;
 }
 
+function nameMatchesGlob(name, glob) {
+  if (!glob) return true;
+  const source = `^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`;
+  return new RegExp(source, 'i').test(name);
+}
+
+// Pure-JS fallback when system grep isn't available (typical on Windows without Git usr\bin).
+function searchContentNode(query, base, glob, limit) {
+  const needle = query.toLowerCase();
+  const found = [];
+  walk(base, (full, isDir) => {
+    if (isDir || found.length >= limit * 4) return;
+    if (!nameMatchesGlob(path.basename(full), glob)) return;
+    let text;
+    try {
+      text = readFileSync(full, 'utf8');
+    } catch {
+      return;
+    }
+    if (text.includes('\0')) return;
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].toLowerCase().includes(needle)) {
+        found.push(`${full}:${i + 1}:${lines[i]}`);
+        if (found.length >= limit * 4) break;
+      }
+    }
+  });
+  if (!found.length) return `no lines matched "${query}" under ${base}`;
+  const head = found.slice(0, limit);
+  const note = found.length > head.length ? `\n… ${found.length - head.length} more line(s)` : '';
+  return `${found.length} matching line(s):\n${head.join('\n')}${note}`;
+}
+
 function searchContent(query, from, glob, limit) {
   const base = resolveUnderRoot(from);
+  if (process.platform === 'win32') {
+    return Promise.resolve(searchContentNode(query, base, glob, limit));
+  }
   const args = ['-rnI', '--binary-files=without-match', ...[...SKIP_DIRS].map((d) => `--exclude-dir=${d}`)];
   if (glob) args.push(`--include=${glob}`);
   args.push('-e', query, base);
   return new Promise((resolve) => {
     execFile('grep', args, { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && err.code === 'ENOENT') return resolve(searchContentNode(query, base, glob, limit));
       const lines = (stdout || '').split('\n').filter(Boolean);
       if (!lines.length) return resolve(err && stderr ? `error: ${stderr.trim()}` : `no lines matched "${query}" under ${base}`);
       const head = lines.slice(0, limit);

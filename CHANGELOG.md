@@ -2,6 +2,15 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [1.0.3] — 2026-08-08
+
+### Fixed
+- Windows: `npm start` no longer dies on Unix-only env syntax in `package.json`, `spawn npx ENOENT`, or macOS-only `open` / `osascript` / `pgrep`.
+- Windows: hub is started via `node …/mcp-hub/dist/cli.js` (no `npx` shim); panel accepts `C:\…` absolute paths; Chrome CDP launch uses `chrome.exe`; folder picker uses WinForms; `search_content` uses a JS walker when `grep` is missing; shell allowlist ignores `\` as a dangerous char and adds `where` / `findstr`.
+
+### Changed
+- Supported platforms: macOS and Windows. Shipped `mcp-hub.config.json` uses `${userHome}${pathSeparator}…` so home-relative roots expand correctly on both.
+
 ## [1.0.2] — 2026-08-08
 
 ### Changed

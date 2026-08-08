@@ -10,6 +10,7 @@ import { listTabs, evaluate, connectChrome, restartChrome } from './chrome.js';
 import { loadAllowlist, readSettings } from './allowlist.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
+import { IS_MAC, IS_WIN } from './platform.js';
 
 const REPO_ROOT = process.cwd();
 const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
@@ -23,31 +24,52 @@ const MIME = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+x
 const readJson = (file, fallback) => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : fallback);
 
 // Shows placeholders expanded and saves back what it shows: a folder list is only checkable if it reads as real folders.
-const expandPath = (p, dataDir) => p.replace(/\$\{MCP_DATA_DIR\}/g, dataDir).replace(/\$\{HOME\}/g, os.homedir());
+const expandPath = (p, dataDir) =>
+  p
+    .replace(/\$\{MCP_DATA_DIR\}/g, dataDir)
+    .replace(/\$\{HOME\}/g, os.homedir())
+    .replace(/\$\{userHome\}/g, os.homedir())
+    .replace(/\$\{pathSeparator\}/g, path.sep)
+    .replace(/\$\{\/\}/g, path.sep);
 
 function filesystemPaths(dataDir) {
   return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(2).map((p) => expandPath(p, dataDir));
 }
 
-// `choose folder` is macOS's own picker: no path typing, no copy-paste, and multi-select in one pass.
+// Native folder picker: macOS multi-select via AppleScript; Windows single-select via FolderBrowserDialog.
 // Cancelling is a normal outcome, not a failure — it comes back as an empty list.
 async function pickFolders() {
-  const script = [
-    'activate',
-    'set picked to choose folder with prompt "Choose folders Claude may access" with multiple selections allowed',
-    'set out to ""',
-    'repeat with f in picked',
-    'set out to out & POSIX path of f & linefeed',
-    'end repeat',
-    'return out',
-  ].flatMap((line) => ['-e', line]);
-  try {
-    const out = await run('osascript', script);
-    return out.split('\n').map((s) => s.replace(/\/$/, '')).filter(Boolean);
-  } catch (e) {
-    if (/User canceled|-128/.test(e.message)) return [];
-    throw e;
+  if (IS_MAC) {
+    const script = [
+      'activate',
+      'set picked to choose folder with prompt "Choose folders Claude may access" with multiple selections allowed',
+      'set out to ""',
+      'repeat with f in picked',
+      'set out to out & POSIX path of f & linefeed',
+      'end repeat',
+      'return out',
+    ].flatMap((line) => ['-e', line]);
+    try {
+      const out = await run('osascript', script);
+      return out.split('\n').map((s) => s.replace(/\/$/, '')).filter(Boolean);
+    } catch (e) {
+      if (/User canceled|-128/.test(e.message)) return [];
+      throw e;
+    }
   }
+  if (IS_WIN) {
+    const ps = [
+      'Add-Type -AssemblyName System.Windows.Forms',
+      '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
+      '$d.Description = "Choose a folder Claude may access"',
+      '$d.ShowNewFolderButton = $false',
+      'if ($d.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { exit 0 }',
+      '[Console]::Out.Write($d.SelectedPath)',
+    ].join('; ');
+    const out = (await run('powershell.exe', ['-NoProfile', '-STA', '-Command', ps])).trim();
+    return out ? [out] : [];
+  }
+  throw new Error('folder picker is not supported on this OS — paste absolute paths into the list');
 }
 
 // search/shell enforce path containment via the same list, so it never drifts from what this panel shows as "allowed".
@@ -72,10 +94,10 @@ function validateAllowlist(allowlist) {
 }
 
 function validatePaths(paths) {
-  if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && p.startsWith('/'))) {
+  if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && path.isAbsolute(p))) {
     throw new Error('folder list must be absolute paths');
   }
-  return paths;
+  return paths.map((p) => path.normalize(p));
 }
 
 function setShellAllowlist(allowlist) {
@@ -86,7 +108,7 @@ function setShellAllowlist(allowlist) {
 
 function run(command, args, cwd) {
   return new Promise((resolve, reject) => {
-    execFile(command, args, { cwd, timeout: 180_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) =>
+    execFile(command, args, { cwd, timeout: 180_000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) =>
       err ? reject(new Error(stderr || err.message)) : resolve(stdout || stderr || '(no output)'),
     );
   });
@@ -106,8 +128,16 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  const log = await run('bash', [path.join(repo, 'install.sh')], repo);
-  return `${log.trim().split('\n').pop()} (source: ${repo})`;
+  const bash = IS_WIN ? 'bash.exe' : 'bash';
+  try {
+    const log = await run(bash, [path.join(repo, 'install.sh')], repo);
+    return `${log.trim().split('\n').pop()} (source: ${repo})`;
+  } catch (e) {
+    if (IS_WIN && /ENOENT|not found|not recognized/i.test(e.message)) {
+      throw new Error('bash not found — install Git for Windows (includes bash) or run the install command from the panel manually');
+    }
+    throw e;
+  }
 }
 
 const readBody = (req) =>

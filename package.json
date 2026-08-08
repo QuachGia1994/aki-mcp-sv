@@ -1,12 +1,12 @@
 {
   "name": "mcp-local",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Give Claude on the web (claude.ai) local filesystem/search/shell access over Tailscale Funnel + OAuth 2.1 — whitelist-only shell (unlike Desktop Commander's blocklist), no desktop app or device lock-in required",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "start": "MCP_DATA_DIR=\"${MCP_DATA_DIR:-$HOME}\" node ./scripts/start.js"
+    "start": "node ./scripts/start.js"
   },
   "dependencies": {
     "mcp-hub": "^4.2.1",
