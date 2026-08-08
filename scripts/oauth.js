@@ -11,6 +11,8 @@ import {
   TOKENS_PATH as TOKENS_FILE,
 } from './userdata.js';
 import { log } from './log.js';
+import { readBody, json as httpJson } from './http.js';
+import { esc } from './html.js';
 
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
@@ -75,7 +77,7 @@ function saveDcrClients(map) {
 }
 
 /** Static Claude client + any clients ChatGPT (or Claude) registered via /register. */
-export function resolveClient(clientId) {
+function resolveClient(clientId) {
   if (!clientId) return null;
   const staticClient = loadOrCreateClient();
   if (clientId === staticClient.clientId) {
@@ -104,19 +106,7 @@ function safeEqual(a, b) {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
-
-function json(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(body));
-}
+const json = (res, status, body) => httpJson(res, status, body, { 'Cache-Control': 'no-store' });
 
 export function metadataHandlers(origin) {
   return {
@@ -218,11 +208,11 @@ button[disabled] { opacity: .6; cursor: progress; }
 <form method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Confirming…'">
 <h1>Confirm MCP connection</h1>
 <p>Enter the passphrase from <code>${PASSPHRASE_FILE}</code> to grant access to the connector.</p>
-<input type="hidden" name="redirect_uri" value="${redirectUri}">
-<input type="hidden" name="client_id" value="${clientId}">
-<input type="hidden" name="code_challenge" value="${codeChallenge}">
-<input type="hidden" name="code_challenge_method" value="${codeChallengeMethod}">
-<input type="hidden" name="state" value="${state}">
+<input type="hidden" name="redirect_uri" value="${esc(redirectUri)}">
+<input type="hidden" name="client_id" value="${esc(clientId)}">
+<input type="hidden" name="code_challenge" value="${esc(codeChallenge)}">
+<input type="hidden" name="code_challenge_method" value="${esc(codeChallengeMethod)}">
+<input type="hidden" name="state" value="${esc(state)}">
 <input type="password" name="passphrase" placeholder="Passphrase" autofocus autocomplete="current-password">
 <button type="submit" name="btn">Approve</button>
 </form>

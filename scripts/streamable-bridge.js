@@ -1,36 +1,21 @@
 #!/usr/bin/env node
 // Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/ref/oauth-research-2026-08-07.md "Debug round 7".
-//
-// One shared hub session for the whole process (docs/plan/bridge-session-churn.md, Option B). claude.ai
-// re-sends `initialize` without a session id every few seconds; the old per-client model spawned a fresh
-// hub session each time, producing thousands of connect/disconnect log lines for 1–2 real conversations.
-// Here every external client multiplexes onto a single internal SSE via JSON-RPC id remapping, and each
-// `initialize` is answered locally from the cached hub result — so the hub sees exactly one client: one
-// connect at boot, one disconnect at shutdown, independent of how often claude.ai re-initializes.
+// One shared hub session for the whole process — rationale in docs/plan/bridge-session-churn.md (Option B) and CLAUDE.md § Session lifecycle.
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { log } from './log.js';
+import { readBody, json as jsonResponse } from './http.js';
 
 const UPSTREAM_PORT = Number(process.env.MCP_HUB_PORT || 19999);
 // Per-request response timeout only — how long we wait for the upstream to answer one JSON-RPC call.
 // Long tool runs (shell) legitimately exceed the old 30s; default generous, override via env.
 const REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS || 10 * 60 * 1000);
 
-// The single internal hub session; null until the first external `initialize` boots it, and reset to null
-// if its upstream SSE dies (hub restart) so the next request transparently re-boots it.
+// The single internal hub session; null until the first external `initialize` boots it, and reset to null if its upstream SSE dies (hub restart) so the next request transparently re-boots it.
 let shared = null;
 let sharedBoot = null; // in-flight boot promise — collapses concurrent first-initializes onto one hub session
 let nextUpstreamId = 1; // globally-unique id per forwarded request; the remap that lets clients share one session
 const externalIds = new Set(); // minted external session ids, for protocol-correct 404-on-stale (re-init is now cheap)
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
 
 function parseSseChunk(session, chunk) {
   session.buffer += chunk;
@@ -120,8 +105,7 @@ function postMessage(session, message) {
   });
 }
 
-// Forward one request over `session` and await its matching response by id. `message.id` must already be
-// a unique upstream id. Resolves with the full JSON-RPC response object.
+// Forward one request over `session` and await its matching response by id. `message.id` must already be a unique upstream id. Resolves with the full JSON-RPC response object.
 function requestUpstream(session, message) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -138,9 +122,7 @@ function requestUpstream(session, message) {
   });
 }
 
-// Boot the one shared hub session using the first client's initialize params (so the negotiated protocol
-// version is whatever that real client asked for), then cache the hub's initialize result for every later
-// client. Concurrent callers share the single in-flight boot.
+// Boot the one shared hub session using the first client's initialize params (so the negotiated protocol version is whatever that real client asked for), then cache the hub's initialize result for every later client.
 function ensureShared(initParams) {
   if (shared) return Promise.resolve(shared);
   if (sharedBoot) return sharedBoot;
@@ -155,11 +137,6 @@ function ensureShared(initParams) {
   return sharedBoot.finally(() => {
     sharedBoot = null;
   });
-}
-
-function jsonResponse(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(body));
 }
 
 export async function handleStreamableMcp(req, res) {

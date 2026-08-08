@@ -34,7 +34,7 @@ Tailscale Funnel        (https://your-machine.your-tailnet.ts.net)
       │
       ▼
 gatekeeper.js  — public port 9999
-      │           /.well-known/oauth-*  metadata
+      │           /.well-known/oauth-* + openid-configuration  metadata (openid is an alias for ChatGPT discovery)
       │           /authorize, /token    minimal authorization server (scripts/oauth.js)
       │           /register         RFC 7591 dynamic client registration (ChatGPT self-registers here)
       │           /mcp                  requires a valid Bearer access token, else 401
@@ -44,11 +44,11 @@ mcp-hub        — internal only (loopback), port 19999, legacy HTTP+SSE transpo
       │
       ├─► MCP filesystem server   (read/write inside the allowed folders)
       ├─► MCP search server       (search-mcp.js — find_path/search_content, whole-tree in one call)
-      └─► MCP shell server        (shell-mcp.js — allowlisted commands, read-only by default)
+      └─► MCP shell server        (shell-mcp.js — allowlisted commands, curated to read-only)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  control UI: allowed folders, shell allowlist, restart hub,
-                 install akidevrule, generate the connector prompt, Chrome CDP
+                 install akidevrule, generate the connector prompt
 ```
 
 `mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/init.md`).
@@ -79,13 +79,18 @@ aki-mcp-sv/
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> mcp-hub's legacy SSE transport
-│   ├── shell-mcp.js              # allowlist-gated shell tool (read-only by default)
+│   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
+│   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
+│   ├── agy-mcp.js                # dedicated MCP server for the agy CLI
+│   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call
 │   ├── roots.js                  # path containment shared by every filesystem-touching tool
 │   ├── tailscale.js              # reads Funnel status — shared by start.js and panel
+│   ├── log.js                    # shared timestamped logger
 │   ├── panel.js                  # loopback-only control panel (:9998), token-gated
 │   ├── config-page.js            # renders the panel page
+│   ├── html.js                   # HTML escaper (esc) — shared by oauth confirm page and panel
 │   └── userdata.js               # user data location (~/.aki/mcpsv) — single source of truth
 └── public/                       # favicon + images, served publicly by gatekeeper
 ```
@@ -168,10 +173,11 @@ Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for 
 
 1. ChatGPT → Settings → Apps & Connectors (or Security) → enable **Developer mode**
 2. Create a custom connector / app → paste the same MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`)
-3. Auth: **OAuth** (no Client ID/Secret paste — ChatGPT self-registers via `POST /register`)
-4. Enter the same **passphrase** on the confirmation page
+3. Auth: **OAuth** → **Advanced OAuth settings** → set **Registration URL** to `https://your-machine.your-tailnet.ts.net/register` (the panel prints the exact value to copy). This is the step that enables DCR: ChatGPT self-registers its own client from it. Skip it and ChatGPT can't register, so it falls back to a user-defined client — and pasting Claude's Client ID there fails, because that client only allows `claude.ai` redirects.
+4. Leave registration method on **DCR**, token endpoint auth method **none** — do **not** paste Claude's Client ID/Secret here.
+5. Enter the same **passphrase** on the confirmation page
 
-Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint`.
+Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
 
 ### Connector icon
 
@@ -192,7 +198,7 @@ Use `search__find_path`, not `filesystem__search_files`, to locate a file or dir
 Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
 
 - `$MCP_DATA_DIR` (default `$HOME`) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff, removable from the panel).
-- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js`; the panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding a write command (e.g. `git commit`) crosses the "read-only" boundary this project ships with by default. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
+- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is curated to read-only commands, defined in `allowlist.js` — though a few flag-rich binaries in it (`find`, `sort`) aren't fully contained and can be pushed to write/delete/exec via their own flags; that's an accepted tradeoff for the single-owner threat model (`docs/plan/shell-allowlist.md`), not a full read-only guarantee. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
 - `gatekeeper.js` is the single public entry point; the real `mcp-hub` never listens on anything but loopback.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
@@ -206,7 +212,7 @@ See [How this differs from Desktop Commander](#how-this-differs-from-desktop-com
 - **Fail-safe**: an unfamiliar or new command is blocked automatically, no guessing required.
 - **Minimal attack surface**: only the exact commands you've approved can run, nothing more.
 - **Granular down to the subcommand**: `git` is scoped to `status/log/diff/show`, something a blocklist can't express cleanly.
-- **Read-only by default**: the built-in set is read-only commands only; adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
+- **Read-only by intent**: the built-in set is curated to read-only commands (a few flag-rich ones like `find`/`sort` can be pushed further via flags — an accepted single-owner tradeoff, see `docs/plan/shell-allowlist.md`); adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
 
 ## Screenshots
 

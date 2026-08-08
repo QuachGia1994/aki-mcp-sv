@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { z } from 'zod';
 import { loadAllowlist } from './allowlist.js';
 import { ROOT, ROOTS, resolveUnderRoot } from './roots.js';
+import { ok, err, fail } from './mcp-tool.js';
 
 class Shell {
   // Backslash is escape/chaining on Unix but the normal path separator on Windows — only treat it as dangerous off-Windows.
@@ -64,11 +65,11 @@ class Shell {
 
   run(bin, args, cwd) {
     return new Promise((resolve) => {
-      execFile(bin, args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
-        if (err) {
-          resolve({ content: [{ type: 'text', text: stderr || err.message }], isError: true });
+      execFile(bin, args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+        if (error) {
+          resolve(err(stderr || error.message));
         } else {
-          resolve({ content: [{ type: 'text', text: stdout || '(no output)' }] });
+          resolve(ok(stdout || '(no output)'));
         }
       });
     });
@@ -81,7 +82,7 @@ class Shell {
       this.checkPermission(bin, args);
       dir = resolveUnderRoot(cwd);
     } catch (e) {
-      return { content: [{ type: 'text', text: `rejected: ${e.message}` }], isError: true };
+      return fail(e);
     }
     return this.run(bin, args, dir);
   }

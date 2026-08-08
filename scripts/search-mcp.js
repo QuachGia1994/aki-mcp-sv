@@ -7,6 +7,7 @@ import { opendirSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { ROOT, resolveUnderRoot } from './roots.js';
+import { ok, fail } from './mcp-tool.js';
 
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.svn', '.hg', 'dist', 'build', '.next', '.nuxt', '.output', '.cache',
@@ -78,9 +79,6 @@ function searchContent(query, from, glob, limit) {
     });
   });
 }
-
-const ok = (text) => ({ content: [{ type: 'text', text }] });
-const fail = (e) => ({ content: [{ type: 'text', text: `rejected: ${e.message}` }], isError: true });
 
 const server = new McpServer({ name: 'search', version: '1.0.0', title: 'File Index' });
 

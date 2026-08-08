@@ -4,8 +4,7 @@ import http from 'node:http';
 import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken, handleRegister, verifyBearer } from './oauth.js';
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
 import { log, logErr } from './log.js';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize, sep } from 'node:path';
+import { serveStatic } from './http.js';
 
 const PUBLIC_PORT = Number(process.env.GATEKEEPER_PORT || 9999);
 const UPSTREAM_PORT = Number(process.env.MCP_HUB_PORT || 19999);
@@ -34,27 +33,7 @@ function forwardToHub(req, res) {
   req.pipe(proxyReq);
 }
 
-const PUBLIC_DIR = join(process.cwd(), 'public');
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
-const MIME = {
-  '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.png': 'image/png',
-  '.json': 'application/json', '.webmanifest': 'application/manifest+json',
-  '.css': 'text/css', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8',
-};
-
-async function serveStatic(res, urlPath) {
-  const rel = normalize(STATIC_ALIASES[urlPath] || urlPath).replace(/^([/\\.]+)/, '');
-  const file = join(PUBLIC_DIR, rel);
-  if (file !== PUBLIC_DIR && !file.startsWith(PUBLIC_DIR + sep)) return false;
-  try {
-    const data = await readFile(file);
-    res.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' });
-    res.end(data);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 const server = http.createServer(async (req, res) => {
   const path = (req.url || '').split('?')[0];
@@ -72,7 +51,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if ((path === '/.well-known/oauth-protected-resource' || path === '/.well-known/oauth-protected-resource/mcp') && req.method === 'GET') return meta.protectedResource(req, res);
-  if ((path === '/.well-known/oauth-authorization-server' || path === '/.well-known/oauth-authorization-server/mcp') && req.method === 'GET') return meta.authorizationServer(req, res);
+  if ((path === '/.well-known/oauth-authorization-server' || path === '/.well-known/oauth-authorization-server/mcp' || path === '/.well-known/openid-configuration') && req.method === 'GET') return meta.authorizationServer(req, res);
   if (path === '/register' && req.method === 'POST') return handleRegister(req, res);
   if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) return handleAuthorize(req, res, passphrase, ORIGIN);
   if (path === '/token' && req.method === 'POST') return handleToken(req, res);
@@ -100,7 +79,7 @@ const server = http.createServer(async (req, res) => {
     return forwardToHub(req, res);
   }
 
-  if (req.method === 'GET' && await serveStatic(res, path)) return;
+  if (req.method === 'GET' && await serveStatic(res, path, STATIC_ALIASES)) return;
 
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('not found');

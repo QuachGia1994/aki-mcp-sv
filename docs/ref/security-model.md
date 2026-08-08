@@ -7,6 +7,7 @@ Updated 2026-08-08 — Claude keeps a pre-issued confidential client; ChatGPT us
 ```
 claude.ai / ChatGPT
    │  GET /.well-known/oauth-protected-resource, /.well-known/oauth-authorization-server
+   │      (/.well-known/openid-configuration is served as an alias of the latter, so ChatGPT can auto-discover registration_endpoint)
    │  ChatGPT (and optionally Claude): POST /register  (DCR)
    ▼
 gatekeeper.js  ── /register  → RFC 7591 (redirect URIs: Claude callback + chatgpt.com/connector/oauth/*)

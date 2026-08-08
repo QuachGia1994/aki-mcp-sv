@@ -2,6 +2,22 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+Audit follow-up (`docs/plan/audit-1.1.0-todo.md`): ChatGPT connect fix, one security fix, honest copy, and an SSoT dedup pass. Internal security hardening was deliberately not scheduled — accepted as risk for the single-owner threat model (OAuth + passphrase + Funnel).
+
+### Added
+- `/.well-known/openid-configuration` served as an alias of the authorization-server metadata, so ChatGPT can auto-discover `registration_endpoint` and auto-fill its Registration URL.
+- Panel section 2 now carries a concrete ChatGPT walkthrough (developer-mode + create-connector deep links) and emits the exact `<origin>/register` value as a copy field — the missing step that unblocks DCR. Claude's Client ID/Secret fields are scoped to a Claude-only subsection so they aren't pasted into ChatGPT by mistake.
+- Panel folder rows for the trust zones (`~/.aki`, `~/.claude`, rules dir) render locked (no delete button), so rule-file access can't be revoked by an accidental row deletion.
+
+### Changed
+- SSoT dedup: extracted `scripts/http.js` (`readBody` / `json` / one traversal-guarded `serveStatic` + a single MIME map), `scripts/mcp-tool.js` (the `ok` / `err` / `fail` tool-result envelope, previously inlined ~8×), and `scripts/html.js` (the `esc` HTML-escaper). `oauth.js`, `gatekeeper.js`, `panel.js`, `streamable-bridge.js`, `search-mcp.js`, `shell-mcp.js`, `agy-mcp.js`, `config-page.js` now import these instead of carrying local copies. Dropped the dead `resolveClient` export. Net −64 lines.
+- Panel and README copy corrected: the shell set is described as "curated to read-only" rather than "read-only only" / "fully off-limits", since flag-rich binaries (`find`, `sort`) aren't fully contained — an accepted single-owner tradeoff, not a guarantee.
+
+### Fixed
+- Reflected XSS on the `/authorize` confirmation page: the `state`, `codeChallenge`, `redirectUri`, `clientId`, and `codeChallengeMethod` hidden-field values are now HTML-escaped before rendering.
+
 ## [1.1.0] — 2026-08-08
 
 Windows support and the ChatGPT custom connector come from [PR #1](https://github.com/lacvietanh/aki-mcp-sv/pull/1) by **capybara** (`okdev888`), rebuilt onto the OS-agnostic architecture of `docs/plan/unify-windows-linux.md` — see `docs/plan/merge-pr1-windows-chatgpt.md` for what was adopted as-is and what was reshaped.

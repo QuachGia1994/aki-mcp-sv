@@ -9,16 +9,14 @@ import { renderPanel } from './config-page.js';
 import { loadAllowlist, readSettings } from './allowlist.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
+import { readBody, json, serveStatic } from './http.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
-const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
 const RULES_DIR = path.join(os.homedir(), '.aki', 'akidevrule');
 const SOURCE_REPO_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
-
-const MIME = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
 const readJson = (file, fallback) => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : fallback);
 
@@ -103,19 +101,6 @@ async function installRules() {
   }
 }
 
-const readBody = (req) =>
-  new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}));
-    req.on('error', reject);
-  });
-
-const json = (res, status, body) => {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(body));
-};
-
 const ROUTES = {
   'GET /api/state': async (body, ctx) => ({
     paths: filesystemPaths(ctx.dataDir),
@@ -140,14 +125,6 @@ const ROUTES = {
   'POST /api/install-rules': async () => ({ ok: true, message: await installRules() }),
 };
 
-function serveStatic(res, urlPath) {
-  const file = path.join(PUBLIC_DIR, path.normalize(urlPath).replace(/^([/\\.]+)/, ''));
-  if (!file.startsWith(PUBLIC_DIR + path.sep) || !existsSync(file)) return false;
-  res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
-  res.end(readFileSync(file));
-  return true;
-}
-
 export function startPanel({ port, token, origin, client, passphrase, dataDir, restartHub }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
@@ -162,14 +139,14 @@ export function startPanel({ port, token, origin, client, passphrase, dataDir, r
       return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, dataDir, rulesDir: RULES_DIR, userDir: USER_DIR }));
     }
 
-    if (req.method === 'GET' && serveStatic(res, urlPath)) return;
+    if (req.method === 'GET' && await serveStatic(res, urlPath)) return;
 
     const handler = ROUTES[route];
     if (!handler) return json(res, 404, { error: 'not found' });
     if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
 
     try {
-      json(res, 200, await handler(await readBody(req), { restartHub, dataDir }));
+      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { restartHub, dataDir }));
     } catch (e) {
       json(res, 400, { error: e.message });
     }

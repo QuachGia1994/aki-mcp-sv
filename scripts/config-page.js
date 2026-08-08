@@ -1,11 +1,15 @@
 // Renders the control panel page. Served only by panel.js on loopback — credentials never travel over the Funnel.
 import os from 'node:os';
 import path from 'node:path';
+import { esc } from './html.js';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+const AKI_DIR = path.join(os.homedir(), '.aki');
 const MCP_NAME = 'Aki Mac MCPSV Shell & Filesystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
+const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/plugins#settings/Security?section=developer-mode';
+const CHATGPT_CONNECTOR_URL = 'https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins';
 const TOKENIZER_URL = 'https://chromewebstore.google.com/detail/claude-token-counter/bioobpobpbeohjoefndgkiaakboimpch';
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule';
 const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvietanh/akidevrule/master/install.sh | bash';
@@ -54,9 +58,7 @@ const SOCIAL = [
   ['Email', 'mailto:admin@akitao.com', SVG.mail],
 ];
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-const ecoLink = ([name, url, icon]) =>
+const ecoLink =([name, url, icon]) =>
   `<li><a class="eco-link" href="${esc(url)}" target="_blank" rel="noopener"><img class="eco-icon" src="${SITE}${icon}" alt="" width="20" height="20" loading="lazy"><span>${esc(name)}</span></a></li>`;
 
 const socialLink = ([label, url, path]) =>
@@ -68,6 +70,7 @@ function field(label, value, mono = true) {
 
 export function renderPanel({ origin, client, passphrase, token, repoRoot, dataDir, rulesDir, userDir }) {
   const url = origin ? `${origin}/mcp` : 'not available yet — see section 1';
+  const regUrl = origin ? `${origin}/register` : 'not available yet — see section 1';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(MCP_NAME)} — panel</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
@@ -154,6 +157,7 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 
 <h3 class="subh">Claude.ai</h3>
 <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
+<p class="hint">These five values go into Claude's connector dialog. The Client ID / Secret are Claude-only; ChatGPT registers its own client below, so do not paste these there.</p>
 ${field('MCP Name', MCP_NAME, false)}
 ${field('MCP URL', url)}
 ${field('OAuth Client ID', client.clientId)}
@@ -161,17 +165,23 @@ ${field('OAuth Client Secret', client.clientSecret)}
 ${field('Passphrase', passphrase)}
 <div class="acts"><button class="primary" data-act="copyAll">Copy all 5 values</button><span class="msg" id="msgConn"></span></div>
 
-<h3 class="subh">ChatGPT (Plus / Pro — Developer mode)</h3>
+<h3 class="subh">ChatGPT (Plus / Pro / Business — Developer mode)</h3>
 <ol class="steps">
-  <li>ChatGPT → Settings → Apps &amp; Connectors (or Security) → turn on <strong>Developer mode</strong>.</li>
-  <li>Create a custom connector / app → paste <strong>MCP URL</strong> above (<code>…/mcp</code>). Auth: <strong>OAuth</strong> (ChatGPT registers itself — no Client ID/Secret paste).</li>
-  <li>When the browser opens the confirm page, enter the same <strong>Passphrase</strong>.</li>
+  <li>Turn on <a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">Developer mode</a> (Settings → Connectors → Advanced). Needs a paid plan.</li>
+  <li><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">Create a connector</a>.</li>
+  <li><strong>Connection</strong>: set <strong>Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above).</li>
+  <li><strong>Authentication = OAuth</strong>, then open <strong>Advanced OAuth settings</strong>.</li>
+  <li>Under <strong>OAuth endpoints</strong>, set <strong>Registration URL</strong> = the value below. This is the step that lets ChatGPT register itself; the other endpoints auto-fill from discovery.</li>
+  <li><strong>Registration method = DCR</strong> and <strong>Token endpoint auth method = none</strong>. Do not paste Claude's Client ID or Secret here.</li>
+  <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
+  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
 </ol>
-<p class="hint">Needs a paid ChatGPT plan with custom connectors. Write tools may be limited on Plus/Pro depending on OpenAI’s current policy.</p>
+${field('Registration URL', regUrl)}
+<p class="hint">ChatGPT registers its own client (PKCE, no secret). Write tools may be limited on ChatGPT depending on OpenAI’s current policy.</p>
 </section>
 
 <section><h2>3 · Folders the connector may reach</h2>
-<p class="hint">Anything outside this list is fully off-limits (Claude and ChatGPT share this list).</p>
+<p class="hint">This list scopes the filesystem tool and the shell's default working directory. It is not a hard wall: the curated shell binaries run as your user, so an absolute path can still reach outside it. Claude and ChatGPT share this list.</p>
 <div class="pathlist" id="paths"></div>
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>
@@ -182,7 +192,7 @@ ${field('Passphrase', passphrase)}
 </section>
 
 <section><h2>4 · Allowed shell commands</h2>
-<p class="hint">The default set running now is read-only commands only. Deleting a line revokes that command. Adding a write command (<code>rm</code>, <code>git commit</code>…) is you deliberately widening access — think it through.<br>
+<p class="hint">The default set runs curated binaries as your user; they can read whatever your user can read. Deleting a line revokes that command. Adding a write command (<code>rm</code>, <code>git commit</code>…) is you deliberately widening access — think it through.<br>
 <code>null</code> = every subcommand allowed · array = only the subcommands listed.</p>
 <textarea id="allowlist" spellcheck="false" style="min-height:170px"></textarea>
 <div class="acts"><button class="primary" data-act="saveAllowlist">Save allowlist</button><span class="msg" id="msgAllow"></span></div>
@@ -191,10 +201,10 @@ ${field('Passphrase', passphrase)}
 <section><h2>5 · akidevrule — working rules for the AI (optional)</h2>
 <p class="hint">Every new session, Claude guesses from scratch: how long to write, how far it may self-correct, how to name things. <strong>akidevrule</strong> pins those decisions into files, loaded exactly when needed.</p>
 <div class="stats">
-  <span><b>17</b> rule files — code, docs, UI, DB, SEO, release, security</span>
-  <span><b>9</b> skills — <code>/akithink</code>, <code>/akilint</code>, <code>/akiflow</code>, <code>/akigitcommit</code>…</span>
-  <span><b>5</b> dedicated subagents — find, judge, challenge, build</span>
-  <span>Install once, shared across <b>5</b> CLIs: Claude Code, Gemini, Codex, Kiro, Grok</span>
+  <span><b>Rule files</b> — code, docs, UI, DB, SEO, release, security</span>
+  <span><b>Skills</b> — <code>/akithink</code>, <code>/akilint</code>, <code>/akiflow</code>, <code>/akigitcommit</code>…</span>
+  <span><b>Dedicated subagents</b> — find, judge, challenge, build</span>
+  <span>Install once, shared across every supported CLI: Claude Code, Gemini, Codex, Kiro, Grok</span>
 </div>
 <p class="hint">The "Install / update" button runs exactly the command below. No sudo, only writes to <span class="mono">~/.aki</span> and <span class="mono">~/.claude</span>, removable with <code>rm -rf</code>. Skipping this section doesn't affect anything else.</p>
 ${field('Install command', RULES_INSTALL_CMD)}
@@ -246,6 +256,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 const TOKEN = ${JSON.stringify(token)};
 const RULES_DIR = ${JSON.stringify(rulesDir)};
 const CLAUDE_DIR = ${JSON.stringify(CLAUDE_DIR)};
+const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const DATA_DIR = ${JSON.stringify(dataDir)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
@@ -311,15 +322,27 @@ function markDirty() {
   say('msgPaths', 'unsaved changes', false);
 }
 
+// The rule trust zones read as ordinary folder rows; deleting one silently cuts the AI off from its rules, so those rows are locked instead of deletable.
+const isProtectedPath = (p) => p === RULES_DIR || p === CLAUDE_DIR || p === AKI_DIR;
+
 function addPath(value, dirty) {
   const wrap = document.createElement('div');
   const input = document.createElement('input');
   input.type = 'text'; input.value = value;
-  input.oninput = markDirty;
-  const del = document.createElement('button');
-  del.textContent = '×';
-  del.onclick = () => { wrap.remove(); markDirty(); };
-  wrap.append(input, del);
+  if (isProtectedPath(value)) {
+    input.readOnly = true;
+    input.title = 'Rule-file access for the AI. Removing it silently revokes the rules, so this row is locked.';
+    const lock = document.createElement('span');
+    lock.className = 'empty';
+    lock.textContent = 'locked · rules';
+    wrap.append(input, lock);
+  } else {
+    input.oninput = markDirty;
+    const del = document.createElement('button');
+    del.textContent = '×';
+    del.onclick = () => { wrap.remove(); markDirty(); };
+    wrap.append(input, del);
+  }
   document.getElementById('paths').append(wrap);
   if (dirty) markDirty();
 }

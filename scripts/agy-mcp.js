@@ -1,17 +1,14 @@
 #!/usr/bin/env node
-// Dedicated MCP for the `agy` CLI. Previously routed through the generic shell tool, which has to
-// shell-tokenize the whole command string and can mis-split a multi-word -p prompt. Here prompt/model/mode
-// are separate execFile args from the start, so no tokenizing/quoting step exists to get wrong. Modes are
-// allowlisted the same way shell subcommands are — see allowlist.js for the shared settings.json pattern.
+// Dedicated MCP for the `agy` CLI: passes prompt/model/mode as separate execFile args so no shell-tokenizing step can mis-split a multi-word -p prompt (the reason it is not routed through the generic shell tool). Modes are allowlisted via allowlist.js.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
 import { readSettings } from './allowlist.js';
 import { resolveUnderRoot } from './roots.js';
+import { ok, err, fail } from './mcp-tool.js';
 
-// 'plan' is agy's non-mutating mode — the only one enabled out of the box. Anything else must be
-// explicitly opted into via setting.json -> { "agy": { "allowedModes": [...] } }.
+// 'plan' is agy's non-mutating mode — the only one enabled out of the box. Anything else must be explicitly opted into via setting.json -> { "agy": { "allowedModes": [...] } }.
 const DEFAULT_MODES = ['plan'];
 // Discovery-tier default per akiflow/harness-facts.md: fastest wide-context tier, generous quota.
 const DEFAULT_MODEL = 'gemini-3.6-flash-medium';
@@ -23,21 +20,16 @@ function loadAllowedModes() {
 
 function run(args, cwd) {
   return new Promise((resolve) => {
-    execFile('agy', args, { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) {
-        // agy writes its own errors to stdout, not stderr — check stdout first or real failures show up
-        // as Node's generic "Command failed: <cmd>" with no explanation (see shell-mcp.js's same bug).
-        return resolve({ content: [{ type: 'text', text: stdout || stderr || err.message }], isError: true });
+    execFile('agy', args, { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        // agy writes its own errors to stdout, not stderr — check stdout first or real failures show up as Node's generic "Command failed: <cmd>" with no explanation (see shell-mcp.js's same bug).
+        return resolve(err(stdout || stderr || error.message));
       }
-      // agy headless can't prompt for permission: a denied action auto-fails but still exits 0 with an
-      // empty response (harness-facts.md § Cross-CLI worker). Treat empty stdout as inconclusive, not clean.
+      // agy headless can't prompt for permission: a denied action auto-fails but still exits 0 with an empty response (harness-facts.md § Cross-CLI worker). Treat empty stdout as inconclusive, not clean.
       if (!stdout || !stdout.trim()) {
-        return resolve({
-          content: [{ type: 'text', text: 'agy returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.' }],
-          isError: true,
-        });
+        return resolve(err('agy returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.'));
       }
-      resolve({ content: [{ type: 'text', text: stdout }] });
+      resolve(ok(stdout));
     });
   });
 }
@@ -67,19 +59,15 @@ server.registerTool(
     const useMode = mode ?? 'plan';
     const allowed = loadAllowedModes();
     if (!allowed.includes(useMode)) {
-      return {
-        content: [{ type: 'text', text: `rejected: mode "${useMode}" is not allowlisted (allowed: ${allowed.join(', ')})` }],
-        isError: true,
-      };
+      return err(`rejected: mode "${useMode}" is not allowlisted (allowed: ${allowed.join(', ')})`);
     }
     let dir;
     try {
       dir = resolveUnderRoot(cwd);
     } catch (e) {
-      return { content: [{ type: 'text', text: `rejected: ${e.message}` }], isError: true };
+      return fail(e);
     }
-    // -p takes the prompt as its value and must come last — anything after it is silently swallowed
-    // as part of the prompt, not parsed as a flag (harness-facts.md § Cross-CLI worker, the flag-order trap).
+    // -p takes the prompt as its value and must come last — anything after it is silently swallowed as part of the prompt, not parsed as a flag (harness-facts.md § Cross-CLI worker, the flag-order trap).
     const args = ['--mode', useMode, '--model', model ?? DEFAULT_MODEL];
     if (effort) args.push('--effort', effort);
     if (outputFormat) args.push('--output-format', outputFormat);
