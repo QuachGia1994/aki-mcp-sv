@@ -3,6 +3,7 @@
 - [plan/init.md](plan/init.md) — architecture decisions (mcp-hub + gatekeeper + funnel) and repo bootstrap checklist
 - [plan/repl-config-tools.md](plan/repl-config-tools.md) — plan to add a persistent-session REPL + get_config (inspired by Desktop Commander), write allowlist (shell) deferred
 - [plan/unify-windows-linux.md](plan/unify-windows-linux.md) — plan to unify the codebase for Windows + Linux (macOS unaffected) and remove Chrome CDP control
+- [plan/merge-pr1-windows-chatgpt.md](plan/merge-pr1-windows-chatgpt.md) — how PR #1 (Windows fixes + ChatGPT connector) is merged onto our OS-agnostic architecture: integration branch, the 7 real conflicts, the 4 files that auto-merge wrong, and how the PR still lands as Merged
 - [plan/bridge-session-churn.md](plan/bridge-session-churn.md) — flow audit + fix for the mass "client disconnected from MCP HUB" log; the stateless↔stateful session mismatch, and the A/B decision (per-session vs one shared hub session)
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
 - [ref/security-model.md](ref/security-model.md) — the current minimal OAuth 2.1 security model (DCR skipped)
