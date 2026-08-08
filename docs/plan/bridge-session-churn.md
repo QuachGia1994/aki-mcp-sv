@@ -21,8 +21,11 @@ The bridge represents each external claude.ai session (a **stateless** thing, ke
 - **Eviction is now LRU, not oldest-created.** A reused session is re-inserted to the tail of the `sessions` Map, so the eviction victim (`.values().next()`) is the least-recently-used — previously it was the oldest-inserted, i.e. usually the *main long-lived conversation*, the worst possible one to drop under load.
 - **Churn counters** `opened` / `reused`, printed only on a *new-session* event (low volume). `opened` climbing while `reused` stays low = the client is not resending the header = root cause confirmed. `opened` staying ~1–2 = reuse works and the churn is already fixed by the idle-close removal above.
 
-## The open decision — measure, then pick A or B
-The remaining question is a **runtime fact only claude.ai can produce**: does its backend resend `Mcp-Session-Id`? It cannot be settled by static reading, and running live claude.ai traffic is user-triggered (`coding.B3`). One normal work session, then read the `opened`/`reused` line — decides between:
+## Measurement result (2026-08-08) — resolved to B
+Three real claude.ai conversations, ~4 minutes, produced `opened` climbing **1 → 17 monotonically**, one new session every ~10s, **every one `method=initialize`**. claude.ai re-sends `initialize` with **no** `Mcp-Session-Id` on a timer; it does not hold one session per conversation. So the per-session model (Option A) churns regardless of the LRU/cap hardening — the client's behaviour, not our eviction, drives the count. **Decision: Option B, implemented below.**
+
+## The (now-settled) decision — measure, then pick A or B
+The question was a **runtime fact only claude.ai can produce**: does its backend resend `Mcp-Session-Id`? Settled by the measurement above (it does not). Kept for the record:
 
 ### Option A — keep the per-session model (smaller, reuse-dependent)
 Bounded-growth via cap + LRU is the *correct* model for a stateless-keyed session **if** the client reuses its id: 1–2 conversations = 1–2 hub sessions = 1–2 disconnect lines at shutdown, no periodic churn. Nothing more to build — the landed changes already realise A. Ships the fix **only if** the diagnostic shows reuse works.
@@ -33,15 +36,21 @@ The bridge holds **exactly one** persistent internal hub session for the whole p
 - **Removes the whole compensating apparatus:** the `sessions` Map, `MAX_SESSIONS`, eviction, and per-session SSE all disappear (`flow.B6` — "what can be removed once the shape is corrected").
 - **Cost / risk:** ~80–120 lines of protocol-multiplexer (id remap table, local init synthesis, notification routing). A subtle bug there breaks real tool calls, not just logs. Safe because this is a single-user server with stateless tools (filesystem/search/shell/agy) — per-session isolation was never actually needed; recoverable (single user, behind git).
 
-**Recommendation: B.** It eliminates the dependency on an unverifiable external behaviour and matches the flow-audit ideal (make the correct path impossible to break, not repeatedly guarded). A is the smaller, reversible step if we want to confirm-with-data before committing to the rewrite.
+**Chosen: B**, after the measurement confirmed A depends on an external behaviour claude.ai does not exhibit. Matches the flow-audit ideal (make the correct path impossible to break, not repeatedly guarded).
+
+## Landed — Option B (single shared session multiplexer)
+`scripts/streamable-bridge.js` now holds one internal hub session for the whole process:
+- **`initialize` answered locally.** The first one boots the shared session (using that client's params, so the negotiated protocol version is real) and caches the hub's initialize result; every later `initialize` returns the cache without touching the hub. `notifications/initialized` from clients is swallowed (the shared session was initialized once at boot).
+- **id remapping.** Every forwarded request gets a globally-unique upstream id (`nextUpstreamId`), so concurrent clients never collide on one session; the original id is restored on the response.
+- **Removed the whole compensating apparatus** — the `sessions` Map, `MAX_SESSIONS` cap, LRU eviction, `opened`/`reused` counters, and per-client SSE are gone (`flow.B6`). `externalIds` (a Set) remains only for protocol-correct 404-on-stale, which now triggers a *cheap* local re-initialize.
+- **Self-healing.** If the shared SSE dies (hub restart), `shared` resets to null and the next request re-boots it transparently.
 
 ## Execution checklist
 - [x] Remove idle auto-close; raise per-request timeout and cap (`a48b3ce`)
-- [x] LRU eviction + `opened`/`reused` churn counters
-- [ ] Run one normal work session; read the `opened`/`reused` ratio and the Unknown-vs-named split in the hub log
-- [ ] Confirm root cause, then **pick A or B** (owner decision — B recommended)
-- [ ] If B: implement the single-session multiplexer; delete the sessions Map / cap / eviction; verify tool calls still work end-to-end
-- [ ] Re-run the same session shape; confirm the disconnect-log count now tracks the real session count (target: ~1)
+- [x] LRU eviction + `opened`/`reused` churn counters (`527162f`)
+- [x] Run one normal work session; read the counters → `opened` climbed 1→17, all `initialize` → **A insufficient, B needed**
+- [x] Implement the single-session multiplexer; delete the sessions Map / cap / eviction
+- [ ] **Runtime verification (user-triggered, `coding.B3`):** run one work session on the new build; confirm the hub logs exactly one `client connected` at boot and the disconnect count no longer tracks call volume (target: ~1)
 
 ## Out of scope
 - Editing `node_modules/mcp-hub`'s log level or behaviour — vendored, lost on reinstall (`docs/ref` never patches node_modules).

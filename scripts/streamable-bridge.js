@@ -1,26 +1,27 @@
 #!/usr/bin/env node
 // Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/ref/oauth-research-2026-08-07.md "Debug round 7".
+//
+// One shared hub session for the whole process (docs/plan/bridge-session-churn.md, Option B). claude.ai
+// re-sends `initialize` without a session id every few seconds; the old per-client model spawned a fresh
+// hub session each time, producing thousands of connect/disconnect log lines for 1–2 real conversations.
+// Here every external client multiplexes onto a single internal SSE via JSON-RPC id remapping, and each
+// `initialize` is answered locally from the cached hub result — so the hub sees exactly one client: one
+// connect at boot, one disconnect at shutdown, independent of how often claude.ai re-initializes.
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { log } from './log.js';
 
 const UPSTREAM_PORT = Number(process.env.MCP_HUB_PORT || 19999);
 // Per-request response timeout only — how long we wait for the upstream to answer one JSON-RPC call.
-// Long tool runs (shell) legitimately exceed the old 30s; default generous, override via env. This is NOT a session lifetime.
+// Long tool runs (shell) legitimately exceed the old 30s; default generous, override via env.
 const REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS || 10 * 60 * 1000);
-// Sessions live as long as their upstream SSE connection is open — no idle auto-close (a quiet session is not a dead one).
-// The only bound is this hard cap against unbounded growth; the oldest is evicted when a genuinely new session would exceed it.
-const MAX_SESSIONS = Number(process.env.MCP_MAX_SESSIONS || 256);
 
-// Insertion order in this Map doubles as recency order: a reused session is re-inserted (moved to the
-// end) so the eviction victim at .values().next() is genuinely the least-recently-used, not merely the
-// oldest-created (which is usually the main long-lived conversation — the worst one to drop).
-const sessions = new Map();
-// Churn diagnostic (docs/plan/bridge-session-churn.md): `opened` should track the real conversation
-// count. `opened` climbing while `reused` stays low means the client is NOT resending Mcp-Session-Id,
-// so every call spawns a throwaway hub session — the root cause behind the mass disconnect log.
-let sessionsOpened = 0;
-let sessionsReused = 0;
+// The single internal hub session; null until the first external `initialize` boots it, and reset to null
+// if its upstream SSE dies (hub restart) so the next request transparently re-boots it.
+let shared = null;
+let sharedBoot = null; // in-flight boot promise — collapses concurrent first-initializes onto one hub session
+let nextUpstreamId = 1; // globally-unique id per forwarded request; the remap that lets clients share one session
+const externalIds = new Set(); // minted external session ids, for protocol-correct 404-on-stale (re-init is now cheap)
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -69,8 +70,11 @@ function closeSession(session, reason = 'unspecified') {
   }
   session.pending.clear();
   session.sseReq?.destroy();
-  for (const [extId, s] of sessions) if (s === session) sessions.delete(extId);
-  log(`[bridge] session closed (${reason}) — live sessions: ${sessions.size}`);
+  if (shared?.session === session) {
+    shared = null;
+    externalIds.clear();
+  }
+  log(`[bridge] shared hub session closed (${reason})`);
 }
 
 function openInternalSession() {
@@ -116,6 +120,43 @@ function postMessage(session, message) {
   });
 }
 
+// Forward one request over `session` and await its matching response by id. `message.id` must already be
+// a unique upstream id. Resolves with the full JSON-RPC response object.
+function requestUpstream(session, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      session.pending.delete(message.id);
+      log(`[bridge] request timeout after ${REQUEST_TIMEOUT_MS}ms (method=${message.method ?? '?'}, id=${message.id})`);
+      reject(new Error('upstream response timeout'));
+    }, REQUEST_TIMEOUT_MS);
+    session.pending.set(message.id, { resolve, reject, timer });
+    postMessage(session, message).catch((e) => {
+      clearTimeout(timer);
+      session.pending.delete(message.id);
+      reject(e);
+    });
+  });
+}
+
+// Boot the one shared hub session using the first client's initialize params (so the negotiated protocol
+// version is whatever that real client asked for), then cache the hub's initialize result for every later
+// client. Concurrent callers share the single in-flight boot.
+function ensureShared(initParams) {
+  if (shared) return Promise.resolve(shared);
+  if (sharedBoot) return sharedBoot;
+  sharedBoot = (async () => {
+    const session = await openInternalSession();
+    const response = await requestUpstream(session, { jsonrpc: '2.0', id: nextUpstreamId++, method: 'initialize', params: initParams });
+    await postMessage(session, { jsonrpc: '2.0', method: 'notifications/initialized' });
+    shared = { session, initResult: response.result };
+    log('[bridge] shared hub session opened — all external clients multiplex onto it');
+    return shared;
+  })();
+  return sharedBoot.finally(() => {
+    sharedBoot = null;
+  });
+}
+
 function jsonResponse(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
@@ -129,72 +170,57 @@ export async function handleStreamableMcp(req, res) {
     return jsonResponse(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null });
   }
 
-  const externalSessionId = req.headers['mcp-session-id'];
-  let session;
-  let newExternalId;
+  const method = message.method;
+  const hasId = message.id !== undefined && message.id !== null;
 
-  if (externalSessionId) {
-    session = sessions.get(externalSessionId);
-    if (!session) {
-      log(`[bridge] 404 session not found (${externalSessionId.slice(0, 8)}…, method=${message.method ?? '?'}) — client holds a stale id, must re-initialize`);
-      return jsonResponse(res, 404, { jsonrpc: '2.0', error: { code: -32001, message: 'Session not found' }, id: null });
-    }
-    sessionsReused++;
-    sessions.delete(externalSessionId);
-    sessions.set(externalSessionId, session);
-  } else {
-    if (sessions.size >= MAX_SESSIONS) {
-      const lru = sessions.values().next().value;
-      if (lru) closeSession(lru, 'evicted: MAX_SESSIONS cap reached');
-    }
+  // initialize → answered locally; the first one boots the shared hub session, the rest reuse its cached result.
+  if (method === 'initialize') {
+    let s;
     try {
-      session = await openInternalSession();
+      s = await ensureShared(message.params);
     } catch (e) {
-      log(`[bridge] upstream unreachable opening session: ${e.message}`);
+      log(`[bridge] upstream unreachable booting shared session: ${e.message}`);
       return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `upstream unreachable: ${e.message}` }, id: message.id ?? null });
     }
-    newExternalId = randomBytes(16).toString('hex');
-    sessions.set(newExternalId, session);
-    sessionsOpened++;
-    log(`[bridge] session opened (${newExternalId.slice(0, 8)}…, method=${message.method ?? '?'}) — live=${sessions.size} opened=${sessionsOpened} reused=${sessionsReused}`);
+    const extId = randomBytes(16).toString('hex');
+    externalIds.add(extId);
+    res.setHeader('Mcp-Session-Id', extId);
+    return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, result: s.initResult });
   }
 
-  const hasId = message.id !== undefined && message.id !== null;
-  let waitForResponse;
-  if (hasId) {
-    waitForResponse = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        session.pending.delete(message.id);
-        log(`[bridge] request timeout after ${REQUEST_TIMEOUT_MS}ms (method=${message.method ?? '?'}, id=${message.id})`);
-        reject(new Error('upstream response timeout'));
-      }, REQUEST_TIMEOUT_MS);
-      session.pending.set(message.id, { resolve, reject, timer });
-    });
+  // Every other request must carry a session id we minted, and the shared session must still be alive.
+  const externalSessionId = req.headers['mcp-session-id'];
+  if (!externalSessionId || !externalIds.has(externalSessionId) || !shared) {
+    externalIds.delete(externalSessionId);
+    log(`[bridge] 404 session not found (${(externalSessionId ?? 'none').slice(0, 8)}…, method=${method ?? '?'}) — client must re-initialize`);
+    return jsonResponse(res, 404, { jsonrpc: '2.0', error: { code: -32001, message: 'Session not found' }, id: null });
   }
 
-  try {
-    await postMessage(session, message);
-  } catch (e) {
-    if (hasId) session.pending.delete(message.id);
-    return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `upstream error: ${e.message}` }, id: message.id ?? null });
-  }
-
-  if (newExternalId) res.setHeader('Mcp-Session-Id', newExternalId);
-
-  if (!hasId) {
+  // The client's own `notifications/initialized` is redundant — the shared session was initialized once at boot.
+  if (method === 'notifications/initialized') {
     res.writeHead(202);
     return res.end();
   }
 
+  // Notifications (no id) are fire-and-forget over the shared session.
+  if (!hasId) {
+    postMessage(shared.session, message).catch((e) => log(`[bridge] notification forward failed (${method}): ${e.message}`));
+    res.writeHead(202);
+    return res.end();
+  }
+
+  // Real request: remap id so concurrent clients never collide on one session, forward, restore the original id.
+  const origId = message.id;
   try {
-    const result = await waitForResponse;
-    jsonResponse(res, 200, result);
+    const response = await requestUpstream(shared.session, { ...message, id: nextUpstreamId++ });
+    response.id = origId;
+    return jsonResponse(res, 200, response);
   } catch (e) {
-    jsonResponse(res, 504, { jsonrpc: '2.0', error: { code: -32000, message: e.message }, id: message.id });
+    return jsonResponse(res, 504, { jsonrpc: '2.0', error: { code: -32000, message: e.message }, id: origId });
   }
 }
 
 export function terminateSession(externalSessionId) {
-  const session = sessions.get(externalSessionId);
-  if (session) closeSession(session, 'client sent DELETE /mcp');
+  // One client leaving never tears down the shared hub session — the others still multiplex onto it.
+  externalIds.delete(externalSessionId);
 }
