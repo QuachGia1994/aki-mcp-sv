@@ -22,7 +22,7 @@ The bridge represents each external claude.ai session (a **stateless** thing, ke
 - **Churn counters** `opened` / `reused`, printed only on a *new-session* event (low volume). `opened` climbing while `reused` stays low = the client is not resending the header = root cause confirmed. `opened` staying ~1–2 = reuse works and the churn is already fixed by the idle-close removal above.
 
 ## Measurement result (2026-08-08) — resolved to B
-Three real claude.ai conversations, ~4 minutes, produced `opened` climbing **1 → 17 monotonically**, one new session every ~10s, **every one `method=initialize`**. claude.ai re-sends `initialize` with **no** `Mcp-Session-Id` on a timer; it does not hold one session per conversation. So the per-session model (Option A) churns regardless of the LRU/cap hardening — the client's behaviour, not our eviction, drives the count. **Decision: Option B, implemented below.**
+Full finding record: `docs/research/claude-ai-mcp-session-reinit.md`. Three real claude.ai conversations, ~4 minutes, produced `opened` climbing **1 → 17 monotonically**, one new session every ~10s, **every one `method=initialize`**. claude.ai re-sends `initialize` with **no** `Mcp-Session-Id` on a timer; it does not hold one session per conversation. So the per-session model (Option A) churns regardless of the LRU/cap hardening — the client's behaviour, not our eviction, drives the count. **Decision: Option B, implemented below.**
 
 ## The (now-settled) decision — measure, then pick A or B
 The question was a **runtime fact only claude.ai can produce**: does its backend resend `Mcp-Session-Id`? Settled by the measurement above (it does not). Kept for the record:

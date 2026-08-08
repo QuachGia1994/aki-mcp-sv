@@ -8,4 +8,4 @@
 - [ref/security-model.md](ref/security-model.md) — the current minimal OAuth 2.1 security model (DCR skipped)
 - [ref/oauth-research-2026-08-07.md](ref/oauth-research-2026-08-07.md) — research behind the switch from token-in-URL to OAuth, with dates and sources
 - [research/chrome-cdp-default-profile-block.md](research/chrome-cdp-default-profile-block.md) — why `scripts/chrome.js` is being removed: Chrome 136 blocks remote debugging on the default profile
-- [plan/bridge-session-churn.md](plan/bridge-session-churn.md) — diagnose + fix streamable-bridge opening a new internal MCP HUB session per call instead of reusing one per real conversation
+- [research/claude-ai-mcp-session-reinit.md](research/claude-ai-mcp-session-reinit.md) — measured fact: claude.ai re-sends `initialize` with no session id every ~10s (17 hub sessions in 4 min for 3 conversations) — the evidence that forced the single-shared-session bridge
