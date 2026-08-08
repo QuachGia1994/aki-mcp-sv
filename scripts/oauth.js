@@ -3,6 +3,7 @@
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CLIENT_PATH as CLIENT_FILE, PASSPHRASE_PATH as PASSPHRASE_FILE, TOKENS_PATH as TOKENS_FILE } from './userdata.js';
+import { log } from './log.js';
 
 const CALLBACK_URI = 'https://claude.ai/api/mcp/auth_callback';
 const CODE_TTL_MS = 5 * 60 * 1000;
@@ -103,6 +104,7 @@ export async function handleAuthorize(req, res, client, passphrase, origin) {
   const state = q.get('state') || '';
 
   if (clientId !== client.clientId || redirectUri !== CALLBACK_URI || codeChallengeMethod !== 'S256' || !codeChallenge) {
+    log(`[oauth] authorize REJECTED (${req.method}): clientId_ok=${clientId === client.clientId} redirect_ok=${redirectUri === CALLBACK_URI} method=${codeChallengeMethod} hasChallenge=${!!codeChallenge}`);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end('invalid authorize request');
     return;
@@ -140,12 +142,14 @@ button[disabled] { opacity: .6; cursor: progress; }
   }
 
   if (!safeEqual(q.get('passphrase'), passphrase)) {
+    log('[oauth] authorize POST: WRONG passphrase');
     res.writeHead(401, { 'Content-Type': 'text/plain' });
     res.end('wrong passphrase');
     return;
   }
   const code = randomBytes(24).toString('hex');
   authCodes.set(code, { clientId, redirectUri, codeChallenge, expires: Date.now() + CODE_TTL_MS });
+  log(`[oauth] authorize approved -> code issued (state=${state ? 'yes' : 'no'}), redirecting to claude.ai`);
   const redirect = new URL(redirectUri);
   redirect.searchParams.set('code', code);
   redirect.searchParams.set('iss', origin);
@@ -158,44 +162,69 @@ export async function handleToken(req, res, client) {
   res.setHeader('Cache-Control', 'no-store');
   const body = new URLSearchParams(await readBody(req));
   const grantType = body.get('grant_type');
+  log(`[oauth] token request: grant_type=${grantType}`);
 
   if (!safeEqual(body.get('client_id'), client.clientId) || !safeEqual(body.get('client_secret'), client.clientSecret)) {
+    log('[oauth] token FAILED: invalid_client (client_id/secret mismatch)');
     return json(res, 401, { error: 'invalid_client' });
   }
 
   if (grantType === 'authorization_code') {
     const code = body.get('code');
     const entry = authCodes.get(code);
-    if (!entry || entry.expires < Date.now()) return json(res, 400, { error: 'invalid_grant' });
+    if (!entry || entry.expires < Date.now()) {
+      log(`[oauth] token FAILED: invalid_grant (code ${entry ? 'expired' : 'unknown'})`);
+      return json(res, 400, { error: 'invalid_grant' });
+    }
     authCodes.delete(code);
-    if (entry.redirectUri !== body.get('redirect_uri')) return json(res, 400, { error: 'invalid_grant' });
+    if (entry.redirectUri !== body.get('redirect_uri')) {
+      log('[oauth] token FAILED: invalid_grant (redirect_uri mismatch)');
+      return json(res, 400, { error: 'invalid_grant' });
+    }
     const computed = createHash('sha256').update(body.get('code_verifier') || '').digest('base64url');
-    if (computed !== entry.codeChallenge) return json(res, 400, { error: 'invalid_grant' });
-    return issueTokens(res, entry.clientId);
+    if (computed !== entry.codeChallenge) {
+      log('[oauth] token FAILED: invalid_grant (PKCE code_verifier mismatch)');
+      return json(res, 400, { error: 'invalid_grant' });
+    }
+    return issueTokens(res, entry.clientId, undefined, 'authorization_code');
   }
 
   if (grantType === 'refresh_token') {
     const entry = refreshTokens.get(body.get('refresh_token'));
-    if (!entry) return json(res, 400, { error: 'invalid_grant' });
-    return issueTokens(res, entry.clientId, body.get('refresh_token'));
+    if (!entry) {
+      log('[oauth] token FAILED: invalid_grant (unknown refresh_token — stale after tokens file reset?)');
+      return json(res, 400, { error: 'invalid_grant' });
+    }
+    return issueTokens(res, entry.clientId, body.get('refresh_token'), 'refresh_token');
   }
 
+  log(`[oauth] token FAILED: unsupported_grant_type (${grantType})`);
   return json(res, 400, { error: 'unsupported_grant_type' });
 }
 
-function issueTokens(res, clientId, existingRefresh) {
+function issueTokens(res, clientId, existingRefresh, via) {
   const accessToken = randomBytes(32).toString('hex');
   accessTokens.set(accessToken, { expires: Date.now() + ACCESS_TTL_S * 1000 });
   const refreshToken = existingRefresh || randomBytes(32).toString('hex');
   refreshTokens.set(refreshToken, { clientId });
   saveTokens();
+  log(`[oauth] tokens ISSUED via ${via} (access + refresh) — client is now authorized`);
   json(res, 200, { access_token: accessToken, token_type: 'Bearer', expires_in: ACCESS_TTL_S, refresh_token: refreshToken });
 }
 
 export function verifyBearer(authHeader) {
-  if (!authHeader?.startsWith('Bearer ')) return false;
+  if (!authHeader?.startsWith('Bearer ')) {
+    log('[oauth] bearer check FAILED: no/invalid Authorization header');
+    return false;
+  }
   const entry = accessTokens.get(authHeader.slice(7));
-  if (!entry) return false;
-  if (entry.expires < Date.now()) return false;
+  if (!entry) {
+    log('[oauth] bearer check FAILED: token not recognized (stale after tokens file reset / restart?)');
+    return false;
+  }
+  if (entry.expires < Date.now()) {
+    log('[oauth] bearer check FAILED: token expired');
+    return false;
+  }
   return true;
 }

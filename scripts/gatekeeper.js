@@ -3,6 +3,7 @@
 import http from 'node:http';
 import { loadOrCreateClient, loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken, verifyBearer } from './oauth.js';
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
+import { log, logErr } from './log.js';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 
@@ -58,7 +59,8 @@ async function serveStatic(res, urlPath) {
 
 const server = http.createServer(async (req, res) => {
   const path = (req.url || '').split('?')[0];
-  res.on('finish', () => console.log(`[gatekeeper] ${req.method} ${req.url} -> ${res.statusCode}`));
+  const t0 = Date.now();
+  res.on('finish', () => log(`[gatekeeper] ${req.method} ${req.url} -> ${res.statusCode} ${Date.now() - t0}ms`));
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -105,9 +107,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.on('error', (e) => {
-  console.error(`[gatekeeper] failed to listen on :${PUBLIC_PORT}: ${e.message}`);
+  logErr(`[gatekeeper] failed to listen on :${PUBLIC_PORT}: ${e.message}`);
   process.exit(1);
 });
 server.listen(PUBLIC_PORT, () => {
-  console.log(`[gatekeeper] listening on :${PUBLIC_PORT} -> 127.0.0.1:${UPSTREAM_PORT} (OAuth-protected /mcp)`);
+  log(`[gatekeeper] listening on :${PUBLIC_PORT} -> 127.0.0.1:${UPSTREAM_PORT} (OAuth-protected /mcp)`);
 });

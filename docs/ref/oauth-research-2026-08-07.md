@@ -104,6 +104,31 @@ Verified locally: stood up a separate test gatekeeper on another port (`19998`, 
 
 Retested for real on claude.ai after the round-7 fix (restarted `npm start`, reconnected the connector): the tools list shows all 15 tools (14 `filesystem__*` + `shell__execute`), tool calls work normally. The full chain — OAuth → Streamable HTTP shim → mcp-hub → filesystem/shell MCP server — works as designed. Full checklist: `docs/plan/init.md`.
 
+## Debug round 8 (2026-08-08) — the Funnel desync RECURS, and a bare re-push is no longer enough
+
+The round-5 failure came back in normal use: connector had worked, then after the machine ran a while every reconnect died at "Couldn't connect to the server", gatekeeper log stopping at `POST /authorize -> 302` with no `POST /token` — the round-5 signature exactly.
+
+Re-confirmed it is the same control-plane desync, not code:
+- `dig @8.8.8.8 aki-mba16.tailf23d51.ts.net` → public edge `103.84.155.153/.217`; the tailnet resolver returns the internal `100.72.70.62`. Any bare `curl https://<host>` from this Mac takes the internal WireGuard path and gives a **false 200** — always test the real path with `curl --resolve <host>:443:<public-IP>`.
+- `curl --resolve` against the public IP returned **exit 35 / http 000** (TLS handshake dies mid-way) while the internal path was 200 — desync confirmed.
+
+**What differs from round 5:** the round-5 fix (`tailscale funnel --bg 9999` to re-push) did **not** clear it this time — polled the public edge for 30s, still `000`. The reliable fix was the full reset cycle:
+
+```
+tailscale funnel --https=443 off
+tailscale serve reset
+tailscale funnel --bg 9999
+```
+
+After that cycle the public edge came up within 5s (`--resolve` → 200; `POST /token` via the public IP → 401 `invalid_client`, i.e. reached our code). So the round-5 lesson stands but the remedy is upgraded: **re-push first, and if the public `--resolve` probe is still `000` after ~30s, do the off → `serve reset` → re-enable cycle.**
+
+This is a **recurring operational failure of Tailscale Funnel on this host**, not a code regression — the OAuth server, the Streamable HTTP shim, and the session bridge are all correct. Session-lifecycle hardening done the same day (removed the 5-min idle auto-close in `scripts/streamable-bridge.js`, raised the per-request timeout, added timestamped logging in `scripts/log.js` + gatekeeper/oauth/bridge) is a separate, independent improvement — it does not fix and is not related to this desync.
+
+**Diagnostic playbook for next time (the signature is identical every time):**
+1. Symptom: `npm start` healthy, `tailscale funnel status` says "on", but claude.ai says "Couldn't connect" and the gatekeeper log stops at `POST /authorize -> 302` with no `POST /token`.
+2. Confirm with the real path, never a bare curl: `curl --resolve <host>:443:$(dig @8.8.8.8 <host> +short|head -1) https://<host>/.well-known/oauth-authorization-server` → `000`/exit 35 means desync.
+3. Fix: re-push; if still `000` after ~30s, run the off → `serve reset` → re-enable cycle above; re-probe until 200.
+
 ## Known tradeoffs, accepted for a single-user MVP
 
 - Access/refresh tokens are only stored in-memory in the gatekeeper process — restarting `npm start` loses every issued session, claude.ai needs to "Connect" again. Acceptable since it runs in the foreground, actively started/stopped by design.

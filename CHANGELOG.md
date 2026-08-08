@@ -4,6 +4,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- `scripts/agy-mcp.js`: dedicated MCP server for the `agy` CLI (wired into `mcp-hub.config.json`), replacing the generic shell route that shell-tokenized the whole command and could mis-split a multi-word `-p` prompt. Here `prompt`/`mode`/`model`/`effort`/`outputFormat` are separate `execFile` args, so no quoting step can get them wrong. Defaults to read-only mode `plan` and the fast wide-context discovery model; other modes must be opted into via `setting.json` `agy.allowedModes`, and `cwd` is enforced under an allowed root through the shared `resolveUnderRoot`.
+- `scripts/open-browser.js`: small cross-platform "open default browser" helper (`open` / `cmd start` / `xdg-open` by `process.platform`), replacing the macOS-only `execFileSync('open', ...)` call in `start.js` — no new npm dependency added.
+- `scripts/log.js`: shared timestamped logger. Gatekeeper request lines now carry an ISO timestamp + duration; `oauth.js` and `streamable-bridge.js` log each OAuth step, session open/close (with reason), stale-session 404s, and request timeouts — so a failed connect points at its exact cause instead of going silent.
+
+### Changed
+- Windows/Linux unification (`docs/plan/unify-windows-linux.md`): `package.json` `start` script no longer relies on bash-only `${VAR:-default}` syntax; `scripts/panel.js` folder picker (`osascript`, macOS-only) replaced with a manual "+ Add folder…" text input; `validatePaths` now uses `path.isAbsolute` instead of a hardcoded leading-`/` check, so Windows drive-letter paths pass; `scripts/config-page.js`'s `CLAUDE_DIR` build now uses `path.join` instead of manual `/` string concatenation; `scripts/search-mcp.js`'s path-depth sort in `walk`/`findPath` now splits on `path.sep` instead of `/`.
+- `streamable-bridge.js`: a bridge session now lives as long as its upstream SSE to mcp-hub stays open — the 5-minute idle auto-close is gone (a quiet session is not a dead one; it was silently dropping every connector left idle for a few minutes). Per-request response timeout raised 30s → 10 min (`MCP_REQUEST_TIMEOUT_MS`) so long shell runs aren't cut off; session cap raised to 256 (`MCP_MAX_SESSIONS`).
+
+### Removed
+- `scripts/chrome.js` and its 4 panel routes/UI (Chrome tab connect/restart/list/eval via CDP): macOS-only (`pgrep`, `osascript`) and already broken since Chrome 136 regardless of OS. The manual "paste this into the browser console" widen-chat-pane snippet is kept, folded into the Utilities section, since it never depended on Chrome automation.
+
 ### Fixed
 - `start.js` / `tailscale.js`: `npm start` now auto-starts Tailscale when it is stopped. `tailscale status --json` returns valid JSON even while the backend is `Stopped`, so `funnelStatus` previously reported the daemon as healthy and never brought it up — the public Funnel URL then closed every connection (`ERR_CONNECTION_CLOSED`). `funnelStatus` now reads `BackendState`, and `start.js` runs `tailscale up` before enabling the Funnel. A `NeedsLogin` state still requires manual login (surfaced in the log).
 

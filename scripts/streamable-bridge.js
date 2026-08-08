@@ -2,19 +2,17 @@
 // Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/ref/oauth-research-2026-08-07.md "Debug round 7".
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { log } from './log.js';
 
 const UPSTREAM_PORT = Number(process.env.MCP_HUB_PORT || 19999);
-const REQUEST_TIMEOUT_MS = 30000;
-const SESSION_IDLE_MS = 5 * 60 * 1000;
-const MAX_SESSIONS = 64;
+// Per-request response timeout only — how long we wait for the upstream to answer one JSON-RPC call.
+// Long tool runs (shell) legitimately exceed the old 30s; default generous, override via env. This is NOT a session lifetime.
+const REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS || 10 * 60 * 1000);
+// Sessions live as long as their upstream SSE connection is open — no idle auto-close (a quiet session is not a dead one).
+// The only bound is this hard cap against unbounded growth; the oldest is evicted when a genuinely new session would exceed it.
+const MAX_SESSIONS = Number(process.env.MCP_MAX_SESSIONS || 256);
 
 const sessions = new Map();
-
-// Bound live upstream sessions (idle-close + hard cap); else they pile up all run and dump every disconnect line into the terminal at once on Ctrl+C.
-function touch(session) {
-  clearTimeout(session.idleTimer);
-  session.idleTimer = setTimeout(() => closeSession(session), SESSION_IDLE_MS);
-}
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -56,8 +54,7 @@ function parseSseChunk(session, chunk) {
   }
 }
 
-function closeSession(session) {
-  clearTimeout(session.idleTimer);
+function closeSession(session, reason = 'unspecified') {
   for (const { reject, timer } of session.pending.values()) {
     clearTimeout(timer);
     reject(new Error('upstream session closed'));
@@ -65,11 +62,12 @@ function closeSession(session) {
   session.pending.clear();
   session.sseReq?.destroy();
   for (const [extId, s] of sessions) if (s === session) sessions.delete(extId);
+  log(`[bridge] session closed (${reason}) — live sessions: ${sessions.size}`);
 }
 
 function openInternalSession() {
   return new Promise((resolve, reject) => {
-    const session = { internalSessionId: null, pending: new Map(), buffer: '', sseReq: null, onEndpoint: null, idleTimer: null };
+    const session = { internalSessionId: null, pending: new Map(), buffer: '', sseReq: null, onEndpoint: null };
     const req = http.request(
       { host: '127.0.0.1', port: UPSTREAM_PORT, path: '/mcp', method: 'GET', headers: { Accept: 'text/event-stream' } },
       (res) => {
@@ -79,8 +77,8 @@ function openInternalSession() {
           resolve(session);
         };
         res.on('data', (chunk) => parseSseChunk(session, chunk));
-        res.on('end', () => closeSession(session));
-        res.on('error', () => closeSession(session));
+        res.on('end', () => closeSession(session, 'upstream SSE ended (hub closed/restarted)'));
+        res.on('error', (e) => closeSession(session, `upstream SSE error: ${e.message}`));
       },
     );
     req.on('error', reject);
@@ -129,21 +127,25 @@ export async function handleStreamableMcp(req, res) {
 
   if (externalSessionId) {
     session = sessions.get(externalSessionId);
-    if (!session) return jsonResponse(res, 404, { jsonrpc: '2.0', error: { code: -32001, message: 'Session not found' }, id: null });
+    if (!session) {
+      log(`[bridge] 404 session not found (${externalSessionId.slice(0, 8)}…, method=${message.method ?? '?'}) — client holds a stale id, must re-initialize`);
+      return jsonResponse(res, 404, { jsonrpc: '2.0', error: { code: -32001, message: 'Session not found' }, id: null });
+    }
   } else {
     if (sessions.size >= MAX_SESSIONS) {
       const oldest = sessions.values().next().value;
-      if (oldest) closeSession(oldest);
+      if (oldest) closeSession(oldest, 'evicted: MAX_SESSIONS cap reached');
     }
     try {
       session = await openInternalSession();
     } catch (e) {
+      log(`[bridge] upstream unreachable opening session: ${e.message}`);
       return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `upstream unreachable: ${e.message}` }, id: message.id ?? null });
     }
     newExternalId = randomBytes(16).toString('hex');
     sessions.set(newExternalId, session);
+    log(`[bridge] session opened (${newExternalId.slice(0, 8)}…, method=${message.method ?? '?'}) — live sessions: ${sessions.size}`);
   }
-  touch(session);
 
   const hasId = message.id !== undefined && message.id !== null;
   let waitForResponse;
@@ -151,6 +153,7 @@ export async function handleStreamableMcp(req, res) {
     waitForResponse = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         session.pending.delete(message.id);
+        log(`[bridge] request timeout after ${REQUEST_TIMEOUT_MS}ms (method=${message.method ?? '?'}, id=${message.id})`);
         reject(new Error('upstream response timeout'));
       }, REQUEST_TIMEOUT_MS);
       session.pending.set(message.id, { resolve, reject, timer });
@@ -181,5 +184,5 @@ export async function handleStreamableMcp(req, res) {
 
 export function terminateSession(externalSessionId) {
   const session = sessions.get(externalSessionId);
-  if (session) closeSession(session);
+  if (session) closeSession(session, 'client sent DELETE /mcp');
 }
