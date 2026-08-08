@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Orchestrates mcp-hub + gatekeeper behind 1 `npm start`; foreground by design, manual stop/start only
 import { spawn, execFileSync } from 'node:child_process';
-import { funnelStatus, enableFunnel } from './tailscale.js';
+import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
@@ -19,12 +19,19 @@ console.log(`[start] config & keys: ${USER_DIR}`);
 const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();
 
-const tailscale = await funnelStatus(gatePort);
+let tailscale = await funnelStatus(gatePort);
 if (!tailscale.installed) {
   console.error('[start] could not run `tailscale` — check it is installed and logged in: https://tailscale.com/download');
-} else if (!tailscale.funnel) {
-  const { ok, out } = await enableFunnel(gatePort);
-  console[ok ? 'log' : 'error'](`[start] enabling funnel ${gatePort}: ${ok ? 'done' : out.trim()}`);
+} else {
+  if (!tailscale.running) {
+    const { ok, out } = await bringUp();
+    console[ok ? 'log' : 'error'](`[start] tailscale was stopped, starting it: ${ok ? 'done' : out.trim()}`);
+    tailscale = await funnelStatus(gatePort);
+  }
+  if (tailscale.running && !tailscale.funnel) {
+    const { ok, out } = await enableFunnel(gatePort);
+    console[ok ? 'log' : 'error'](`[start] enabling funnel ${gatePort}: ${ok ? 'done' : out.trim()}`);
+  }
 }
 
 const origin = tailscale.host ? `https://${tailscale.host}` : null;

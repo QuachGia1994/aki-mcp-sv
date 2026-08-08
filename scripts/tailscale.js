@@ -22,16 +22,19 @@ async function query(args) {
 
 export async function funnelStatus(gatePort) {
   const status = await query(['status', '--json']);
-  if (!status) return { installed: false, host: null, funnel: false };
+  if (!status) return { installed: false, running: false, host: null, funnel: false };
 
   const host = (status.Self?.DNSName || '').replace(/\.$/, '') || null;
+  const running = status.BackendState === 'Running';
   const funnel = await query(['funnel', 'status', '--json']);
   const served = Object.entries(funnel?.Web ?? {}).some(
     ([target, cfg]) =>
       funnel.AllowFunnel?.[target] &&
       Object.values(cfg.Handlers ?? {}).some((h) => h.Proxy?.endsWith(`:${gatePort}`)),
   );
-  return { installed: true, host, funnel: served };
+  return { installed: true, running, host, funnel: served };
 }
 
 export const enableFunnel = (gatePort) => run(['funnel', '--bg', String(gatePort)]);
+
+export const bringUp = () => run(['up']);
