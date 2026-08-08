@@ -12,10 +12,20 @@ const parsed = (process.env.MCP_DATA_DIR || os.homedir())
 export const ROOTS = parsed.length ? parsed : [path.resolve(os.homedir())];
 export const ROOT = ROOTS[0];
 
+function containedIn(abs, root) {
+  // Windows paths are case-insensitive; drive letter casing from different APIs must not bypass the boundary.
+  if (process.platform === 'win32') {
+    const a = abs.toLowerCase();
+    const r = root.toLowerCase();
+    return a === r || a.startsWith(r + path.sep.toLowerCase());
+  }
+  return abs === root || abs.startsWith(root + path.sep);
+}
+
 export function resolveUnderRoot(target) {
   if (!target) return ROOT;
   const abs = path.isAbsolute(target) ? path.resolve(target) : path.resolve(ROOT, target);
-  const allowed = ROOTS.some((root) => abs === root || abs.startsWith(root + path.sep));
+  const allowed = ROOTS.some((root) => containedIn(abs, root));
   if (!allowed) {
     throw new Error(`path is outside the allowed roots: ${ROOTS.join(', ')}`);
   }

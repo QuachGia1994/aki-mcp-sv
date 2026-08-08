@@ -81,6 +81,8 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 p.sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; line-height: 1.6; }
 section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+h3.subh { font-size: 13px; margin: 16px 0 8px; color: var(--fg); font-weight: 600; }
+h3.subh:first-of-type { margin-top: 4px; }
 .hint { color: var(--muted); font-size: 12.5px; line-height: 1.7; margin: 0 0 10px; }
 .row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px; }
 .row label { color: var(--muted); font-size: 13px; }
@@ -138,8 +140,8 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 <h1>${esc(MCP_NAME)}</h1>
 <p class="sub">Local panel (127.0.0.1) — never goes through Funnel, never reaches the internet.<br>Running repo: <span class="mono">${esc(repoRoot)}</span> · Your config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
 
-<section><h2>1 · Tailscale — how claude.ai reaches this machine</h2>
-<p class="hint">claude.ai needs an address to call your machine. Two steps below, one time only.</p>
+<section><h2>1 · Tailscale — how clients reach this machine</h2>
+<p class="hint">Claude.ai and ChatGPT need an address to call your machine. Two steps below, one time only.</p>
 <ol class="steps">
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
   <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet — free on every plan. <code>npm start</code> enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
@@ -147,7 +149,10 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 </section>
 
-<section id="connector"><h2>2 · Connector — paste into claude.ai</h2>
+<section id="connector"><h2>2 · Connectors — Claude + ChatGPT</h2>
+<p class="hint">Same Funnel URL for both. Folders / shell allowlist apply to whoever connects.</p>
+
+<h3 class="subh">Claude.ai</h3>
 <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
 ${field('MCP Name', MCP_NAME, false)}
 ${field('MCP URL', url)}
@@ -155,10 +160,18 @@ ${field('OAuth Client ID', client.clientId)}
 ${field('OAuth Client Secret', client.clientSecret)}
 ${field('Passphrase', passphrase)}
 <div class="acts"><button class="primary" data-act="copyAll">Copy all 5 values</button><span class="msg" id="msgConn"></span></div>
+
+<h3 class="subh">ChatGPT (Plus / Pro — Developer mode)</h3>
+<ol class="steps">
+  <li>ChatGPT → Settings → Apps &amp; Connectors (or Security) → turn on <strong>Developer mode</strong>.</li>
+  <li>Create a custom connector / app → paste <strong>MCP URL</strong> above (<code>…/mcp</code>). Auth: <strong>OAuth</strong> (ChatGPT registers itself — no Client ID/Secret paste).</li>
+  <li>When the browser opens the confirm page, enter the same <strong>Passphrase</strong>.</li>
+</ol>
+<p class="hint">Needs a paid ChatGPT plan with custom connectors. Write tools may be limited on Plus/Pro depending on OpenAI’s current policy.</p>
 </section>
 
-<section><h2>3 · Folders Claude is allowed to reach</h2>
-<p class="hint">Anything outside this list is fully off-limits to Claude.</p>
+<section><h2>3 · Folders the connector may reach</h2>
+<p class="hint">Anything outside this list is fully off-limits (Claude and ChatGPT share this list).</p>
 <div class="pathlist" id="paths"></div>
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>

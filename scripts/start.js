@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
@@ -14,6 +15,11 @@ const hubPort = process.env.MCP_HUB_PORT || '19999';
 const gatePort = process.env.GATEKEEPER_PORT || '9999';
 const panelPort = process.env.PANEL_PORT || '9998';
 const panelToken = randomBytes(16).toString('hex');
+const home = process.env.HOME || os.homedir();
+// HOME must be explicit: Windows does not set it, and the hub config's `${HOME}` placeholders resolve from the child env.
+const env = { ...process.env, HOME: home, USERPROFILE: process.env.USERPROFILE || home, MCP_DATA_DIR: dataDir };
+
+const spawnNode = (args, opts) => spawn(process.execPath, args, { stdio: 'inherit', windowsHide: true, ...opts });
 
 console.log(`[start] config & keys: ${USER_DIR}`);
 
@@ -51,12 +57,12 @@ let hub;
 let shuttingDown = false;
 
 function spawnHub() {
-  const child = spawn('npx', ['mcp-hub', '--port', hubPort, '--config', HUB_CONFIG_PATH], {
-    stdio: 'inherit',
-    env: { ...process.env, MCP_DATA_DIR: dataDir },
-  });
+  // Resolved and run through `node` directly so Windows never has to locate `npx.cmd`.
+  const cli = createRequire(import.meta.url).resolve('mcp-hub/dist/cli.js');
+  const child = spawnNode([cli, '--port', hubPort, '--config', HUB_CONFIG_PATH], { env });
   // Only an unexpected death tears the stack down; a restart detaches the old child first.
   child.on('exit', () => child === hub && shutdown());
+  child.on('error', (e) => console.error(`[start] mcp-hub failed to start: ${e.message}`));
   hub = child;
 }
 
@@ -68,10 +74,10 @@ function restartHub() {
 }
 
 spawnHub();
-const gate = spawn('node', ['./scripts/gatekeeper.js'], {
-  stdio: 'inherit',
-  env: { ...process.env, MCP_HUB_PORT: hubPort, GATEKEEPER_PORT: gatePort, PUBLIC_ORIGIN: origin || '' },
+const gate = spawnNode(['./scripts/gatekeeper.js'], {
+  env: { ...env, MCP_HUB_PORT: hubPort, GATEKEEPER_PORT: gatePort, PUBLIC_ORIGIN: origin || '' },
 });
+gate.on('error', (e) => console.error(`[start] gatekeeper failed to start: ${e.message}`));
 
 const panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;

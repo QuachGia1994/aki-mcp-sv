@@ -1,11 +1,20 @@
 #!/usr/bin/env node
-// Minimal OAuth 2.1 authorization server, DCR skipped via pre-registered client — rationale: docs/ref/security-model.md
+// Minimal OAuth 2.1 authorization server.
+// Claude: pre-registered confidential client (paste Client ID/Secret), or DCR if it self-registers.
+// ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { CLIENT_PATH as CLIENT_FILE, PASSPHRASE_PATH as PASSPHRASE_FILE, TOKENS_PATH as TOKENS_FILE } from './userdata.js';
+import {
+  CLIENT_PATH as CLIENT_FILE,
+  DCR_CLIENTS_PATH as DCR_FILE,
+  PASSPHRASE_PATH as PASSPHRASE_FILE,
+  TOKENS_PATH as TOKENS_FILE,
+} from './userdata.js';
 import { log } from './log.js';
 
-const CALLBACK_URI = 'https://claude.ai/api/mcp/auth_callback';
+const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
+const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
+const CHATGPT_CALLBACK_PREFIX = 'https://chatgpt.com/connector/oauth/';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
@@ -15,6 +24,12 @@ const PASSPHRASE_LENGTH = 10; // 32^10 = 2^50 — brute-force still infeasible o
 const authCodes = new Map();
 const accessTokens = new Map();
 const refreshTokens = new Map();
+
+function isAllowedRedirect(uri) {
+  if (typeof uri !== 'string' || !uri) return false;
+  if (uri === CLAUDE_CALLBACK || uri === CHATGPT_LEGACY_CALLBACK) return true;
+  return uri.startsWith(CHATGPT_CALLBACK_PREFIX);
+}
 
 // Tokens survive restarts: the connector is a long-lived file-access grant, and losing it on every
 // `npm start` forces a full re-authorize (passphrase) instead of the silent refresh the flow supports.
@@ -45,6 +60,36 @@ export function loadOrCreateClient() {
   return creds;
 }
 
+function loadDcrClients() {
+  if (!existsSync(DCR_FILE)) return {};
+  try {
+    return JSON.parse(readFileSync(DCR_FILE, 'utf8'));
+  } catch (e) {
+    console.error(`[oauth] ignoring malformed ${DCR_FILE}: ${e.message}`);
+    return {};
+  }
+}
+
+function saveDcrClients(map) {
+  writeFileSync(DCR_FILE, JSON.stringify(map, null, 2), { mode: 0o600 });
+}
+
+/** Static Claude client + any clients ChatGPT (or Claude) registered via /register. */
+export function resolveClient(clientId) {
+  if (!clientId) return null;
+  const staticClient = loadOrCreateClient();
+  if (clientId === staticClient.clientId) {
+    return {
+      clientId: staticClient.clientId,
+      clientSecret: staticClient.clientSecret,
+      redirectUris: [CLAUDE_CALLBACK],
+      tokenEndpointAuthMethod: 'client_secret_post',
+    };
+  }
+  const dcr = loadDcrClients()[clientId];
+  return dcr || null;
+}
+
 export function loadOrCreatePassphrase() {
   if (existsSync(PASSPHRASE_FILE)) return readFileSync(PASSPHRASE_FILE, 'utf8').trim();
   const bytes = randomBytes(PASSPHRASE_LENGTH);
@@ -69,7 +114,7 @@ function readBody(req) {
 }
 
 function json(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(body));
 }
 
@@ -83,8 +128,9 @@ export function metadataHandlers(origin) {
         issuer: origin,
         authorization_endpoint: `${origin}/authorize`,
         token_endpoint: `${origin}/token`,
+        registration_endpoint: `${origin}/register`,
         code_challenge_methods_supported: ['S256'],
-        token_endpoint_auth_methods_supported: ['client_secret_post'],
+        token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'],
         authorization_response_iss_parameter_supported: true,
@@ -93,7 +139,49 @@ export function metadataHandlers(origin) {
   };
 }
 
-export async function handleAuthorize(req, res, client, passphrase, origin) {
+// RFC 7591 — ChatGPT calls this once per connector instance. Only Claude/ChatGPT redirect URIs are accepted.
+export async function handleRegister(req, res) {
+  let body;
+  try {
+    body = JSON.parse(await readBody(req) || '{}');
+  } catch {
+    return json(res, 400, { error: 'invalid_client_metadata' });
+  }
+  const redirectUris = body.redirect_uris;
+  if (!Array.isArray(redirectUris) || !redirectUris.length || !redirectUris.every(isAllowedRedirect)) {
+    return json(res, 400, { error: 'invalid_redirect_uri' });
+  }
+  const authMethod = body.token_endpoint_auth_method || 'none';
+  if (authMethod !== 'none' && authMethod !== 'client_secret_post') {
+    return json(res, 400, { error: 'invalid_client_metadata' });
+  }
+
+  const clientId = randomBytes(16).toString('hex');
+  const clientSecret = authMethod === 'client_secret_post' ? randomBytes(32).toString('hex') : null;
+  const entry = {
+    clientId,
+    clientSecret,
+    redirectUris,
+    tokenEndpointAuthMethod: authMethod,
+    clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP client',
+  };
+  const map = loadDcrClients();
+  map[clientId] = entry;
+  saveDcrClients(map);
+
+  const resp = {
+    client_id: clientId,
+    client_name: entry.clientName,
+    redirect_uris: redirectUris,
+    token_endpoint_auth_method: authMethod,
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+  };
+  if (clientSecret) resp.client_secret = clientSecret;
+  return json(res, 201, resp);
+}
+
+export async function handleAuthorize(req, res, passphrase, origin) {
   res.setHeader('Cache-Control', 'no-store');
   const url = new URL(req.url, 'http://internal');
   const q = req.method === 'GET' ? url.searchParams : new URLSearchParams(await readBody(req));
@@ -102,9 +190,10 @@ export async function handleAuthorize(req, res, client, passphrase, origin) {
   const codeChallenge = q.get('code_challenge');
   const codeChallengeMethod = q.get('code_challenge_method');
   const state = q.get('state') || '';
+  const client = resolveClient(clientId);
 
-  if (clientId !== client.clientId || redirectUri !== CALLBACK_URI || codeChallengeMethod !== 'S256' || !codeChallenge) {
-    log(`[oauth] authorize REJECTED (${req.method}): clientId_ok=${clientId === client.clientId} redirect_ok=${redirectUri === CALLBACK_URI} method=${codeChallengeMethod} hasChallenge=${!!codeChallenge}`);
+  if (!client || !client.redirectUris.includes(redirectUri) || codeChallengeMethod !== 'S256' || !codeChallenge) {
+    log(`[oauth] authorize REJECTED (${req.method}): client_ok=${!!client} redirect_ok=${!!client && client.redirectUris.includes(redirectUri)} method=${codeChallengeMethod} hasChallenge=${!!codeChallenge}`);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end('invalid authorize request');
     return;
@@ -158,14 +247,23 @@ button[disabled] { opacity: .6; cursor: progress; }
   res.end();
 }
 
-export async function handleToken(req, res, client) {
+function authenticateClient(body) {
+  const client = resolveClient(body.get('client_id'));
+  if (!client) return null;
+  if (client.tokenEndpointAuthMethod === 'none') return client;
+  if (!safeEqual(body.get('client_secret'), client.clientSecret || '')) return null;
+  return client;
+}
+
+export async function handleToken(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const body = new URLSearchParams(await readBody(req));
   const grantType = body.get('grant_type');
   log(`[oauth] token request: grant_type=${grantType}`);
 
-  if (!safeEqual(body.get('client_id'), client.clientId) || !safeEqual(body.get('client_secret'), client.clientSecret)) {
-    log('[oauth] token FAILED: invalid_client (client_id/secret mismatch)');
+  const client = authenticateClient(body);
+  if (!client) {
+    log('[oauth] token FAILED: invalid_client (unknown client_id or secret mismatch)');
     return json(res, 401, { error: 'invalid_client' });
   }
 
@@ -177,6 +275,10 @@ export async function handleToken(req, res, client) {
       return json(res, 400, { error: 'invalid_grant' });
     }
     authCodes.delete(code);
+    if (entry.clientId !== client.clientId) {
+      log('[oauth] token FAILED: invalid_grant (code was issued to a different client)');
+      return json(res, 400, { error: 'invalid_grant' });
+    }
     if (entry.redirectUri !== body.get('redirect_uri')) {
       log('[oauth] token FAILED: invalid_grant (redirect_uri mismatch)');
       return json(res, 400, { error: 'invalid_grant' });
@@ -191,8 +293,8 @@ export async function handleToken(req, res, client) {
 
   if (grantType === 'refresh_token') {
     const entry = refreshTokens.get(body.get('refresh_token'));
-    if (!entry) {
-      log('[oauth] token FAILED: invalid_grant (unknown refresh_token — stale after tokens file reset?)');
+    if (!entry || entry.clientId !== client.clientId) {
+      log(`[oauth] token FAILED: invalid_grant (${entry ? 'refresh_token belongs to another client' : 'unknown refresh_token — stale after tokens file reset?'})`);
       return json(res, 400, { error: 'invalid_grant' });
     }
     return issueTokens(res, entry.clientId, body.get('refresh_token'), 'refresh_token');
