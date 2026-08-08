@@ -87,11 +87,12 @@ class Shell {
 
 const shell = new Shell();
 
-const server = new McpServer({ name: 'shell', version: '1.0.0' });
+const server = new McpServer({ name: 'shell', version: '1.0.0', title: 'Shell' });
 
 server.registerTool(
   'run_cmd',
   {
+    title: 'Run Command',
     description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, find, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Pass cwd (absolute path under one of ${ROOTS.join(', ')}, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
     inputSchema: { command: z.string(), cwd: z.string().optional() },
   },

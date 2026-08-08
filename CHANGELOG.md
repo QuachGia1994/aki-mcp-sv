@@ -10,6 +10,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - `scripts/log.js`: shared timestamped logger. Gatekeeper request lines now carry an ISO timestamp + duration; `oauth.js` and `streamable-bridge.js` log each OAuth step, session open/close (with reason), stale-session 404s, and request timeouts — so a failed connect points at its exact cause instead of going silent.
 
 ### Changed
+- `agy-mcp.js`, `search-mcp.js`, `shell-mcp.js`: each MCP server and tool now advertises a human-readable `title` ("Antigravity CLI", "File Index" / "Find Path" / "Search Content", "Shell" / "Run Command"), so the connector UI lists them by name instead of by bare protocol id.
 - Windows/Linux unification (`docs/plan/unify-windows-linux.md`): `package.json` `start` script no longer relies on bash-only `${VAR:-default}` syntax; `scripts/panel.js` folder picker (`osascript`, macOS-only) replaced with a manual "+ Add folder…" text input; `validatePaths` now uses `path.isAbsolute` instead of a hardcoded leading-`/` check, so Windows drive-letter paths pass; `scripts/config-page.js`'s `CLAUDE_DIR` build now uses `path.join` instead of manual `/` string concatenation; `scripts/search-mcp.js`'s path-depth sort in `walk`/`findPath` now splits on `path.sep` instead of `/`.
 - `streamable-bridge.js`: per-request response timeout raised 30s → 10 min (`MCP_REQUEST_TIMEOUT_MS`) so long shell runs aren't cut off. (The 5-minute idle auto-close and the per-client session model it belonged to are gone entirely — see the single-session rewrite under Fixed.)
 

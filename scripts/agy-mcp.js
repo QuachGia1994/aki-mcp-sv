@@ -42,11 +42,12 @@ function run(args, cwd) {
   });
 }
 
-const server = new McpServer({ name: 'agy', version: '1.0.0' });
+const server = new McpServer({ name: 'agy', version: '1.0.0', title: 'Antigravity CLI' });
 
 server.registerTool(
   'agy_run',
   {
+    title: 'Antigravity CLI',
     description:
       'Run the agy CLI for read-only retrieval, never judgment (akiflow/harness-facts.md § Model tiers). ' +
       `Defaults to mode "plan" (read-only by mechanism) and model "${DEFAULT_MODEL}" (fast, wide-context discovery tier). ` +

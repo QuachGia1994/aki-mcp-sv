@@ -82,11 +82,12 @@ function searchContent(query, from, glob, limit) {
 const ok = (text) => ({ content: [{ type: 'text', text }] });
 const fail = (e) => ({ content: [{ type: 'text', text: `rejected: ${e.message}` }], isError: true });
 
-const server = new McpServer({ name: 'search', version: '1.0.0' });
+const server = new McpServer({ name: 'search', version: '1.0.0', title: 'File Index' });
 
 server.registerTool(
   'find_path',
   {
+    title: 'Find Path',
     description: `Find files AND directories anywhere under ${ROOT} in one call — use this first when locating a project, repo, or file by name, instead of walking directories one level at a time. query is a case-insensitive substring by default ("mcp" finds aki-mcp-sv), or a glob when it contains * or ? ("*.config.js", "src/**/*.ts"). Globs without a slash match the basename. Skips node_modules/.git/build output automatically. Directories come back with a trailing slash.`,
     inputSchema: {
       query: z.string(),
@@ -106,6 +107,7 @@ server.registerTool(
 server.registerTool(
   'search_content',
   {
+    title: 'Search Content',
     description: `Search file contents recursively under ${ROOT} and return file:line:text. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
     inputSchema: {
       query: z.string(),
