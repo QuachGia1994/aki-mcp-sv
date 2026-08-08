@@ -9,6 +9,7 @@ export const USER_DIR = path.join(os.homedir(), '.aki', 'mcpsv');
 export const SETTINGS_PATH = path.join(USER_DIR, 'setting.json');
 export const HUB_CONFIG_PATH = path.join(USER_DIR, 'mcp-hub.config.json');
 export const CLIENT_PATH = path.join(USER_DIR, 'oauth-client.json');
+export const DCR_CLIENTS_PATH = path.join(USER_DIR, 'oauth-dcr-clients.json');
 export const PASSPHRASE_PATH = path.join(USER_DIR, 'passphrase.txt');
 export const TOKENS_PATH = path.join(USER_DIR, 'tokens.json');
 

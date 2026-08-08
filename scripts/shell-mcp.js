@@ -8,7 +8,9 @@ import { loadAllowlist } from './allowlist.js';
 import { ROOT, ROOTS, resolveUnderRoot } from './roots.js';
 
 class Shell {
-  static DANGEROUS_CHARS = /[;&|`$<>\n\\]/;
+  // Backslash is escape/chaining on Unix but the normal path separator on Windows — only treat it as dangerous off-Windows.
+  // No backslash: `execFile` never spawns a shell, so it is an inert literal everywhere and a path separator on Windows.
+  static DANGEROUS_CHARS = /[;&|`$<>\n]/;
 
   // Quotes group an argument and are then stripped, as a shell would. Splitting on whitespace alone left them in the argv, so `find -name "*.ts"` silently searched for a name containing quote marks.
   static tokenize(command) {
@@ -62,7 +64,7 @@ class Shell {
 
   run(bin, args, cwd) {
     return new Promise((resolve) => {
-      execFile(bin, args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      execFile(bin, args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
         if (err) {
           resolve({ content: [{ type: 'text', text: stderr || err.message }], isError: true });
         } else {

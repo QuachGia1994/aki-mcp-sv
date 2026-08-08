@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 
 const run = (args) =>
   new Promise((resolve) =>
-    execFile('tailscale', args, { timeout: 8000 }, (err, stdout, stderr) =>
+    execFile('tailscale', args, { timeout: 8000, windowsHide: true }, (err, stdout, stderr) =>
       resolve({ ok: !err, out: err ? stderr || err.message : stdout }),
     ),
   );

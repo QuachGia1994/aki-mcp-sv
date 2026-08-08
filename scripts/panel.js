@@ -10,6 +10,7 @@ import { loadAllowlist, readSettings } from './allowlist.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
 
+const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
 const PUBLIC_DIR = path.join(REPO_ROOT, 'public');
 const RULES_DIR = path.join(os.homedir(), '.aki', 'akidevrule');
@@ -22,7 +23,13 @@ const MIME = { '.ico': 'image/x-icon', '.png': 'image/png', '.svg': 'image/svg+x
 const readJson = (file, fallback) => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : fallback);
 
 // Shows placeholders expanded and saves back what it shows: a folder list is only checkable if it reads as real folders.
-const expandPath = (p, dataDir) => p.replace(/\$\{MCP_DATA_DIR\}/g, dataDir).replace(/\$\{HOME\}/g, os.homedir());
+const expandPath = (p, dataDir) =>
+  p
+    .replace(/\$\{MCP_DATA_DIR\}/g, dataDir)
+    .replace(/\$\{HOME\}/g, os.homedir())
+    .replace(/\$\{userHome\}/g, os.homedir())
+    .replace(/\$\{pathSeparator\}/g, path.sep)
+    .replace(/\$\{\/\}/g, path.sep);
 
 function filesystemPaths(dataDir) {
   return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(2).map((p) => expandPath(p, dataDir));
@@ -53,7 +60,7 @@ function validatePaths(paths) {
   if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && path.isAbsolute(p))) {
     throw new Error('folder list must be absolute paths');
   }
-  return paths;
+  return paths.map((p) => path.normalize(p));
 }
 
 function setShellAllowlist(allowlist) {
@@ -64,7 +71,7 @@ function setShellAllowlist(allowlist) {
 
 function run(command, args, cwd) {
   return new Promise((resolve, reject) => {
-    execFile(command, args, { cwd, timeout: 180_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) =>
+    execFile(command, args, { cwd, timeout: 180_000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) =>
       err ? reject(new Error(stderr || err.message)) : resolve(stdout || stderr || '(no output)'),
     );
   });
@@ -84,8 +91,16 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  const log = await run('bash', [path.join(repo, 'install.sh')], repo);
-  return `${log.trim().split('\n').pop()} (source: ${repo})`;
+  const bash = IS_WIN ? 'bash.exe' : 'bash';
+  try {
+    const log = await run(bash, [path.join(repo, 'install.sh')], repo);
+    return `${log.trim().split('\n').pop()} (source: ${repo})`;
+  } catch (e) {
+    if (IS_WIN && /ENOENT|not found|not recognized/i.test(e.message)) {
+      throw new Error('bash not found — install Git for Windows (includes bash) or run the install command from the panel manually');
+    }
+    throw e;
+  }
 }
 
 const readBody = (req) =>
