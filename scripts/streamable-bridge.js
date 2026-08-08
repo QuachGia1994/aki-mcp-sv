@@ -12,7 +12,15 @@ const REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS || 10 * 60 
 // The only bound is this hard cap against unbounded growth; the oldest is evicted when a genuinely new session would exceed it.
 const MAX_SESSIONS = Number(process.env.MCP_MAX_SESSIONS || 256);
 
+// Insertion order in this Map doubles as recency order: a reused session is re-inserted (moved to the
+// end) so the eviction victim at .values().next() is genuinely the least-recently-used, not merely the
+// oldest-created (which is usually the main long-lived conversation — the worst one to drop).
 const sessions = new Map();
+// Churn diagnostic (docs/plan/bridge-session-churn.md): `opened` should track the real conversation
+// count. `opened` climbing while `reused` stays low means the client is NOT resending Mcp-Session-Id,
+// so every call spawns a throwaway hub session — the root cause behind the mass disconnect log.
+let sessionsOpened = 0;
+let sessionsReused = 0;
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -131,10 +139,13 @@ export async function handleStreamableMcp(req, res) {
       log(`[bridge] 404 session not found (${externalSessionId.slice(0, 8)}…, method=${message.method ?? '?'}) — client holds a stale id, must re-initialize`);
       return jsonResponse(res, 404, { jsonrpc: '2.0', error: { code: -32001, message: 'Session not found' }, id: null });
     }
+    sessionsReused++;
+    sessions.delete(externalSessionId);
+    sessions.set(externalSessionId, session);
   } else {
     if (sessions.size >= MAX_SESSIONS) {
-      const oldest = sessions.values().next().value;
-      if (oldest) closeSession(oldest, 'evicted: MAX_SESSIONS cap reached');
+      const lru = sessions.values().next().value;
+      if (lru) closeSession(lru, 'evicted: MAX_SESSIONS cap reached');
     }
     try {
       session = await openInternalSession();
@@ -144,7 +155,8 @@ export async function handleStreamableMcp(req, res) {
     }
     newExternalId = randomBytes(16).toString('hex');
     sessions.set(newExternalId, session);
-    log(`[bridge] session opened (${newExternalId.slice(0, 8)}…, method=${message.method ?? '?'}) — live sessions: ${sessions.size}`);
+    sessionsOpened++;
+    log(`[bridge] session opened (${newExternalId.slice(0, 8)}…, method=${message.method ?? '?'}) — live=${sessions.size} opened=${sessionsOpened} reused=${sessionsReused}`);
   }
 
   const hasId = message.id !== undefined && message.id !== null;
