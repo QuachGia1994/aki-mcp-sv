@@ -1,0 +1,90 @@
+#!/usr/bin/env node
+// Dedicated MCP for the `agy` CLI. Previously routed through the generic shell tool, which has to
+// shell-tokenize the whole command string and can mis-split a multi-word -p prompt. Here prompt/model/mode
+// are separate execFile args from the start, so no tokenizing/quoting step exists to get wrong. Modes are
+// allowlisted the same way shell subcommands are — see allowlist.js for the shared settings.json pattern.
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { execFile } from 'node:child_process';
+import { z } from 'zod';
+import { readSettings } from './allowlist.js';
+import { resolveUnderRoot } from './roots.js';
+
+// 'plan' is agy's non-mutating mode — the only one enabled out of the box. Anything else must be
+// explicitly opted into via setting.json -> { "agy": { "allowedModes": [...] } }.
+const DEFAULT_MODES = ['plan'];
+// Discovery-tier default per akiflow/harness-facts.md: fastest wide-context tier, generous quota.
+const DEFAULT_MODEL = 'gemini-3.6-flash-medium';
+
+function loadAllowedModes() {
+  const configured = readSettings().agy?.allowedModes;
+  return Array.isArray(configured) && configured.length ? configured : DEFAULT_MODES;
+}
+
+function run(args, cwd) {
+  return new Promise((resolve) => {
+    execFile('agy', args, { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        // agy writes its own errors to stdout, not stderr — check stdout first or real failures show up
+        // as Node's generic "Command failed: <cmd>" with no explanation (see shell-mcp.js's same bug).
+        return resolve({ content: [{ type: 'text', text: stdout || stderr || err.message }], isError: true });
+      }
+      // agy headless can't prompt for permission: a denied action auto-fails but still exits 0 with an
+      // empty response (harness-facts.md § Cross-CLI worker). Treat empty stdout as inconclusive, not clean.
+      if (!stdout || !stdout.trim()) {
+        return resolve({
+          content: [{ type: 'text', text: 'agy returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.' }],
+          isError: true,
+        });
+      }
+      resolve({ content: [{ type: 'text', text: stdout }] });
+    });
+  });
+}
+
+const server = new McpServer({ name: 'agy', version: '1.0.0' });
+
+server.registerTool(
+  'agy_run',
+  {
+    description:
+      'Run the agy CLI for read-only retrieval, never judgment (akiflow/harness-facts.md § Model tiers). ' +
+      `Defaults to mode "plan" (read-only by mechanism) and model "${DEFAULT_MODEL}" (fast, wide-context discovery tier). ` +
+      'Other modes must be allowlisted in setting.json under agy.allowedModes before use. Name exact paths and the exact ' +
+      "output shape in the prompt — agy's workspace index can resolve files outside cwd, so cwd is not a hard scope boundary. " +
+      'prompt is passed straight to agy as one argument — no shell quoting, spaces/punctuation are safe as-is.',
+    inputSchema: {
+      prompt: z.string(),
+      mode: z.string().optional().describe('agy --mode, defaults to "plan"'),
+      model: z.string().optional().describe(`agy --model, defaults to "${DEFAULT_MODEL}"`),
+      effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional().describe('agy --effort, thinking budget'),
+      outputFormat: z.enum(['text', 'json']).optional().describe('agy --output-format, use "json" when a program parses the result'),
+      cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
+    },
+  },
+  async ({ prompt, mode, model, effort, outputFormat, cwd }) => {
+    const useMode = mode ?? 'plan';
+    const allowed = loadAllowedModes();
+    if (!allowed.includes(useMode)) {
+      return {
+        content: [{ type: 'text', text: `rejected: mode "${useMode}" is not allowlisted (allowed: ${allowed.join(', ')})` }],
+        isError: true,
+      };
+    }
+    let dir;
+    try {
+      dir = resolveUnderRoot(cwd);
+    } catch (e) {
+      return { content: [{ type: 'text', text: `rejected: ${e.message}` }], isError: true };
+    }
+    // -p takes the prompt as its value and must come last — anything after it is silently swallowed
+    // as part of the prompt, not parsed as a flag (harness-facts.md § Cross-CLI worker, the flag-order trap).
+    const args = ['--mode', useMode, '--model', model ?? DEFAULT_MODEL];
+    if (effort) args.push('--effort', effort);
+    if (outputFormat) args.push('--output-format', outputFormat);
+    args.push('-p', prompt);
+    return run(args, dir);
+  },
+);
+
+await server.connect(new StdioServerTransport());
