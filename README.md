@@ -36,6 +36,7 @@ Tailscale Funnel        (https://your-machine.your-tailnet.ts.net)
 gatekeeper.js  — public port 9999
       │           /.well-known/oauth-*  metadata
       │           /authorize, /token    minimal authorization server (scripts/oauth.js)
+      │           /register         RFC 7591 dynamic client registration (ChatGPT self-registers here)
       │           /mcp                  requires a valid Bearer access token, else 401
       │                                 POST → real Streamable HTTP (scripts/streamable-bridge.js)
       ▼
@@ -76,7 +77,7 @@ aki-mcp-sv/
 │   ├── start.js                 # orchestrates mcp-hub + gatekeeper
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
-│   ├── oauth.js                  # minimal authorization server (DCR skipped)
+│   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> mcp-hub's legacy SSE transport
 │   ├── shell-mcp.js              # allowlist-gated shell tool (read-only by default)
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
@@ -95,7 +96,8 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs l
 ~/.aki/mcpsv/
 ├── mcp-hub.config.json   # live config (which folders you granted access to)
 ├── setting.json          # shell allowlist, edited from the panel
-├── oauth-client.json     # client ID + secret (0600)
+├── oauth-client.json     # pre-issued client ID + secret, for Claude (0600)
+├── oauth-dcr-clients.json # clients that self-registered via /register, one per ChatGPT connector (0600)
 ├── passphrase.txt        # passphrase for the /authorize consent screen (0600)
 └── tokens.json           # access/refresh tokens (0600)
 ```
@@ -195,6 +197,7 @@ Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatG
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
 - Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
+- Each ChatGPT connector instance self-registers one client into `~/.aki/mcpsv/oauth-dcr-clients.json` (mode 0600). Registration is open but not a way in on its own: only `claude.ai` and `chatgpt.com` redirect URIs are accepted, and a registered client still has to pass the passphrase consent screen and PKCE before it gets a token. Revoke those registrations by deleting that file and restarting.
 - Funnel stays enabled in the background for the whole project; `npm start` is the only thing you actively start/stop.
 
 ### Why whitelist, not blocklist

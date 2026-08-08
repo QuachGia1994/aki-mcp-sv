@@ -83,18 +83,20 @@ Keep the merged shape (`UNIX_DEFAULT` base + `WIN_EXTRA` selected by platform) �
 - A review comment on PR #1 states plainly what was adopted, what was rebuilt to fit `docs/plan/unify-windows-linux.md`, and why `chrome.js` and the JS search fallback were not taken.
 
 ## Execution checklist
-- [ ] Commit the working tree first — `agy-mcp.js`, `search-mcp.js`, `shell-mcp.js` carry one coherent uncommitted change (MCP server/tool `title` fields) and the merge cannot start on a dirty tree
-- [ ] `git checkout -b integrate/pr1 master` and `git merge --no-commit --no-ff pr1`
-- [ ] Resolve the 7 conflicts per the table
-- [ ] Run the correction pass on the 4 auto-merged files
-- [ ] Delete `scripts/platform.js`, inline its three live helpers into `start.js`
-- [ ] Expand `DEFAULT_ALLOWLIST` per the section above
-- [ ] Bump to `1.1.0`; rewrite `[Unreleased]` into the release block with contributor credit
-- [ ] Update `README.md` (ChatGPT section, Windows note) and `docs/ref/security-model.md` (the DCR paragraph auto-merged; confirm it matches the grafted `oauth.js`)
-- [ ] `node --check` every changed script — the only mechanical gate in this plan
-- [ ] Commit the merge with the co-author trailer, merge into master, push
-- [ ] Comment on PR #1, then confirm GitHub flipped it to Merged
-- [ ] Open a follow-up issue for the `find: null` allowlist entry, which permits `-delete`/`-exec` and predates this work
+
+All items executed 2026-08-08. Master merged as `86cbc55` (integration merge `bf610b0`), released 1.1.0, PR #1 shows **Merged**, default branch renamed `master` → `main` after the push.
+- [x] Commit the working tree first — `agy-mcp.js`, `search-mcp.js`, `shell-mcp.js` carry one coherent uncommitted change (MCP server/tool `title` fields) and the merge cannot start on a dirty tree
+- [x] `git checkout -b integrate/pr1 master` and `git merge --no-commit --no-ff pr1`
+- [x] Resolve the 7 conflicts per the table
+- [x] Run the correction pass on the 4 auto-merged files
+- [x] Delete `scripts/platform.js`, inline its three live helpers into `start.js`
+- [x] Expand `DEFAULT_ALLOWLIST` per the section above
+- [x] Bump to `1.1.0`; rewrite `[Unreleased]` into the release block with contributor credit
+- [x] Update `README.md` (ChatGPT section, Windows note) and `docs/ref/security-model.md` (the DCR paragraph auto-merged; confirm it matches the grafted `oauth.js`)
+- [x] `node --check` every changed script — the only mechanical gate in this plan
+- [x] Commit the merge with the co-author trailer, merge into master, push
+- [x] Comment on PR #1, then confirm GitHub flipped it to Merged
+- [x] Open a follow-up issue for the `find: null` allowlist entry, which permits `-delete`/`-exec` and predates this work
 
 ## Out of scope
 - Any Windows or Linux verification run — explicitly excluded by the constraints above.

@@ -1,6 +1,6 @@
 # aki-mcp-sv — project guidance
 
-Give claude.ai a local MCP server (filesystem/search/shell/agy) over Tailscale Funnel + OAuth 2.1. Entry: `npm start` → `scripts/start.js` (foreground, manual stop/start). Rule loader: the `akirule` skill (see `~/.claude/skills/akirule/SKILL.md`).
+Give claude.ai and ChatGPT a local MCP server (filesystem/search/shell/agy) over Tailscale Funnel + OAuth 2.1. Entry: `npm start` → `scripts/start.js` (foreground, manual stop/start). Rule loader: the `akirule` skill (see `~/.claude/skills/akirule/SKILL.md`).
 
 ## RECURRING #1 — "Couldn't connect" / no `POST /token`: it's Tailscale Funnel desync, NOT the code
 
@@ -22,6 +22,14 @@ tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --
 ```
 
 Re-probe until the public edge returns 200. Full history and evidence: `docs/ref/oauth-research-2026-08-07.md` (rounds 5 and 8).
+
+## Two client paths, one OAuth server
+
+`scripts/oauth.js` serves both. Claude uses the **pre-registered** confidential client from `oauth-client.json` (ID/secret pasted into the connector dialog). ChatGPT **self-registers** through `POST /register` (RFC 7591) as a public client — no secret, PKCE only — and lands in `oauth-dcr-clients.json`. `resolveClient()` is the single lookup covering both, so never special-case one client inside a handler. Redirect URIs are allowlisted to `claude.ai` and `chatgpt.com` by `isAllowedRedirect`; widening that function is the one place a bad redirect could enter. Authorization codes and refresh tokens are bound to the client they were issued to.
+
+## OS-agnostic by decision, not by accident
+
+`docs/plan/unify-windows-linux.md` — per-OS difference is allowed as a **data table** selected by `process.platform` (the `LAUNCHER` map in `open-browser.js`, `WIN_EXTRA` in `allowlist.js`), never as a branch in business logic and never as a second implementation of an existing mechanism. Windows shells out to Unix binaries via Git for Windows; that prerequisite was chosen deliberately over a fallback implementation, so do not add a pure-JS reimplementation of `grep`/`find` when something is missing on Windows. `scripts/chrome.js` stays deleted (Chrome 136 refuses remote debugging on the default profile) and the native folder picker stays removed. Merge record: `docs/plan/merge-pr1-windows-chatgpt.md`.
 
 ## Session lifecycle
 
