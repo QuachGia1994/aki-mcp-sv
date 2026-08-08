@@ -1,14 +1,14 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai) read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
+Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
 
-Version: **1.0.3** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · macOS & Windows.
+Version: **1.0.4** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · macOS & Windows.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
 
 <img width="498" height="390" alt="Screenshot 2026-08-07 at 23 06 42" src="https://github.com/user-attachments/assets/94800561-b799-49ce-a7ab-08a52b6dbfde" />
 
-**Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -27,8 +27,8 @@ This project targets a different scenario: exposing local access to Claude **on 
 ## Architecture
 
 ```
-Claude web (claude.ai)
-      │  HTTPS + OAuth 2.1 (DCR skipped — self-issued client ID/secret)
+Claude web / ChatGPT
+      │  HTTPS + OAuth 2.1 (Claude: paste client ID/secret; ChatGPT: DCR self-register)
       ▼
 Tailscale Funnel        (https://your-machine.your-tailnet.ts.net)
       │
@@ -52,7 +52,7 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
 
 `mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/init.md`).
 
-OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/ref/oauth-research-2026-08-07.md`).
+OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/ref/oauth-research-2026-08-07.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
 
 ## Requirements
 
@@ -161,6 +161,17 @@ Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/ref/oauth-research-2
 
 claude.ai connects and calls 14 tools: `filesystem__*`, `search__find_path`, `search__search_content`, `shell__run_cmd`.
 
+## Connecting from ChatGPT
+
+Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for custom connectors.
+
+1. ChatGPT → Settings → Apps & Connectors (or Security) → enable **Developer mode**
+2. Create a custom connector / app → paste the same MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`)
+3. Auth: **OAuth** (no Client ID/Secret paste — ChatGPT self-registers via `POST /register`)
+4. Enter the same **passphrase** on the confirmation page
+
+Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint`.
+
 ### Chrome control
 
 Chrome only opens its debug port **at launch**; an already-running Chrome without that flag can't be attached to and must be quit and reopened. The panel splits this into two actions: "Connect Chrome" never closes anything (opens Chrome if it's not running, warns and stops if it's running without the flag), while quitting Chrome sits behind its own explicit button.
@@ -181,7 +192,7 @@ Use `search__find_path`, not `filesystem__search_files`, to locate a file or dir
 
 ## Security
 
-Minimal OAuth 2.1, Dynamic Client Registration skipped on purpose (self-issued client ID/secret instead of letting claude.ai self-register). Full writeup (real request flow, the two actual barriers, known limits): `docs/ref/security-model.md`.
+Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
 
 - `$MCP_DATA_DIR` (default `$HOME`) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff, removable from the panel).
 - The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js`; the panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding a write command (e.g. `git commit`) crosses the "read-only" boundary this project ships with by default. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.

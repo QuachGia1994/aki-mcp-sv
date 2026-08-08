@@ -2,6 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [1.0.4] — 2026-08-08
+
+### Added
+- ChatGPT custom connector support on the same Funnel URL: RFC 7591 `POST /register` (DCR), public-client token auth (`none`), and allowlisted `https://chatgpt.com/connector/oauth/…` redirects. Panel section 2 documents Claude + ChatGPT side by side.
+
+### Changed
+- OAuth metadata advertises `registration_endpoint` and `token_endpoint_auth_methods_supported: ["none","client_secret_post"]`. Claude’s pre-issued Client ID/Secret path is unchanged.
+
 ## [1.0.3] — 2026-08-08
 
 ### Fixed

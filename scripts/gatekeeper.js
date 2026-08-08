@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Public entry: minimal OAuth AS (DCR skipped) + reverse-proxy to mcp-hub — rationale: docs/ref/security-model.md
+// Public entry: OAuth AS (Claude pre-registered + ChatGPT DCR) + reverse-proxy to mcp-hub
 import http from 'node:http';
-import { loadOrCreateClient, loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken, verifyBearer } from './oauth.js';
+import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken, handleRegister, verifyBearer } from './oauth.js';
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
@@ -15,7 +15,6 @@ if (!ORIGIN) {
   process.exit(1);
 }
 
-const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();
 const meta = metadataHandlers(ORIGIN);
 
@@ -72,8 +71,9 @@ const server = http.createServer(async (req, res) => {
 
   if ((path === '/.well-known/oauth-protected-resource' || path === '/.well-known/oauth-protected-resource/mcp') && req.method === 'GET') return meta.protectedResource(req, res);
   if ((path === '/.well-known/oauth-authorization-server' || path === '/.well-known/oauth-authorization-server/mcp') && req.method === 'GET') return meta.authorizationServer(req, res);
-  if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) return handleAuthorize(req, res, client, passphrase, ORIGIN);
-  if (path === '/token' && req.method === 'POST') return handleToken(req, res, client);
+  if (path === '/register' && req.method === 'POST') return handleRegister(req, res);
+  if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) return handleAuthorize(req, res, passphrase, ORIGIN);
+  if (path === '/token' && req.method === 'POST') return handleToken(req, res);
 
   if (path === '/mcp' || path === '/messages') {
     if (!verifyBearer(req.headers.authorization)) {
