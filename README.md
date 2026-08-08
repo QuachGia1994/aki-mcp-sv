@@ -2,7 +2,7 @@
 
 Give Claude on the **web** (claude.ai) read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
 
-Version: **1.0.2** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · macOS only.
+Version: **1.0.2** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
 
@@ -58,9 +58,10 @@ OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Clien
 
 <img width="649" height="689" alt="image" src="https://github.com/user-attachments/assets/c4d50b51-fb2f-4e13-9ee4-4214068d8b3f" />
 
-- macOS with Node.js installed
+- Node.js, on Windows, Linux, or macOS
+- **Windows only:** [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH` — the shell/search tools shell out to Unix binaries (`ls cat pwd find grep head tail wc file stat tree ps df du whoami uname`); Git for Windows' `usr/bin` ships the coreutils/findutils/grep/diffutils this needs. Same category of prerequisite as Tailscale below, not a code dependency.
 - Tailscale (one-time setup):
-  1. [Install Tailscale](https://tailscale.com/download) and sign in (app or `brew install tailscale`, either works as long as `tailscale` is on PATH)
+  1. [Install Tailscale](https://tailscale.com/download) and sign in (on macOS, the app or `brew install tailscale` both work as long as `tailscale` is on PATH)
   2. Enable [Funnel](https://tailscale.com/docs/features/tailscale-funnel) for your tailnet: free on every plan, a one-time toggle via the `login.tailscale.com/f/funnel` link `npm start` prints if it isn't on yet
 
 After that, `npm start` enables Funnel on port 9999 automatically every run.
@@ -73,6 +74,7 @@ aki-mcp-sv/
 ├── mcp-hub.config.json         # shipped default, uses ${MCP_DATA_DIR}/${HOME} placeholders
 ├── scripts/
 │   ├── start.js                 # orchestrates mcp-hub + gatekeeper
+│   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (DCR skipped)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> mcp-hub's legacy SSE transport
@@ -83,8 +85,7 @@ aki-mcp-sv/
 │   ├── tailscale.js              # reads Funnel status — shared by start.js and panel
 │   ├── panel.js                  # loopback-only control panel (:9998), token-gated
 │   ├── config-page.js            # renders the panel page
-│   ├── userdata.js               # user data location (~/.aki/mcpsv) — single source of truth
-│   └── chrome.js                 # minimal CDP client; opens Chrome if not running
+│   └── userdata.js               # user data location (~/.aki/mcpsv) — single source of truth
 └── public/                       # favicon + images, served publicly by gatekeeper
 ```
 
@@ -119,9 +120,9 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
 - Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
-- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`, with 8 sections in the order you need them: Tailscale, connector, allowed folders, shell allowlist, akidevrule, connector prompt, utilities, Chrome.
+- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`, with 7 sections in the order you need them: Tailscale, connector, allowed folders, shell allowlist, akidevrule, connector prompt, utilities.
 
-The default allowed root is your **home directory** (`$HOME`): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. Add/remove folders from **panel section 3**: the "Choose folder…" button opens macOS's native picker (multi-select in one pass); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start`.
+The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. Add/remove folders from **panel section 3**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start`.
 
 Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
 
@@ -158,10 +159,6 @@ If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` sa
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/ref/oauth-research-2026-08-07.md`.
 
 claude.ai connects and calls 14 tools: `filesystem__*`, `search__find_path`, `search__search_content`, `shell__run_cmd`.
-
-### Chrome control
-
-Chrome only opens its debug port **at launch**; an already-running Chrome without that flag can't be attached to and must be quit and reopened. The panel splits this into two actions: "Connect Chrome" never closes anything (opens Chrome if it's not running, warns and stops if it's running without the flag), while quitting Chrome sits behind its own explicit button.
 
 ### Connector icon
 

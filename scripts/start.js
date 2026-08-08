@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Orchestrates mcp-hub + gatekeeper behind 1 `npm start`; foreground by design, manual stop/start only
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
 import os from 'node:os';
+import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startPanel } from './panel.js';
 import { HUB_CONFIG_PATH, USER_DIR } from './userdata.js';
@@ -75,7 +76,7 @@ const gate = spawn('node', ['./scripts/gatekeeper.js'], {
 const panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
 try {
-  execFileSync('open', [panelUrl]);
+  await openBrowser(panelUrl);
 } catch (e) {
   console.error(`[start] could not auto-open the panel (open manually: ${panelUrl}): ${e.message}`);
 }

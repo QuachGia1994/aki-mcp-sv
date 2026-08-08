@@ -6,7 +6,6 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel } from './config-page.js';
-import { listTabs, evaluate, connectChrome, restartChrome } from './chrome.js';
 import { loadAllowlist, readSettings } from './allowlist.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
@@ -27,27 +26,6 @@ const expandPath = (p, dataDir) => p.replace(/\$\{MCP_DATA_DIR\}/g, dataDir).rep
 
 function filesystemPaths(dataDir) {
   return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(2).map((p) => expandPath(p, dataDir));
-}
-
-// `choose folder` is macOS's own picker: no path typing, no copy-paste, and multi-select in one pass.
-// Cancelling is a normal outcome, not a failure — it comes back as an empty list.
-async function pickFolders() {
-  const script = [
-    'activate',
-    'set picked to choose folder with prompt "Choose folders Claude may access" with multiple selections allowed',
-    'set out to ""',
-    'repeat with f in picked',
-    'set out to out & POSIX path of f & linefeed',
-    'end repeat',
-    'return out',
-  ].flatMap((line) => ['-e', line]);
-  try {
-    const out = await run('osascript', script);
-    return out.split('\n').map((s) => s.replace(/\/$/, '')).filter(Boolean);
-  } catch (e) {
-    if (/User canceled|-128/.test(e.message)) return [];
-    throw e;
-  }
 }
 
 // search/shell enforce path containment via the same list, so it never drifts from what this panel shows as "allowed".
@@ -72,7 +50,7 @@ function validateAllowlist(allowlist) {
 }
 
 function validatePaths(paths) {
-  if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && p.startsWith('/'))) {
+  if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && path.isAbsolute(p))) {
     throw new Error('folder list must be absolute paths');
   }
   return paths;
@@ -145,11 +123,6 @@ const ROUTES = {
     return { ok: true, message: 'restarted mcp-hub' };
   },
   'POST /api/install-rules': async () => ({ ok: true, message: await installRules() }),
-  'POST /api/pick-folder': async () => ({ ok: true, folders: await pickFolders() }),
-  'POST /api/chrome/connect': async () => ({ ok: true, ...(await connectChrome()) }),
-  'POST /api/chrome/restart': async () => ({ ok: true, ...(await restartChrome()) }),
-  'GET /api/chrome/tabs': async () => ({ tabs: await listTabs() }),
-  'POST /api/chrome/eval': async (body) => ({ ok: true, result: await evaluate(body.tabId, body.js) }),
 };
 
 function serveStatic(res, urlPath) {

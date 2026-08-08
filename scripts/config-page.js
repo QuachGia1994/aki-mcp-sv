@@ -1,7 +1,8 @@
 // Renders the control panel page. Served only by panel.js on loopback — credentials never travel over the Funnel.
 import os from 'node:os';
+import path from 'node:path';
 
-const CLAUDE_DIR = `${os.homedir()}/.claude`;
+const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const MCP_NAME = 'Aki Mac MCPSV Shell & Filesystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
@@ -107,8 +108,6 @@ a { color: var(--accent); }
 .steps li { margin-bottom: 2px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
 .stats b { color: var(--accent); font-size: 14px; }
-.warn { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
-.warn p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
 .dot { display: inline-block; width: 15px; font-weight: 700; }
 .dot.ok { color: var(--ok); } .dot.err { color: var(--err); }
 .empty { color: var(--muted); font-size: 12.5px; font-family: inherit; }
@@ -162,7 +161,7 @@ ${field('Passphrase', passphrase)}
 <p class="hint">Anything outside this list is fully off-limits to Claude.</p>
 <div class="pathlist" id="paths"></div>
 <div class="acts">
-  <button class="primary" data-act="pickFolder">+ Choose folder…</button>
+  <button class="primary" data-act="addFolder">+ Add folder…</button>
   <button data-act="savePaths">Save &amp; restart hub</button>
   <button data-act="restart">Restart hub</button>
   <span class="msg" id="msgPaths"></span>
@@ -208,22 +207,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <p class="hint"><strong>Claude Token Counter</strong> — a Chrome extension that shows your hourly and weekly usage bar right under claude.ai's input box, <strong>including on the Free plan</strong>. claude.ai doesn't surface that number anywhere itself.</p>
 <div class="acts"><a class="btnlink" href="${esc(TOKENIZER_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
 <figure><img src="/claude-tokenizer-chrome-extension.png" alt="Token usage bar shown under claude.ai's input box" loading="lazy"></figure>
-</section>
-
-<section><h2>8 · Chrome — optional</h2>
-<p class="hint">Once connected, the panel can control your Chrome tab. Everything above works without this section.</p>
-<div class="acts">
-  <button class="primary" data-act="connect">Connect Chrome</button>
-  <button data-act="tabs">Load tab list</button>
-  <button data-act="widen">Widen claude.ai chat pane</button>
-  <span class="msg" id="msgChrome"></span>
-</div>
-<div class="warn" id="chromeRestart" hidden>
-  <p>Chrome is open but its debug port isn't enabled, and Chrome can only turn that on at launch. Reopening it is the only way — Chrome will quit cleanly and restore the tabs you had open.</p>
-  <div class="acts"><button data-act="restartChrome">Reopen Chrome</button></div>
-</div>
-<div class="checks" id="tabs" style="margin-top:10px"></div>
-<p class="hint" style="margin:14px 0 0">Don't want to connect Chrome? Paste the snippet below straight into the claude.ai tab's Console (<code>Cmd ⌥ J</code>) — same result as "Widen chat pane".</p>
+<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane — paste the snippet below into the browser tab's Console (<code>Cmd/Ctrl ⌥ J</code>).</p>
 ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
@@ -253,7 +237,6 @@ const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const DATA_DIR = ${JSON.stringify(dataDir)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
 const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
-const WIDEN = ${JSON.stringify(WIDEN_SNIPPET)};
 
 document.getElementById('year').textContent = new Date().getFullYear();
 
@@ -305,6 +288,7 @@ function buildPrompt() {
   lines.push('Finding files/folders: ALWAYS use the find_path tool (scans the whole tree in one call, returns folders too, ~0.2s). Don\\'t list_directory level by level, don\\'t use filesystem\\'s search_files — it doesn\\'t return directories and tends to time out. Use search_content to find text inside files.');
   lines.push('To run git/ls/grep in a specific folder: call run_cmd with the cwd parameter (an absolute path under ' + DATA_DIR + '), don\\'t use cd or -C.');
   lines.push('This MCP server\\'s own repo: ' + REPO_ROOT + ' — to edit it, go straight to that path instead of searching for it.');
+  lines.push('This chat interface also has its own sandbox tools (create_file, str_replace, view, bash_tool) that write to a separate throwaway container, not this machine. For any path under ' + DATA_DIR + ', only this MCP\\'s filesystem tools (read_text_file/write_file/edit_file) touch the real machine — after writing through them, read the file back with the same MCP before calling the change done.');
   document.getElementById('prompt').value = lines.join('\\n');
 }
 
@@ -325,25 +309,6 @@ function addPath(value, dirty) {
   wrap.append(input, del);
   document.getElementById('paths').append(wrap);
   if (dirty) markDirty();
-}
-
-function renderTabs(tabs) {
-  const box = document.getElementById('tabs');
-  box.innerHTML = tabs.length ? '' : '<span class="empty">Chrome has no open tabs.</span>';
-  for (const t of tabs) {
-    const label = document.createElement('label');
-    label.innerHTML = '<input type="radio" name="tab" value="' + t.id + '">';
-    label.title = t.url;
-    label.append(document.createTextNode(t.title.slice(0, 40) || t.url.slice(0, 40)));
-    box.append(label);
-  }
-  return tabs.length;
-}
-
-// Loading the tab list right after connecting is the proof the connection worked — a success message with an empty box underneath reads as nothing having happened.
-async function showTabs() {
-  const { tabs } = await api('GET', '/api/chrome/tabs');
-  return renderTabs(tabs) + ' tab(s)';
 }
 
 function renderRuleChecks(files) {
@@ -385,16 +350,6 @@ async function loadTailscale() {
   return 'ready: ' + (s.host || 'domain not available yet');
 }
 
-async function pickTab(match) {
-  let picked = document.querySelector('#tabs input:checked')?.value;
-  if (picked) return picked;
-  const { tabs } = await api('GET', '/api/chrome/tabs');
-  renderTabs(tabs);
-  picked = tabs.find(match)?.id;
-  if (!picked) throw new Error('no claude.ai tab found — open a claude.ai tab and try again');
-  return picked;
-}
-
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   copyAll: (btn) => act(btn, 'msgConn', async () => {
@@ -403,14 +358,7 @@ const ACTIONS = {
     await navigator.clipboard.writeText(rows.join('\\n'));
     return 'copied ' + rows.length + ' values';
   }),
-  pickFolder: (btn) => act(btn, 'msgPaths', async () => {
-    const { folders } = await api('POST', '/api/pick-folder');
-    if (!folders.length) return 'no folder selected';
-    const existing = new Set([...document.querySelectorAll('#paths input')].map((i) => i.value));
-    const added = folders.filter((f) => !existing.has(f));
-    added.forEach((f) => addPath(f, true));
-    return added.length ? 'added ' + added.length + ' folder(s) — click Save to apply' : 'already in the list';
-  }),
+  addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
     if (!paths.length) throw new Error('an empty list cuts off all of Claude\\'s file access — add at least one folder');
@@ -433,21 +381,6 @@ const ACTIONS = {
     renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
     buildPrompt();
     return message;
-  }),
-  connect: (btn) => act(btn, 'msgChrome', async () => {
-    const { state, message } = await api('POST', '/api/chrome/connect');
-    document.getElementById('chromeRestart').hidden = state !== 'needsRestart';
-    return state === 'ready' ? message + ' — ' + (await showTabs()) : message;
-  }),
-  restartChrome: (btn) => act(btn, 'msgChrome', async () => {
-    const { message } = await api('POST', '/api/chrome/restart');
-    document.getElementById('chromeRestart').hidden = true;
-    return message + ' — ' + (await showTabs());
-  }),
-  tabs: (btn) => act(btn, 'msgChrome', showTabs),
-  widen: (btn) => act(btn, 'msgChrome', async () => {
-    await api('POST', '/api/chrome/eval', { tabId: await pickTab((t) => t.url.includes('claude.ai')), js: WIDEN });
-    return 'chat pane widened';
   }),
 };
 

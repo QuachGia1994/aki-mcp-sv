@@ -54,9 +54,9 @@ function findPath(query, from, limit) {
   const found = [];
   walk(base, (full, isDir) => {
     const rel = path.relative(base, full);
-    if (test(rel)) found.push(isDir ? `${full}/` : full);
+    if (test(rel)) found.push(isDir ? `${full}${path.sep}` : full);
   });
-  found.sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+  found.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length || a.localeCompare(b));
   const head = found.slice(0, limit);
   if (!found.length) return `nothing matched "${query}" under ${base}`;
   const note = found.length > head.length ? `\n… ${found.length - head.length} more result(s) (raise limit or narrow the query)` : '';

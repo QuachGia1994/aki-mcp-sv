@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "start": "MCP_DATA_DIR=\"${MCP_DATA_DIR:-$HOME}\" node ./scripts/start.js"
+    "start": "node ./scripts/start.js"
   },
   "dependencies": {
     "mcp-hub": "^4.2.1",
