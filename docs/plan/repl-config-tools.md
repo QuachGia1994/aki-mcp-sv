@@ -9,7 +9,7 @@ Add the ability to run persistent interactive sessions (Python/Node REPL...) and
 - No new port, no change to the existing `gatekeeper → mcp-hub` architecture — the new server still spawns over stdio, folded into `mcp-hub.config.json` alongside the 2 existing servers.
 - No real shell (`/bin/sh`) to launch processes — use `spawn(bin, args)` directly, keeping the same principle already applied to `execFile` in `shell-mcp.js`.
 - REPL binary whitelist is **separate** from `ALLOWED` (the read whitelist) — don't share a set, to avoid one command accidentally landing in both permission groups.
-- Every REPL process must have an idle-timeout auto-kill — the server listens on the open internet, and no limit means unbounded resource retention if a session is forgotten or accessed without authorization.
+- No idle-timeout auto-kill — the main point of this feature is keeping a session alive for remote coding, so a REPL stays up until the user (or another Claude session) explicitly calls `kill_process`, or the machine/server itself restarts.
 - Cap the number of concurrent processes — avoid unbounded session sprawl, especially from remote access that isn't closely monitored in real time.
 
 ## Architecture decisions
@@ -20,7 +20,6 @@ Add the ability to run persistent interactive sessions (Python/Node REPL...) and
 | Mechanism to keep a process alive | `child_process.spawn`, stored in a `Map<pid, ChildProcess>` in `process-mcp.js`'s own process memory | Same mechanism as Desktop Commander's 3 REPL tools — needs state across multiple tool calls; `execFile` can't do this since it exits when done and doesn't keep stdin open |
 | New tools | `start_process(command)`, `interact_with_process(pid, input)`, `read_process_output(pid)`, `kill_process(pid)` | Minimum needed to drive a REPL. No `list_processes` in the first version — single user, few concurrent sessions, add later if needed |
 | REPL launch binary whitelist | Its own small set to start: `python3 -i`, `node -i` (exact string match, no extra flags/args accepted from input) | Borrows DC's REPL support without copying its "run any command" philosophy — every binary added later must be considered individually, no automatic expansion |
-| Idle timeout | Default 20 minutes of no interaction → auto `kill_process`, same threshold DC uses for sessions | Avoids holding resources indefinitely when exposed through Funnel |
 | Concurrency limit | Max 3 live processes at once, beyond that `start_process` is refused with a clear message | Single-user MVP, doesn't need many; a low limit reduces risk if abused |
 | `get_config` | New tool, read-only, returns JSON `{platform, shell, pythonVersion, nodeVersion, repoRoot}` — `repoRoot` comes from `process.cwd()` at run time, not hardcoded | Cheap, near-zero risk. `repoRoot` is bundled in because it's the only reliable channel for another Claude session to locate the repo itself — see "the `instructions` field — why not used" below; neither README nor the `instructions` field is used for this |
 
@@ -35,15 +34,14 @@ The MCP spec has an `instructions` field on the `initialize` response (designed 
 | Issue | Decision | Mechanism |
 |---|---|---|
 | REPL whitelist | `python3 -i`, `node -i` — exact fixed-string match, no arbitrary arg parsing | in `process-mcp.js` code, different from how `shell-mcp.js` parses argv for read commands |
-| Idle timeout | 20 minutes, `setTimeout` reset on every `interact_with_process`/`read_process_output` call that hits a `pid` | in `process-mcp.js`, no external dependency needed |
 | Concurrency limit | 3 processes, checked against `Map.size` before spawning a new one | in `process-mcp.js` |
 | Output buffering | Same cap style as the existing shell tool (~1MB), truncated with a clear note if exceeded | prevents one process printing without bound from ballooning memory |
 
 ## Execution checklist
 - [ ] `scripts/process-mcp.js` — `start_process`, `interact_with_process`, `read_process_output`, `kill_process`, `get_config`
 - [ ] Add a `process` entry to `mcp-hub.config.json`
-- [ ] 20-minute idle timeout + 3-process concurrency limit
-- [ ] Local test: open `python3 -i`, send a command, read the result; leave idle past 20 minutes → auto-killed; open a 4th process → rejected
+- [ ] 3-process concurrency limit
+- [ ] Local test: open `python3 -i`, send a command, read the result; leave idle for a long stretch and confirm it's still reachable; open a 4th process → rejected; `kill_process` actually terminates it
 - [ ] Test through real claude.ai (same way `shell__run_cmd` was verified) — confirm the new tools appear in `tools/list`
 - [ ] Update `README.md` (architecture section + tool list) once verified
 
