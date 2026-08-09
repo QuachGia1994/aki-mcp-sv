@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Removed
+- `kiro_write` MCP tool (`scripts/kiro-mcp.js`) — duplicated the `filesystem` MCP arm's `write_file`/`edit_file`, which every connected session already has, behind a second hard-locked `claude-sonnet-4.5` worker. Owner decision: consolidate file-write trust into the connected session's own model. `kiro_read` (read-only) is retained unchanged. Does not restore git/shell write access (`shell.allowlist` in `~/.aki/mcpsv/setting.json`, separate axis, unaffected). Plan: `docs/plan/done/remove-kiro-write.md`.
+
 ## [1.2.1] — 2026-08-09
 
 Patch: Gemini + Grok connectors fixed and confirmed from live connects (Gemini connects but drives tools unreliably), the Kiro arm actually deployed to existing installs and verified against `kiro-cli` 2.16.2, connector renamed OS-neutral, and a docs pass to the akirule standard.

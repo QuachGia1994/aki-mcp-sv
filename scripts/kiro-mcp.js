@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Dedicated MCP for the `kiro-cli` "arm": passes the prompt as a separate execFile arg so no shell-tokenizing step can mis-split a multi-word prompt (same reason agy-mcp.js exists). Read and write are two separate tools so the connector's per-tool approval UI can grant write independently of read.
+// Dedicated MCP for the `kiro-cli` "arm": passes the prompt as a separate execFile arg so no shell-tokenizing step can mis-split a multi-word prompt (same reason agy-mcp.js exists). Read-only — kiro_write was removed 2026-08-10 (docs/plan/done/remove-kiro-write.md): the filesystem MCP arm's write_file/edit_file already covers the same capability.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { execFile } from 'node:child_process';
@@ -53,23 +53,6 @@ server.registerTool(
     },
   },
   async ({ prompt, effort, cwd }) => run('fs_read', { prompt, effort, cwd }),
-);
-
-server.registerTool(
-  'kiro_write',
-  {
-    title: 'Kiro CLI (write)',
-    description:
-      `Delegate a task that may modify files to a Kiro CLI session locked to ${MODEL}. ` +
-      'Grants fs_read and fs_write (--trust-tools=fs_read,fs_write) — it can create and edit files under the allowed roots, but nothing else (no shell/exec). ' +
-      'Approve this tool deliberately: it can change files on disk. prompt is passed straight to kiro-cli as one argument — no shell quoting needed.',
-    inputSchema: {
-      prompt: z.string(),
-      effort: effortSchema,
-      cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
-    },
-  },
-  async ({ prompt, effort, cwd }) => run('fs_read,fs_write', { prompt, effort, cwd }),
 );
 
 await server.connect(new StdioServerTransport());
