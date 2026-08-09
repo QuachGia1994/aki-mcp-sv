@@ -50,7 +50,7 @@ The bridge holds **exactly one** persistent internal hub session for the whole p
 - [x] LRU eviction + `opened`/`reused` churn counters (`527162f`)
 - [x] Run one normal work session; read the counters → `opened` climbed 1→17, all `initialize` → **A insufficient, B needed**
 - [x] Implement the single-session multiplexer; delete the sessions Map / cap / eviction
-- [ ] **Runtime verification (user-triggered, `coding.B3`):** run one work session on the new build; confirm the hub logs exactly one `client connected` at boot and the disconnect count no longer tracks call volume (target: ~1)
+- [x] **Runtime verification (user-triggered, `coding.B3`):** owner-confirmed running cleanly since 2026-08-08 — hub logs one connect at boot, disconnect count no longer tracks call volume
 
 ## Out of scope
 - Editing `node_modules/mcp-hub`'s log level or behaviour — vendored, lost on reinstall (`docs/ref` never patches node_modules).

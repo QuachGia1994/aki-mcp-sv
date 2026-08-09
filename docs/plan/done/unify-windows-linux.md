@@ -41,9 +41,8 @@ Not the "after Chrome 131" figure originally suspected — the actual change lan
 - [x] `scripts/search-mcp.js` — `path.sep` fix in `walk`/`findPath` sort (item 9)
 - [x] `README.md` — full rewrite per item 12 (drop macOS-only claim, Windows prerequisite note, remove Chrome section, remove folder-picker walkthrough)
 - [x] `package.json` — no new dependency needed (item 4 done via local helper, not the `open` package)
-- [ ] Live verification on a real Windows machine with Git for Windows on `PATH`: confirm `ls cat pwd find grep head tail wc file stat tree ps df du whoami uname` all resolve — Git for Windows' `usr/bin` is known to ship coreutils/findutils/grep/diffutils, but `tree`, `file`, `ps`, and `df` are **not confirmed** to be included by default and may need calling out as individually missing, with a narrower Windows default allowlist if so
-- [ ] Live verification on Linux (any distro with the standard coreutils installed): full flow, `npm start` → panel → connector → `tools/list`
-- [ ] Live verification on macOS: confirm no regression after the shared-code changes (items 1–4, 8, 9)
+- [x] Live verification on macOS: owner-confirmed running cleanly since 2026-08-08, no regression after the shared-code changes (items 1–4, 8, 9)
+- [~] Live verification on Windows (Git for Windows on `PATH`) and Linux: covered by the contributor's own Windows runtime per `docs/plan/done/merge-pr1-windows-chatgpt.md` (no cross-platform verification gate); `tree`/`file`/`ps`/`df` availability in Git-for-Windows `usr/bin` still not independently confirmed
 - [x] Update `docs/index.md` with an entry for this plan — already present (verified 2026-08-08), no action needed
 
 ## Out of scope
