@@ -223,7 +223,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </label>
 <div class="checks" id="ruleChecks"></div>
 <textarea id="prompt" readonly style="min-height:130px"></textarea>
-<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button></div>
+<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
 </section>
 
 <section><h2>7 · Utilities</h2>
@@ -302,18 +302,24 @@ function copyText(text, btn) {
 function copyFrom(btn) { copyText(btn.closest('.row').querySelector('[data-copy]').textContent, btn); }
 
 function buildPrompt() {
-  const lines = ['ALWAYS ANSWER SHORT, DENSE, AND ON POINT. NEVER MAKE THINGS UP, NEVER SPECULATE. Every claim needs evidence, every search needs a citation.'];
+  const lines = ['ALWAYS answer short, dense, on point. Never speculate or invent; every claim needs evidence, every search a citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
   if (picked.length) {
-    lines.push('At the start of every session with MCP "' + MCP_NAME + '", before answering: use the filesystem tool to read ' + CLAUDE_DIR + '/CLAUDE.md and the rule files ' + picked.map((f) => RULES_DIR + '/' + f).join(', ') + ', then follow them for the whole conversation. Full router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
+    lines.push('At session start with MCP "' + MCP_NAME + '", first read ' + CLAUDE_DIR + '/CLAUDE.md and these files under ' + RULES_DIR + ': ' + picked.join(', ') + ', then follow them all session. Router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
   }
-  lines.push('Finding files/folders: ALWAYS use the find_path tool (scans the whole tree in one call, returns folders too, ~0.2s). Don\\'t list_directory level by level, don\\'t use filesystem\\'s search_files — it doesn\\'t return directories and tends to time out. Use search_content to find text inside files.');
-  lines.push('To run git/ls/grep in a specific folder: call run_cmd with the cwd parameter (an absolute path under ' + DATA_DIR + '), don\\'t use cd or -C.');
-  lines.push('This MCP server\\'s own repo: ' + REPO_ROOT + ' — to edit it, go straight to that path instead of searching for it.');
-  lines.push('This chat interface also has its own sandbox tools (create_file, str_replace, view, bash_tool) that write to a separate throwaway container, not this machine. For any path under ' + DATA_DIR + ', only this MCP\\'s filesystem tools (read_text_file/write_file/edit_file) touch the real machine — after writing through them, read the file back with the same MCP before calling the change done.');
-  document.getElementById('prompt').value = lines.join('\\n');
+  lines.push('Every task: investigate and confirm scope with me before editing; then keep a plan at $HOME/.aki/mcpsv/task/<id>/working.md and update it as you go so a later session can resume. <id> = a short task slug.');
+  lines.push('Finding files/folders: always use find_path (one call, whole tree, returns folders, ~0.2s), not list_directory level-by-level, not filesystem search_files. Use search_content for text inside files.');
+  lines.push('Run git/ls/grep in a folder via run_cmd with cwd (absolute, under ' + DATA_DIR + '), never cd or -C.');
+  lines.push('This server\\'s own repo: ' + REPO_ROOT + '; edit it there directly.');
+  lines.push('The chat\\'s own sandbox tools (create_file/str_replace/view/bash_tool) write to a throwaway container, not this machine. For any path under ' + DATA_DIR + ', only this MCP\\'s filesystem tools touch the real machine; after writing, read the file back through the same MCP before calling it done.');
+  const value = lines.join('\\n');
+  document.getElementById('prompt').value = value;
+  const over = value.length > 1500;
+  const count = document.getElementById('promptCount');
+  count.textContent = value.length + ' chars' + (over ? ', over ChatGPT\\'s 1500 cap' : '');
+  count.className = 'msg ' + (over ? 'err' : 'ok');
 }
 
 // Nothing about a folder row says whether it is live or merely typed, so the Save button carries the mark instead.
