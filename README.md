@@ -179,6 +179,10 @@ Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for 
 
 Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
 
+## Connecting from Gemini and Grok
+
+Both ride the same MCP URL, `/register` DCR path, and passphrase flow as ChatGPT — no separate transport or auth. **Grok**: Connectors → New Connector → Custom → paste the MCP URL; reachable-over-public-internet (the Funnel) is the only requirement. **Gemini**: custom MCP connectors with OAuth are a **Gemini Enterprise / Business** feature (not confirmed for consumer gemini.google.com) — register the connector, set Server URL to the MCP URL and Registration URL to `<origin>/register`, token endpoint auth method `none`. The panel's section 2 prints the exact copy fields. Their redirect_uri callbacks are allowlisted in `scripts/oauth.js` (`isAllowedRedirect`), currently with **provisional** prefixes to confirm against a live authorize log.
+
 ### Connector icon
 
 claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host:

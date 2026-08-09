@@ -17,6 +17,11 @@ import { esc } from './html.js';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
 const CHATGPT_CALLBACK_PREFIX = 'https://chatgpt.com/connector/oauth/';
+// PROVISIONAL — the real Grok/Gemini redirect_uri is undocumented; these prefixes are a first guess.
+// Discover the true value from a live connect: watch `npm start` for the gatekeeper line
+// `GET /authorize?...redirect_uri=<ENCODED>` (or `[oauth] authorize REJECTED ... redirect_ok=false`), URL-decode the redirect_uri param, and correct the prefix below. Method: docs/plan/audit-1.1.0-todo.md §A1.
+const GROK_CALLBACK_PREFIX = 'https://grok.com/connector/oauth/';
+const GEMINI_CALLBACK_PREFIX = 'https://gemini.google.com/connector/oauth/';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
@@ -30,7 +35,9 @@ const refreshTokens = new Map();
 function isAllowedRedirect(uri) {
   if (typeof uri !== 'string' || !uri) return false;
   if (uri === CLAUDE_CALLBACK || uri === CHATGPT_LEGACY_CALLBACK) return true;
-  return uri.startsWith(CHATGPT_CALLBACK_PREFIX);
+  return uri.startsWith(CHATGPT_CALLBACK_PREFIX)
+    || uri.startsWith(GROK_CALLBACK_PREFIX)
+    || uri.startsWith(GEMINI_CALLBACK_PREFIX);
 }
 
 // Tokens survive restarts: the connector is a long-lived file-access grant, and losing it on every
@@ -228,7 +235,7 @@ button[disabled] { opacity: .6; cursor: progress; }
   }
   const code = randomBytes(24).toString('hex');
   authCodes.set(code, { clientId, redirectUri, codeChallenge, expires: Date.now() + CODE_TTL_MS });
-  log(`[oauth] authorize approved -> code issued (state=${state ? 'yes' : 'no'}), redirecting to claude.ai`);
+  log(`[oauth] authorize approved -> code issued (state=${state ? 'yes' : 'no'}), redirecting to ${new URL(redirectUri).host}`);
   const redirect = new URL(redirectUri);
   redirect.searchParams.set('code', code);
   redirect.searchParams.set('iss', origin);

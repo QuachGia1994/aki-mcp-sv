@@ -10,6 +10,8 @@ const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
 const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/plugins#settings/Security?section=developer-mode';
 const CHATGPT_CONNECTOR_URL = 'https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins';
+const GEMINI_CONNECTOR_URL = 'https://support.google.com/g/answer/17106276';
+const GROK_CONNECTOR_URL = 'https://grok.com/connectors';
 const TOKENIZER_URL = 'https://chromewebstore.google.com/detail/claude-token-counter/bioobpobpbeohjoefndgkiaakboimpch';
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule';
 const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvietanh/akidevrule/master/install.sh | bash';
@@ -152,7 +154,7 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 </section>
 
-<section id="connector"><h2>2 · Connectors — Claude + ChatGPT</h2>
+<section id="connector"><h2>2 · Connectors — Claude + ChatGPT + Gemini + Grok</h2>
 <p class="hint">Same Funnel URL for both. Folders / shell allowlist apply to whoever connects.</p>
 
 <h3 class="subh">Claude.ai</h3>
@@ -178,6 +180,24 @@ ${field('Passphrase', passphrase)}
 </ol>
 ${field('Registration URL', regUrl)}
 <p class="hint">ChatGPT registers its own client (PKCE, no secret). Write tools may be limited on ChatGPT depending on OpenAI’s current policy.</p>
+
+<h3 class="subh">Gemini (Enterprise / Business edition)</h3>
+<ol class="steps">
+  <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom MCP connector setup</a> in the Gemini Enterprise admin. The consumer gemini.google.com app may not offer custom remote connectors.</li>
+  <li>Set <strong>Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above).</li>
+  <li>Set <strong>Registration URL</strong> = the value below, so Gemini registers its own client. <strong>Authentication = OAuth</strong>, <strong>Token endpoint auth method = none</strong>. Do not paste Claude's Client ID or Secret.</li>
+  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
+</ol>
+${field('Registration URL', regUrl)}
+
+<h3 class="subh">Grok</h3>
+<ol class="steps">
+  <li><a href="${esc(GROK_CONNECTOR_URL)}" target="_blank" rel="noopener">Open Connectors</a> → New Connector → Custom.</li>
+  <li>Paste the <strong>Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above); Grok completes whatever auth the server prompts for.</li>
+  <li>Set <strong>Registration URL</strong> = the value below, so Grok registers its own client. <strong>Authentication = OAuth</strong>, <strong>Token endpoint auth method = none</strong>. Do not paste Claude's Client ID or Secret.</li>
+  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
+</ol>
+${field('Registration URL', regUrl)}
 </section>
 
 <section><h2>3 · Folders the connector may reach</h2>
