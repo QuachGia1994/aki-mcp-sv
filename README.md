@@ -2,7 +2,7 @@
 
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
 
-Version: **1.1.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.2.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
 

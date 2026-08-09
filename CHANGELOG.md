@@ -4,19 +4,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
-Audit follow-up (`docs/plan/audit-1.1.0-todo.md`): ChatGPT connect fix, one security fix, honest copy, and an SSoT dedup pass. Internal security hardening was deliberately not scheduled — accepted as risk for the single-owner threat model (OAuth + passphrase + Funnel).
+## [1.2.0] — 2026-08-09
+
+Two new connectors (Gemini + Grok) and a Kiro CLI worker arm, a paste-in instruction prompt tightened under ChatGPT's 1500-char cap, and the shell read-only guarantee closed for real (issue #2) — bundled with the 1.1.0 audit follow-up (ChatGPT connect fix, XSS fix, SSoT dedup) that was still sitting unreleased.
 
 ### Added
+- **Gemini and Grok connectors** ride the existing OAuth 2.1 + RFC 7591 DCR path: `isAllowedRedirect` (`scripts/oauth.js`) now allowlists Grok and Gemini-Enterprise callbacks beside Claude and ChatGPT, and panel section 2 has an onboarding walkthrough for each (each emitting `<origin>/register` as a copy field). The Grok/Gemini `redirect_uri` prefixes are **provisional** — flagged in code with the live-connect discovery command — and the OAuth round-trip on each is unverified until a real connect. Consumer gemini.google.com may not support custom MCP connectors; the feature targets Gemini Enterprise/Business. Plan: `docs/plan/integrate-gemini-grok.md`.
+- **Kiro CLI arm** (`scripts/kiro-mcp.js`, wired into `mcp-hub.config.json`): two separate MCP tools — `kiro_read` (`--trust-tools=fs_read`) and `kiro_write` (`--trust-tools=fs_read,fs_write`) — so a connector can approve write independently of read. The model is hard-locked to `claude-sonnet-4.5`; the prompt is a separate `execFile` arg. Requires `kiro-cli` on `PATH` and is **unverified at runtime** here (the binary isn't installed); it fails loud on a missing binary, never fabricating output. Plan: `docs/plan/integrate-kiro-cli.md`.
+- Paste-in instruction prompt now carries a mandatory per-task workflow line: investigate and confirm scope before editing, then keep and update `$HOME/.aki/mcpsv/task/<id>/working.md` so a later session resumes. Plan: `docs/plan/instruction-prompt-improve.md`.
 - `/.well-known/openid-configuration` served as an alias of the authorization-server metadata, so ChatGPT can auto-discover `registration_endpoint` and auto-fill its Registration URL.
 - Panel section 2 now carries a concrete ChatGPT walkthrough (developer-mode + create-connector deep links) and emits the exact `<origin>/register` value as a copy field — the missing step that unblocks DCR. Claude's Client ID/Secret fields are scoped to a Claude-only subsection so they aren't pasted into ChatGPT by mistake.
 - Panel folder rows for the trust zones (`~/.aki`, `~/.claude`, rules dir) render locked (no delete button), so rule-file access can't be revoked by an accidental row deletion.
 
 ### Changed
 - SSoT dedup: extracted `scripts/http.js` (`readBody` / `json` / one traversal-guarded `serveStatic` + a single MIME map), `scripts/mcp-tool.js` (the `ok` / `err` / `fail` tool-result envelope, previously inlined ~8×), and `scripts/html.js` (the `esc` HTML-escaper). `oauth.js`, `gatekeeper.js`, `panel.js`, `streamable-bridge.js`, `search-mcp.js`, `shell-mcp.js`, `agy-mcp.js`, `config-page.js` now import these instead of carrying local copies. Dropped the dead `resolveClient` export. Net −64 lines.
-- Panel and README copy corrected: the shell set is described as "curated to read-only" rather than "read-only only" / "fully off-limits", since flag-rich binaries (`find`, `sort`) aren't fully contained — an accepted single-owner tradeoff, not a guarantee.
+- Panel and README copy corrected: the shell set is described as "curated to read-only" rather than "read-only only" / "fully off-limits" (and, with `find`/`sort` now removed — see Security — the default set is read-only by construction).
+- Instruction prompt (`config-page.js` `buildPrompt`) compacted under ChatGPT's 1500-char instruction cap: the rules-dir path is emitted once instead of prepended per rule file, the lines are rewritten dense, and section 6 shows a live char count that turns red past 1500. The default (4 rules ticked) lands at ~1309 chars.
+- `agy` tool tuned: the `effort` enum is restricted to `low|medium|high` to match the installed `agy --help` (it previously advertised `xhigh|max`, which the CLI rejects), and the valid agy model ids are documented on the `model` parameter.
 
 ### Fixed
 - Reflected XSS on the `/authorize` confirmation page: the `state`, `codeChallenge`, `redirectUri`, `clientId`, and `codeChallengeMethod` hidden-field values are now HTML-escaped before rendering.
+
+### Security
+- **Shell read-only guarantee closed** (issue #2): `find` and `sort` are removed from the default allowlist. Their own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) and `execFile` is no defense since the danger is the binary's argv, not a shell — so a default connector could previously write, delete, or exec through the shell tool. `find_path`/`search_content` cover the read-only lookup they were reached for. This reverses 1.1.0's "accepted tradeoff" framing in favour of closing the hole; no per-binary flag sanitizer was added (the allowlist curates the surface instead).
 
 ## [1.1.0] — 2026-08-08
 
