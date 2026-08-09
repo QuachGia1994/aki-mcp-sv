@@ -82,6 +82,7 @@ aki-mcp-sv/
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
 │   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
 │   ├── agy-mcp.js                # dedicated MCP server for the agy CLI
+│   ├── kiro-mcp.js               # Kiro arm: kiro_read + kiro_write tools, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call

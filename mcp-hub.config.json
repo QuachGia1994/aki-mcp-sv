@@ -18,6 +18,11 @@
       "command": "node",
       "args": ["./scripts/agy-mcp.js"],
       "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
+    },
+    "kiro": {
+      "command": "node",
+      "args": ["./scripts/kiro-mcp.js"],
+      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
     }
   }
 }
