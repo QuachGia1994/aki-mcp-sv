@@ -8,6 +8,7 @@
 - [plan/repl-config-tools.md](plan/repl-config-tools.md) — plan to add a persistent-session REPL + get_config (inspired by Desktop Commander), write allowlist (shell) deferred
 - [plan/shell-allowlist.md](plan/shell-allowlist.md) — shell-allowlist subsystem: revoke-bug storage format, panel row-list UX, read-only default additions, trusted-dir preallow
 - [plan/chrome-tampermonkey-autosetup.md](plan/chrome-tampermonkey-autosetup.md) — auto-detect/point Tampermonkey at the token-counter + widen-UI userscripts on `npm start` (design only, not started)
+- [plan/update-check-notify.md](plan/update-check-notify.md) — check `package.json` on GitHub main vs local on every `npm start` (works for zip or git-clone installs), colored console banner + panel banner, one-click git-pull button for git checkouts (design only, not started)
 - [plan/done/unify-windows-linux.md](plan/done/unify-windows-linux.md) — unify the codebase for Windows + Linux (macOS unaffected) and remove Chrome CDP control
 - [plan/done/merge-pr1-windows-chatgpt.md](plan/done/merge-pr1-windows-chatgpt.md) — how PR #1 (Windows fixes + ChatGPT connector) is merged onto our OS-agnostic architecture: integration branch, the 7 real conflicts, the 4 files that auto-merge wrong, and how the PR still lands as Merged
 - [plan/done/audit-1.1.0-todo.md](plan/done/audit-1.1.0-todo.md) — read-only v1.1.0 audit backlog (ChatGPT blocker, honest shell copy, XSS escape, SSoT dedup); shipped 2026-08-09, now a record
