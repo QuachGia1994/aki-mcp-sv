@@ -4,11 +4,14 @@ import { SETTINGS_PATH } from './userdata.js';
 
 // null = any subcommand allowed; array = only those subcommands. Curated to read-only binaries.
 // Unix tools work as-is on macOS/Linux and also on Windows when Git for Windows usr\bin is on PATH.
+// find and sort are deliberately NOT here: their own flags escape read-only (find -delete/-exec, sort -o <path>),
+// and execFile is no defense since the danger is the binary's argv, not the shell (issue #2). The search__find_path
+// and search__search_content tools cover the read-only file/text lookup that find/grep were reached for.
 const UNIX_DEFAULT = {
-  ls: null, cat: null, pwd: null, find: null, grep: null, head: null, tail: null,
+  ls: null, cat: null, pwd: null, grep: null, head: null, tail: null,
   wc: null, file: null, stat: null, tree: null, ps: null, df: null, du: null,
   whoami: null, uname: null,
-  sort: null, uniq: null, cut: null, diff: null,
+  uniq: null, cut: null, diff: null,
   basename: null, dirname: null, realpath: null, which: null, date: null,
   git: ['status', 'log', 'diff', 'show'],
 };
