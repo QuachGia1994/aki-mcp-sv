@@ -5,8 +5,8 @@ Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files
 Version: **1.2.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
+<img width="1024" height="1536" alt="aki-mcp-sv-instruct" src="https://github.com/user-attachments/assets/9d1342a8-cd59-4fa8-a3e3-dd753b5da06f" />
 
-<img width="498" height="390" alt="Screenshot 2026-08-07 at 23 06 42" src="https://github.com/user-attachments/assets/94800561-b799-49ce-a7ab-08a52b6dbfde" />
 
 **Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Finding files](#finding-files) · [Security](#security)
 
