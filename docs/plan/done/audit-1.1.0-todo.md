@@ -113,7 +113,7 @@ Fold these together into one shared `scripts/http.js` (body-in / JSON-out / stat
 - **`config-page.js:194-197`** hardcoded stats "17 rule files · 9 skills · 5 subagents · 5 CLIs" are drift-prone; `index.md` lists ~19 rule files, so "17" is likely stale. Derive from a source or accept knowingly.
 - **`panel.js:35`** treats `~/.aki` + `~/.claude` as ordinary deletable folder rows → a user deleting them silently revokes rule-file access. Add a guard or visual distinction. (Interacts with C2: after narrowing to `~/.aki/akidevrule`, that specific row is the rule root.)
 - **6× `[WRAP]`** comments (`agent.C3`): `agy-mcp.js:13-14,28-29,32-33,81-82`; `streamable-bridge.js:19-20,123-124` — rejoin each to one physical line.
-- **1 firm `[YAP]`** (`coding.B4`): `streamable-bridge.js:4-9` duplicates a rationale already in `docs/plan/bridge-session-churn.md` + `CLAUDE.md` — collapse to the reference.
+- **1 firm `[YAP]`** (`coding.B4`): `streamable-bridge.js:4-9` duplicates a rationale already in `docs/plan/done/bridge-session-churn.md` + `CLAUDE.md` — collapse to the reference.
 - **1 soft `[YAP]`**: `agy-mcp.js:2-5` over the one-line budget but load-bearing — condense or anchor to a doc.
 - **`docs/plan/shell-allowlist.md:24`** claims `panel.js` ~40-63 still has unresolved merge-conflict markers — **stale**: verified none remain (`grep` clean, PR1 merge landed). Correct that note when that doc is next touched.
 - **`config-page.js` section 7** (widen-UI console snippet) is being reworked by `docs/plan/chrome-tampermonkey-autosetup.md`, while A2's ChatGPT rewrite touches section 2 of the same file — do both edits in one pass to avoid a collision.

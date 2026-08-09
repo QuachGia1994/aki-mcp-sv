@@ -5,7 +5,7 @@ import { esc } from './html.js';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const AKI_DIR = path.join(os.homedir(), '.aki');
-const MCP_NAME = 'Aki Mac MCPSV Shell & Filesystem';
+const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
 const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/plugins#settings/Security?section=developer-mode';
@@ -181,23 +181,23 @@ ${field('Passphrase', passphrase)}
 ${field('Registration URL', regUrl)}
 <p class="hint">ChatGPT registers its own client (PKCE, no secret). Write tools may be limited on ChatGPT depending on OpenAI’s current policy.</p>
 
-<h3 class="subh">Gemini (Enterprise / Business edition)</h3>
+<h3 class="subh">Gemini (paid tiers — Pro / Business / Enterprise)</h3>
 <ol class="steps">
-  <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom MCP connector setup</a> in the Gemini Enterprise admin. The consumer gemini.google.com app may not offer custom remote connectors.</li>
-  <li>Set <strong>Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above).</li>
-  <li>Set <strong>Registration URL</strong> = the value below, so Gemini registers its own client. <strong>Authentication = OAuth</strong>, <strong>Token endpoint auth method = none</strong>. Do not paste Claude's Client ID or Secret.</li>
-  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
+  <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> (Gemini → your paid subscriptions → Custom apps). Available on paid consumer tiers (Pro) as well as Business / Enterprise; the free tier may not show it.</li>
+  <li>Set the <strong>custom app link / Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above).</li>
+  <li>Open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> shown above — Gemini uses the same confidential client as Claude (paste, not self-registration).</li>
+  <li>Ignore Gemini's <strong>Copy redirect URI</strong> button — the redirect is already allowlisted server-side.</li>
+  <li>On <strong>Continue</strong>, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
 </ol>
-${field('Registration URL', regUrl)}
+<p class="hint">Note: Gemini connects and accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — the connection shows healthy, yet tool use is unreliable. Claude and Grok are the dependable clients today.</p>
 
 <h3 class="subh">Grok</h3>
 <ol class="steps">
   <li><a href="${esc(GROK_CONNECTOR_URL)}" target="_blank" rel="noopener">Open Connectors</a> → New Connector → Custom.</li>
-  <li>Paste the <strong>Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above); Grok completes whatever auth the server prompts for.</li>
-  <li>Set <strong>Registration URL</strong> = the value below, so Grok registers its own client. <strong>Authentication = OAuth</strong>, <strong>Token endpoint auth method = none</strong>. Do not paste Claude's Client ID or Secret.</li>
+  <li>Enter any <strong>Name</strong> and set <strong>Server URL</strong> = <code>${esc(url)}</code>. Grok discovers the OAuth endpoints and registers its own client automatically — there is no Client ID or Registration URL to paste.</li>
   <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
 </ol>
-${field('Registration URL', regUrl)}
+<p class="hint">Grok self-registers as a public client (PKCE, no secret); its redirect URI is allowlisted server-side. If a future Grok change moves that callback, <code>npm start</code> prints <code>register REJECTED (redirect_uri not allowlisted): [...]</code> with the new value to re-allowlist.</p>
 </section>
 
 <section><h2>3 · Folders the connector may reach</h2>

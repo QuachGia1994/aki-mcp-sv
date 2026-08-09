@@ -9,7 +9,11 @@ Let Gemini and Grok reach the same MCP server over the same Funnel URL and OAuth
 - Both therefore ride the existing server unchanged **except** the one gate that is deliberately narrow: `isAllowedRedirect` (`scripts/oauth.js:30-34`), which today allows only `claude.ai` and `chatgpt.com` callbacks.
 
 ## The one unknown that blocks a clean landing — the exact redirect_uri
-`isAllowedRedirect` matches on exact callback strings / a `chatgpt.com/connector/oauth/` prefix. The real redirect_uri Grok and Gemini send is **not documented and must be observed from a live connect attempt**, exactly as ChatGPT's `https://chatgpt.com/connector/oauth/<id>` prefix was discovered from the `[oauth] authorize REJECTED … redirect_ok=false` log line (see `docs/plan/done/audit-1.1.0-todo.md` §A1). Until observed, the allowlist entries are provisional.
+`isAllowedRedirect` matches on exact callback strings / a `chatgpt.com/connector/oauth/` prefix. The real redirect_uri Grok and Gemini send is **not documented and must be observed from a live connect attempt**, exactly as ChatGPT's `https://chatgpt.com/connector/oauth/<id>` prefix was discovered from the `[oauth] authorize REJECTED … redirect_ok=false` log line (see `docs/plan/done/audit-1.1.0-todo.md` §A1).
+
+### Status (RESOLVED 2026-08-09, both verified from live connects)
+- **Gemini — RESOLVED (two bugs).** (1) redirect_uri `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-<numeric>-<host_with_underscores>` — Google's OAuth proxy, not a `gemini.google.com` path → `GEMINI_CALLBACK_PREFIX` corrected. (2) Deeper: Gemini reuses Claude's **confidential** client (pasted ID/secret), but `handleAuthorize` pinned that client to `[CLAUDE_CALLBACK]` and never ran `isAllowedRedirect` on it, so authorize kept rejecting even after the prefix fix. The static client now carries `isStatic:true` and accepts any allowlisted callback at authorize; DCR clients stay pinned to their registered URI. Flow model corrected: Gemini **pastes Client ID/Secret** (does not self-register), on **paid tiers including Pro**.
+- **Grok — RESOLVED.** Real redirect_uri `https://grok.com/connectors-oauth-exchange-code/` (not `/connector/oauth/`), observed via the new `register REJECTED (redirect_uri not allowlisted): [...]` log. `GROK_CALLBACK_PREFIX` corrected; Grok self-registers as a public client and passes.
 
 ## Decisions
 

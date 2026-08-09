@@ -14,7 +14,7 @@ Ship one release that contains the substance of PR #1 (Windows runtime fixes, Ch
 | Actual conflicts on `git merge pr1` | **7 files / 15 hunks** — far smaller than the file overlap suggests |
 | Auto-merging files | 12, of which **4 auto-merge to the wrong result** (see Correction pass) |
 
-The PR's premise is legitimate and was written by someone actually running Windows. Its problem is not correctness — it is that it re-solves problems `docs/plan/unify-windows-linux.md` already solved in the opposite direction: it branches on `process.platform` inside business logic, restores `scripts/chrome.js` (deleted here because Chrome 136 refuses remote debugging on the default profile), and adds a WinForms folder picker plus a second `search_content` implementation.
+The PR's premise is legitimate and was written by someone actually running Windows. Its problem is not correctness — it is that it re-solves problems `docs/plan/done/unify-windows-linux.md` already solved in the opposite direction: it branches on `process.platform` inside business logic, restores `scripts/chrome.js` (deleted here because Chrome 136 refuses remote debugging on the default profile), and adds a WinForms folder picker plus a second `search_content` implementation.
 
 ## Mandatory constraints
 - **Our architecture wins on every collision.** Per-OS difference is allowed as a *data table* selected by `process.platform` (the `open-browser.js` `LAUNCHER` shape); it is not allowed as a branch in business logic or as a second implementation of an existing mechanism.
@@ -80,7 +80,7 @@ Keep the merged shape (`UNIX_DEFAULT` base + `WIN_EXTRA` selected by platform) �
 - Release as **1.1.0**, folding the PR's `1.0.3`/`1.0.4` notes into the existing `[Unreleased]` block.
 - Merge commit carries `Co-authored-by: capybara <moseskarole862@gmail.com>` (commit-author identity, which differs from the GitHub handle `okdev888`).
 - CHANGELOG names the contributor for the Windows fixes and the ChatGPT connector.
-- A review comment on PR #1 states plainly what was adopted, what was rebuilt to fit `docs/plan/unify-windows-linux.md`, and why `chrome.js` and the JS search fallback were not taken.
+- A review comment on PR #1 states plainly what was adopted, what was rebuilt to fit `docs/plan/done/unify-windows-linux.md`, and why `chrome.js` and the JS search fallback were not taken.
 
 ## Execution checklist
 
@@ -106,10 +106,10 @@ All items executed 2026-08-08. Master merged as `86cbc55` (integration merge `bf
 - ACL hardening of `tokens.json` / `oauth-client.json` / `passphrase.txt` on Windows — still deferred from the unify plan.
 
 ## Cross-references
-- `docs/plan/unify-windows-linux.md` — the OS-agnostic design this merge is bent to fit
+- `docs/plan/done/unify-windows-linux.md` — the OS-agnostic design this merge is bent to fit
 - `docs/ref/security-model.md` — OAuth model, extended by the DCR graft
 - `docs/research/chrome-cdp-default-profile-block.md` — why `chrome.js` stays deleted
-- `docs/plan/bridge-session-churn.md` — the single-session bridge that must survive the merge
+- `docs/plan/done/bridge-session-churn.md` — the single-session bridge that must survive the merge
 - PR #1: https://github.com/lacvietanh/aki-mcp-sv/pull/1
 
 ## Decision

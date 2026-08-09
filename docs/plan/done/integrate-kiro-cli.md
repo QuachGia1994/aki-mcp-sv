@@ -3,8 +3,11 @@
 ## Goal
 Add Kiro CLI as a second delegated worker alongside `agy`, exposed as MCP tools so a connected chat (Claude/ChatGPT/…) can hand work to a Kiro session hard-locked to `claude-sonnet-4.5`. Two separate tools — one read-only, one write — so the MCP client can approve the **write** tool independently of the read one in its per-tool approval UI. Separately, correct the existing `agy` tool where it advertises capabilities its installed CLI does not have.
 
-## Prerequisite / verification limit
-`kiro-cli` is **not installed on this machine** (`which kiro` → not found). All Kiro facts below come from `~/.claude/skills/akiflow/references/harness-facts.md` § "Kiro CLI (`kiro-cli` 2.16.0)", verified there 2026-08-02 against the binary — **not re-verifiable here**. The code path lands and parses, but is **unverified at runtime** (`coding.B3`) until run on a machine with `kiro-cli` on `PATH`. The tool must fail loudly (a real error, never a mock) when the binary is absent — reuse the `agy-mcp.js` pattern where `execFile` failure returns `err(...)`.
+## Status — IMPLEMENTED + VERIFIED + DEPLOYED (2026-08-09)
+`scripts/kiro-mcp.js` ships both tools, wired into `mcp-hub.config.json`. `kiro-cli` 2.16.2 is now installed (`~/.local/bin/kiro-cli`); the model id and every flag were run-verified against the live binary and the facts promoted `[owner]→[obs]` in `docs/ref/harness-fact.md` § kiro. A latent deploy bug was found and fixed the same day: `userdata.js` seeded the live hub config only when absent, so the kiro entry never reached this pre-existing install — the merge in `userdata.js` now additively adds template servers missing from the live config. Verified kiro present in `~/.aki/mcpsv/mcp-hub.config.json` with the same roots as the other workers.
+
+## Prerequisite / verification limit (historical — resolved)
+When this plan was written, `kiro-cli` was **not installed** and every Kiro fact was `[owner]`/unverified, sourced from `~/.claude/skills/akiflow/references/harness-facts.md` § "Kiro CLI". That limit is now lifted (see Status). The tool still fails loudly (a real error, never a mock) when the binary is absent — the `agy-mcp.js` pattern where `execFile` failure returns `err(...)`.
 
 ## Kiro CLI facts this design rests on (harness-facts.md, [obs] 2026-08-02)
 | Need | Flag | Note |

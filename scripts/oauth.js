@@ -17,11 +17,12 @@ import { esc } from './html.js';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
 const CHATGPT_CALLBACK_PREFIX = 'https://chatgpt.com/connector/oauth/';
-// PROVISIONAL — the real Grok/Gemini redirect_uri is undocumented; these prefixes are a first guess.
-// Discover the true value from a live connect: watch `npm start` for the gatekeeper line
-// `GET /authorize?...redirect_uri=<ENCODED>` (or `[oauth] authorize REJECTED ... redirect_ok=false`), URL-decode the redirect_uri param, and correct the prefix below. Method: docs/plan/audit-1.1.0-todo.md §A1.
-const GROK_CALLBACK_PREFIX = 'https://grok.com/connector/oauth/';
-const GEMINI_CALLBACK_PREFIX = 'https://gemini.google.com/connector/oauth/';
+// Gemini custom connected apps redirect through Google's OAuth proxy, not a gemini.google.com path — observed live 2026-08-09:
+// redirect_uri=https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-<numeric>-<host-with-underscores>
+const GEMINI_CALLBACK_PREFIX = 'https://oauth-redirect.googleusercontent.com/r/';
+// Grok self-registers (DCR) with this callback — observed live 2026-08-09 from the register-REJECTED log:
+// redirect_uris=["https://grok.com/connectors-oauth-exchange-code/"]. Note: NOT a /connector/oauth/ path.
+const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
@@ -88,10 +89,15 @@ function resolveClient(clientId) {
   if (!clientId) return null;
   const staticClient = loadOrCreateClient();
   if (clientId === staticClient.clientId) {
+    // The confidential client's ID/secret are deliberately pasted into more than one provider (Claude,
+    // and Gemini which reuses the same paste flow). Each provider sends its own redirect_uri, so this
+    // client accepts any allowlisted callback (isStatic below), not just CLAUDE_CALLBACK — the allowlist
+    // (isAllowedRedirect) is the security boundary, the same one /register enforces for public clients.
     return {
       clientId: staticClient.clientId,
       clientSecret: staticClient.clientSecret,
       redirectUris: [CLAUDE_CALLBACK],
+      isStatic: true,
       tokenEndpointAuthMethod: 'client_secret_post',
     };
   }
@@ -146,6 +152,8 @@ export async function handleRegister(req, res) {
   }
   const redirectUris = body.redirect_uris;
   if (!Array.isArray(redirectUris) || !redirectUris.length || !redirectUris.every(isAllowedRedirect)) {
+    // Log the rejected value so an unknown client's real redirect_uri (e.g. Grok) can be read off and allowlisted.
+    log(`[oauth] register REJECTED (redirect_uri not allowlisted): ${JSON.stringify(redirectUris)}`);
     return json(res, 400, { error: 'invalid_redirect_uri' });
   }
   const authMethod = body.token_endpoint_auth_method || 'none';
@@ -188,9 +196,12 @@ export async function handleAuthorize(req, res, passphrase, origin) {
   const codeChallengeMethod = q.get('code_challenge_method');
   const state = q.get('state') || '';
   const client = resolveClient(clientId);
+  // DCR clients are pinned to the exact redirect_uri they registered; the shared confidential client (isStatic)
+  // accepts any allowlisted callback, since it is pasted into several providers each with its own redirect.
+  const redirectOk = !!client && (client.redirectUris.includes(redirectUri) || (client.isStatic && isAllowedRedirect(redirectUri)));
 
-  if (!client || !client.redirectUris.includes(redirectUri) || codeChallengeMethod !== 'S256' || !codeChallenge) {
-    log(`[oauth] authorize REJECTED (${req.method}): client_ok=${!!client} redirect_ok=${!!client && client.redirectUris.includes(redirectUri)} method=${codeChallengeMethod} hasChallenge=${!!codeChallenge}`);
+  if (!redirectOk || codeChallengeMethod !== 'S256' || !codeChallenge) {
+    log(`[oauth] authorize REJECTED (${req.method}): client_ok=${!!client} redirect_ok=${redirectOk} method=${codeChallengeMethod} hasChallenge=${!!codeChallenge}`);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end('invalid authorize request');
     return;

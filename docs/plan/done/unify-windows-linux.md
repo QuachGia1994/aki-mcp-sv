@@ -52,7 +52,7 @@ Not the "after Chrome 131" figure originally suspected — the actual change lan
 - Any change to the OAuth/gatekeeper/mcp-hub architecture — untouched by this plan.
 
 ## Cross-references
-- `docs/plan/init.md` — original architecture decisions (mcp-hub + gatekeeper + funnel), unaffected by this plan
+- `docs/plan/done/init.md` — original architecture decisions (mcp-hub + gatekeeper + funnel), unaffected by this plan
 - `docs/ref/security-model.md` — current OAuth security model, unaffected by this plan
 - `README.md` — target of item 12's rewrite
 

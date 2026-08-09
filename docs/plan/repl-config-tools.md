@@ -52,7 +52,7 @@ The MCP spec has an `instructions` field on the `initialize` response (designed 
 - Reading structured files (docx/xlsx/pdf) — lower value for the current use case, not needed yet.
 
 ## Cross-references
-- `docs/plan/init.md` — original architecture decisions (mcp-hub + gatekeeper + funnel)
+- `docs/plan/done/init.md` — original architecture decisions (mcp-hub + gatekeeper + funnel)
 - `docs/ref/security-model.md` — current OAuth security model, unchanged by this doc
 - `README.md` — setup; the repo location is printed by the panel itself from `process.cwd()`, so the repo can live anywhere
 

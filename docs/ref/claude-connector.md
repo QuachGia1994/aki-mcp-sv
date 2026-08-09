@@ -19,4 +19,4 @@ The first read of this dialog (before 2026-08-07) assumed "no header field → t
 ## Cross-references
 - `docs/ref/oauth-research-2026-08-07.md` — full research, dates, sources
 - `docs/ref/security-model.md` — current OAuth security model
-- `docs/plan/init.md` — architecture decisions
+- `docs/plan/done/init.md` — architecture decisions

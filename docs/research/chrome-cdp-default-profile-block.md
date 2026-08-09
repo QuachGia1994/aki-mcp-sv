@@ -31,4 +31,4 @@ No source contradicted this; all five independently name the same version (136) 
 Passing `--user-data-dir` pointing at a throwaway profile would restore a working CDP session, but it would be driving a browser the user isn't logged into — defeating the one reason `chrome.js` exists (control the tab the user already has open, signed in). No variant of the fix preserves the original purpose, so the finding closes toward removal rather than a workaround.
 
 ## Decision
-**Action** → `docs/plan/unify-windows-linux.md`, item 5 (delete `scripts/chrome.js`) and item 6/7 (remove the panel routes and UI section that call it). Cross-references: item 12 of that plan also removes the "Chrome control" section from `README.md`.
+**Action** → `docs/plan/done/unify-windows-linux.md`, item 5 (delete `scripts/chrome.js`) and item 6/7 (remove the panel routes and UI section that call it). Cross-references: item 12 of that plan also removes the "Chrome control" section from `README.md`.

@@ -7,7 +7,8 @@ import { z } from 'zod';
 import { resolveUnderRoot } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
-// Owner requirement ("khóa cứng"): the model is not a tool parameter, so a prompt cannot escalate to a pricier or different tier. Verified in kiro-cli --list-models (harness-facts.md § Kiro CLI, [obs] 2026-08-02).
+// Owner requirement ("khóa cứng"): the model is not a tool parameter, so a prompt cannot escalate to a pricier or different tier.
+// Verified 2026-08-09 against `kiro-cli chat --list-models` (kiro-cli 2.16.2): claude-sonnet-4.5 is a real id (1.30x credits). See docs/ref/harness-fact.md § Kiro.
 const MODEL = 'claude-sonnet-4.5';
 
 function run(trustTools, { prompt, effort, cwd }) {
@@ -17,7 +18,7 @@ function run(trustTools, { prompt, effort, cwd }) {
   } catch (e) {
     return Promise.resolve(fail(e));
   }
-  const args = ['chat', '--no-interactive', '--model', MODEL, `--trust-tools=${trustTools}`, '--require-mcp-startup'];
+  const args = ['chat', '--no-interactive', '--model', MODEL, `--trust-tools=${trustTools}`];
   if (effort) args.push('--effort', effort);
   args.push(prompt);
   return new Promise((resolve) => {

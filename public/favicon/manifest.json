@@ -1,9 +1,9 @@
 {
-  "name": "AkiMCPSV",
-  "short_name": "AkiMCPSV",
+  "name": "AkiTao",
+  "short_name": "AkiTao",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#ff4800",
+  "theme_color": "#ffb200",
   "background_color": "#000000",
   "icons": [
     {

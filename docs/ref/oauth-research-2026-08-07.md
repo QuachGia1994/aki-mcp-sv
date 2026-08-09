@@ -86,7 +86,7 @@ After the Funnel fix, the log shows `POST /token -> 200` for the first time — 
 
 Checked `mcp-hub` directly (the real upstream, `npm ls mcp-hub` → version `4.2.1`) with `curl`, bypassing the gatekeeper: `GET http://127.0.0.1:19999/mcp` returns an SSE stream with `event: endpoint, data: /messages?sessionId=...` — confirming this version of `mcp-hub` implements the **legacy HTTP+SSE transport** (pre-2025-03-26 MCP spec), not modern Streamable HTTP. Under this transport, `POST /mcp` is never a valid route — the client must POST JSON-RPC to `/messages?sessionId=...`, obtained from the `endpoint` event on the SSE stream.
 
-`scripts/gatekeeper.js` previously only proxied the exact path `/mcp` (the original intent: keep `mcp-hub`'s unauthenticated `/api/*` off the internet — see `docs/plan/init.md`), which incidentally also blocked `/messages` — unintended collateral damage.
+`scripts/gatekeeper.js` previously only proxied the exact path `/mcp` (the original intent: keep `mcp-hub`'s unauthenticated `/api/*` off the internet — see `docs/plan/done/init.md`), which incidentally also blocked `/messages` — unintended collateral damage.
 
 Fix applied: the route filter in `scripts/gatekeeper.js` now also allows `path === '/messages'` (same bearer-gate, same `forwardToHub`), still blocking every other path including `/api/*`. Verified locally through the real gatekeeper (not a mock): got a real access token via the full OAuth flow → opened SSE `/mcp` to get a `sessionId` → POSTed `/messages?sessionId=...` through the gatekeeper → **202 Accepted**, the correct SSE-transport behavior (the JSON-RPC result comes back over the stream, not in the POST response).
 
@@ -102,7 +102,7 @@ Verified locally: stood up a separate test gatekeeper on another port (`19998`, 
 
 ## Confirmed success — MVP complete end-to-end
 
-Retested for real on claude.ai after the round-7 fix (restarted `npm start`, reconnected the connector): the tools list shows all 15 tools (14 `filesystem__*` + `shell__execute`), tool calls work normally. The full chain — OAuth → Streamable HTTP shim → mcp-hub → filesystem/shell MCP server — works as designed. Full checklist: `docs/plan/init.md`.
+Retested for real on claude.ai after the round-7 fix (restarted `npm start`, reconnected the connector): the tools list shows all 15 tools (14 `filesystem__*` + `shell__execute`), tool calls work normally. The full chain — OAuth → Streamable HTTP shim → mcp-hub → filesystem/shell MCP server — works as designed. Full checklist: `docs/plan/done/init.md`.
 
 ## Debug round 8 (2026-08-08) — the Funnel desync RECURS, and a bare re-push is no longer enough
 
@@ -136,5 +136,5 @@ This is a **recurring operational failure of Tailscale Funnel on this host**, no
 
 ## Cross-references
 - `docs/ref/security-model.md` — security model updated for this OAuth architecture
-- `docs/plan/init.md` — architecture decision table
+- `docs/plan/done/init.md` — architecture decision table
 - `scripts/oauth.js`, `scripts/gatekeeper.js` — the real implementation

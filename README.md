@@ -2,7 +2,7 @@
 
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
 
-Version: **1.2.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.2.1** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
 <img width="1024" height="1536" alt="aki-mcp-sv-instruct" src="https://github.com/user-attachments/assets/9d1342a8-cd59-4fa8-a3e3-dd753b5da06f" />
@@ -44,14 +44,16 @@ mcp-hub        — internal only (loopback), port 19999, legacy HTTP+SSE transpo
       │
       ├─► MCP filesystem server   (read/write inside the allowed folders)
       ├─► MCP search server       (search-mcp.js — find_path/search_content, whole-tree in one call)
-      └─► MCP shell server        (shell-mcp.js — allowlisted commands, curated to read-only)
+      ├─► MCP shell server        (shell-mcp.js — allowlisted commands, curated to read-only)
+      ├─► MCP agy server          (agy-mcp.js — Antigravity CLI, read-only plan mode)
+      └─► MCP kiro server         (kiro-mcp.js — Kiro arm: kiro_read + kiro_write, needs kiro-cli on PATH)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  control UI: allowed folders, shell allowlist, restart hub,
                  install akidevrule, generate the connector prompt
 ```
 
-`mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/init.md`).
+`mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/done/init.md`).
 
 OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/ref/oauth-research-2026-08-07.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
 
@@ -182,7 +184,11 @@ Same folder allowlist and shell allowlist as Claude. Restart `npm start` after u
 
 ## Connecting from Gemini and Grok
 
-Both ride the same MCP URL, `/register` DCR path, and passphrase flow as ChatGPT — no separate transport or auth. **Grok**: Connectors → New Connector → Custom → paste the MCP URL; reachable-over-public-internet (the Funnel) is the only requirement. **Gemini**: custom MCP connectors with OAuth are a **Gemini Enterprise / Business** feature (not confirmed for consumer gemini.google.com) — register the connector, set Server URL to the MCP URL and Registration URL to `<origin>/register`, token endpoint auth method `none`. The panel's section 2 prints the exact copy fields. Their redirect_uri callbacks are allowlisted in `scripts/oauth.js` (`isAllowedRedirect`), currently with **provisional** prefixes to confirm against a live authorize log.
+Both ride the same MCP URL and passphrase flow — no separate transport or auth. They differ in *how* the client authenticates, and the connector panel (section 2) prints the exact copy fields for each.
+
+**Gemini** (paid tiers — Pro / Business / Enterprise; the free tier may not expose custom apps): pastes a **confidential client**, exactly like Claude — set the custom app link to the MCP URL, then under Advanced Settings paste the same Client ID / Client secret. Gemini's redirect goes through Google's OAuth proxy `https://oauth-redirect.googleusercontent.com/r/...` (observed live 2026-08-09), allowlisted by `isAllowedRedirect` in `scripts/oauth.js`. **Caveat:** the OAuth handshake succeeds and Gemini accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — connection healthy, tool use unreliable. Claude and Grok are the dependable clients today.
+
+**Grok**: **self-registers** via the `/register` DCR path like ChatGPT — paste only the MCP URL, no Client ID. Its real `redirect_uri` `https://grok.com/connectors-oauth-exchange-code/` was observed live 2026-08-09 and is allowlisted via `GROK_CALLBACK_PREFIX`. Verified working end to end (`authorize → token` 200). If a future Grok change moves that callback, a rejected registration logs `register REJECTED (redirect_uri not allowlisted): [...]` so the new value can be re-allowlisted.
 
 ### Connector icon
 
