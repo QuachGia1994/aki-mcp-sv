@@ -415,9 +415,9 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules not installed: ask the user to press Install/update in the Aki panel (section 2) before starting.');
   }
-  lines.push('Every task: confirm scope with me before edit; plan $HOME/.aki/mcpsv/task/<id>/working.md (update live). <id>=short slug.');
+  lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md (live); reply path on create. Skip pure Q&A. <id>=short slug.');
   lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under an allowed root, never cd/-C.');
-  lines.push('Repo: ' + REPO_ROOT + ', edit there. Sandbox tools write throwaway only; all local paths use Aki MCP FS only; after write, read back via MCP before done.');
+  lines.push('Repo: ' + REPO_ROOT + '. local paths=Aki MCP FS only; sandbox throwaway; after write read-back MCP.');
   const value = lines.join('\\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;

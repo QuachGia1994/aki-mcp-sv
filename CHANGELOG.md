@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ## [Unreleased]
 
 ### Changed
+- **Paste-in instruction: `working.md` → `plan.md`, dynamic plan, tighter MCP boundary** (`scripts/config-page.js` `buildPrompt`): plan file only for mutate/multi-step (skip pure Q&A); reply path on create; line 5 now `local paths=Aki MCP FS only; sandbox throwaway; after write read-back MCP`. Plan: `docs/plan/instruction-prompt-1.4.1.md`.
 - **README expanded beyond infra/security to product positioning** (`README.md`): new "When to use & Core Use-Cases" subsection (desk/CLI vs remote/mobile vs scheduled automation) under "Why this exists"; new "Autonomous Cloud Automation (Grok + Local MCP)" section covering cloud-triggered headless execution; the multi-account paragraph expanded to spell out browser-profile switching; one new bullet under "Why whitelist, not blocklist" on neutralizing prompt injection. Plan: `docs/plan/done/improve-readme-content.md`.
 
 ## [1.4.0] — 2026-08-11
