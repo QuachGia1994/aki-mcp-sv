@@ -34,3 +34,15 @@ Re-probe until the public edge returns 200. Full history and evidence: `docs/res
 ## Session lifecycle
 
 `scripts/streamable-bridge.js` holds **one** internal hub session for the whole process; every external claude.ai client multiplexes onto it via JSON-RPC id remapping, and each `initialize` is answered locally from the cached hub result (docs/plan/bridge-session-churn.md, Option B). The hub therefore logs one connect at boot and one disconnect at shutdown, no matter how often claude.ai re-initializes — do not reintroduce a per-client session Map or an `MCP_MAX_SESSIONS` cap. The shared session re-boots transparently if its upstream SSE dies (hub restart). Per-request timeout only (`MCP_REQUEST_TIMEOUT_MS`, default 10 min). Tokens survive restarts via `scripts/oauth.js` (persisted); the funnel does not, per RECURRING #1.
+
+## Release process (temporary local override — akidevrule `release.B4` is mid-reform)
+
+This is a GitHub-hosted CLI/app with no `releases.json`, so **the release event is not finished until the GitHub Release object exists** — a pushed tag is not a release. `akidevrule` `release.B4` currently only says "output a copy-ready block", which is why the Release repeatedly got skipped; until the shared rule is fixed, this repo's release runs `gh release create` itself. Do the whole sequence in one go, no waiting to be told:
+
+1. Mint the version: move `[Unreleased]` → `[X.Y.Z] — <date>` in `CHANGELOG.md` (bare semver, no `v`), bump `package.json` `version` to match. Date = the day it actually ships. Bump severity per the changes (minor for backward-compatible features).
+2. Repoint drift before committing: any in-panel/README/`docs/index.md` "section N" or version string that the change moved (`scripts/config-page.js` section numbers are a recurring offender — verify against the code, not memory).
+3. Commit + push `main`. **No credit trailers** (no `Co-Authored-By`/`🤖`); verify with `git log -1 --format=%B`.
+4. Tag bare and push: `git tag -a X.Y.Z -m "Release X.Y.Z" && git push origin X.Y.Z`. (History note: existing tags are `v`-prefixed — `git tag -l` shows `v1.4.0` etc. Match the existing `v` convention on THIS repo until a cleanup pass decides otherwise; do not mix forms.)
+5. **Create the GitHub Release** — the step that was missing: `gh release create <tag> --title "X.Y.Z — <short>" --notes "<the CHANGELOG X.Y.Z body>"`. Confirm `gh release list` shows it as `Latest`.
+
+`done/` plan docs and already-released CHANGELOG blocks are immutable — never rewrite them; drift fixes go in living docs (`docs/index.md` one-liners, README) only.
