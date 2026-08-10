@@ -1,12 +1,11 @@
 # aki-mcp-sv
 
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
+<img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
 Version: **1.3.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
-<img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
-<img width="1024" height="1536" alt="aki-mcp-sv-instruct" src="https://github.com/user-attachments/assets/9d1342a8-cd59-4fa8-a3e3-dd753b5da06f" />
-
+<img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
 **Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Finding files](#finding-files) · [Security](#security)
 
@@ -58,8 +57,6 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
 OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/research/claude-ai-oauth-connector.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
 
 ## Requirements
-
-<img width="649" height="689" alt="image" src="https://github.com/user-attachments/assets/c4d50b51-fb2f-4e13-9ee4-4214068d8b3f" />
 
 - Node.js, on Windows, Linux, or macOS
 - **Windows only:** [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH` — the shell/search tools shell out to Unix binaries (`ls cat pwd grep head tail wc file stat tree ps df du whoami uname`), and akidevrule's `install.sh` needs `bash`; Git for Windows' `usr/bin` ships the coreutils/findutils/grep/diffutils this needs. Same category of prerequisite as Tailscale below, not a code dependency.
@@ -226,6 +223,10 @@ See [How this differs from Desktop Commander](#how-this-differs-from-desktop-com
 - **Read-only by construction**: the built-in set is read-only — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2); adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
 
 ## Screenshots
+<img width="941" height="1196" alt="image" src="https://github.com/user-attachments/assets/b800f5f1-4e9a-4a62-bccd-0f35923c07bc" />
+<img width="899" height="1035" alt="image" src="https://github.com/user-attachments/assets/c7504913-7ff0-4802-b607-b6a6220e82c2" />
+<img width="898" height="834" alt="image" src="https://github.com/user-attachments/assets/2b64541a-aea8-4bcf-b4dc-341254895a32" />
+<img width="892" height="1032" alt="image" src="https://github.com/user-attachments/assets/69413798-5445-4277-9797-a671da6657bd" />
+<img width="651" height="701" alt="gpt-aki-mcp-setting" src="https://github.com/user-attachments/assets/c067919c-1b7f-4f49-af81-82f1193f1f17" />
 
-<img width="894" height="756" alt="image" src="https://github.com/user-attachments/assets/d91a86ea-0d3e-4695-95ef-d13861a242e6" />
-<img width="915" height="957" alt="image" src="https://github.com/user-attachments/assets/d32bd711-6bb7-4bf9-a5b0-d49eea3a9ffc" />
+
