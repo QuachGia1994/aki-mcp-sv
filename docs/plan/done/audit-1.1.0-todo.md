@@ -11,7 +11,7 @@ Every claim below is verified against source at the cited `file:line`. Security 
 ## Owner rulings (doctrine — 2026-08-09, re-sizes everything under B and C)
 
 1. **Threat model = single owner behind stacked outer layers.** Reaching any shell/fs/token surface already requires passing OAuth 2.1 + passphrase + the Tailscale Funnel edge; the only realistic actor left is the authenticated owner. Per `METHOD-proportionality`, hardening the internals against a fully-authenticated sole user is far-fetched strictness — **convenience wins over it.** The heavy hardening below (removing `find`/`sort`, a path-arg parser, short-lived tokens) is **accepted risk, not scheduled work.**
-2. **The `~/.aki` grant is mandatory — do NOT narrow it.** The shell/fs tools need `~/.aki` (and `~/.claude`) reachable as trust zones (`docs/plan/shell-allowlist.md` → *Trusted-directory preallow*). C2's "narrow to `~/.aki/akidevrule`" is **rejected.**
+2. **The `~/.aki` grant is mandatory — do NOT narrow it.** The shell/fs tools need `~/.aki` (and `~/.claude`) reachable as trust zones (`docs/plan/done/shell-allowlist.md` → *Trusted-directory preallow*). C2's "narrow to `~/.aki/akidevrule`" is **rejected.**
 
 What survives the rulings is only what is a defect *regardless* of proportionality: **UI copy that makes a false safety claim** ("read-only commands only", "fully off-limits"). Lying to the user about the boundary is a bug at any threat level, and correcting the words costs nothing and no convenience. Those copy fixes stay actionable; the hardening does not. Section A (ChatGPT) is unaffected — it is a real blocker, not a strictness item.
 
@@ -76,9 +76,9 @@ Also make the panel emit the exact `<origin>/register` value as a copy field (it
 
 ---
 
-## B · Shell surface — folded into `docs/plan/shell-allowlist.md` (that doc owns the subsystem)
+## B · Shell surface — folded into `docs/plan/done/shell-allowlist.md` (that doc owns the subsystem)
 
-The shell allowlist, `checkPermission`'s arg mechanism, and the `~/.aki`/`~/.claude` trust zones are designed in detail in `docs/plan/shell-allowlist.md`. To keep one SSoT (`design.A1`), the audit's shell findings live there now, re-sized by the rulings above.
+The shell allowlist, `checkPermission`'s arg mechanism, and the `~/.aki`/`~/.claude` trust zones are designed in detail in `docs/plan/done/shell-allowlist.md`. To keep one SSoT (`design.A1`), the audit's shell findings live there now, re-sized by the rulings above.
 
 ### B1 · `find`/`sort`/`cat` argv escapes — accepted, not removed
 `allowlist.js:8,11` (`find: null`, `sort: null`) + `shell-mcp.js:54-63,82`: `checkPermission` tests `bin` and, for arrays, `args[0]` only — a `null` value means no arg check. So `find <dir> -exec <prog> {} +` (RCE), `find <dir> -delete` (irreversible delete), `sort -o <path>` (overwrite), `cat <abs-path>` (read outside ROOTS) all pass (none contain `DANGEROUS_CHARS`; `execFile` is no defense — the risk is what the allowed binary does with its own argv).
@@ -115,7 +115,7 @@ Fold these together into one shared `scripts/http.js` (body-in / JSON-out / stat
 - **6× `[WRAP]`** comments (`agent.C3`): `agy-mcp.js:13-14,28-29,32-33,81-82`; `streamable-bridge.js:19-20,123-124` — rejoin each to one physical line.
 - **1 firm `[YAP]`** (`coding.B4`): `streamable-bridge.js:4-9` duplicates a rationale already in `docs/plan/done/bridge-session-churn.md` + `CLAUDE.md` — collapse to the reference.
 - **1 soft `[YAP]`**: `agy-mcp.js:2-5` over the one-line budget but load-bearing — condense or anchor to a doc.
-- **`docs/plan/shell-allowlist.md:24`** claims `panel.js` ~40-63 still has unresolved merge-conflict markers — **stale**: verified none remain (`grep` clean, PR1 merge landed). Correct that note when that doc is next touched.
+- **`docs/plan/done/shell-allowlist.md:24`** claims `panel.js` ~40-63 still has unresolved merge-conflict markers — **stale**: verified none remain (`grep` clean, PR1 merge landed). Correct that note when that doc is next touched.
 - **`config-page.js` section 7** (widen-UI console snippet) is being reworked by `docs/plan/chrome-tampermonkey-autosetup.md`, while A2's ChatGPT rewrite touches section 2 of the same file — do both edits in one pass to avoid a collision.
 
 ---

@@ -57,7 +57,7 @@ The bridge holds **exactly one** persistent internal hub session for the whole p
 - If log *volume itself* still needs taming independent of root cause: redirect the hub child's stdout (`stdio` in `scripts/start.js`) to a file rather than the terminal. Separate from the churn fix; do not conflate.
 
 ## Cross-references
-- `docs/ref/oauth-research-2026-08-07.md` — why the bridge exists at all (Debug round 7), and the recurring Funnel desync (round 8)
+- `docs/research/claude-ai-oauth-connector.md` — why the bridge exists at all (Debug round 7), and the recurring Funnel desync (round 8)
 - `docs/ref/security-model.md` — the gatekeeper/hub boundary this bridge sits inside
 - `CLAUDE.md` § "Session lifecycle" — the no-idle-close contract this plan established
 

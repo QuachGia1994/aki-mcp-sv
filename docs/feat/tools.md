@@ -1,0 +1,35 @@
+# Tools — the local capability suite (anchored)
+
+The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
+
+## The suite
+
+| Tool (MCP `name`) | Tools exposed | What it does | Who drives it |
+|---|---|---|---|
+| `filesystem` (official `@modelcontextprotocol/server-filesystem`) | `read_file`, `write_file`, `edit_file`, … | Read/write/edit files under the allowed roots | The remote model, directly |
+| `search` | `find_path`, `search_content` | Fast index-backed path + content lookup (no per-call `find`/`grep` spawn) | The remote model, directly |
+| `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
+| `agy` | `agy` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.6-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
+| `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
+
+## Two classes — and why the second is not redundant
+
+**Direct primitives** (`filesystem`, `search`, `shell`) — the remote model calls them and does the reasoning itself.
+
+**Agent arms / "hands"** (`agy`, `kiro`) — the remote model hands off a *whole task* to a **local agent** that reasons and uses its own tools locally, then returns a conclusion.
+
+An audit that only pattern-matches capabilities will call `kiro_read` "redundant — the model already has `find_path`/`search_content`/`run_cmd`." **That is a misclassification and the arms must not be removed on that basis.** An arm is not a file-reader; it is agent delegation, and it buys three things a direct primitive cannot:
+
+- **Offload multi-step local work** — a local model runs the investigate/read/synthesize loop against local files and returns a conclusion, instead of the remote model paying round-trips and context for every intermediate read.
+- **Local trust scoping by mechanism** — the arm runs under its own locked tool set (`kiro` → `fs_read` only; `agy` → `plan` mode only), a boundary the remote model cannot widen from a prompt.
+- **Model/tier choice per task** — `agy` reaches a wide-context discovery tier; `kiro` is pinned to a specific Sonnet id for cost/behavior determinism.
+
+## Anchor — load-bearing, do not remove
+
+`agy` and `kiro` are anchored owner requirements ("hands, bắt buộc phải có"). They are **load-bearing** in the subtraction-audit sense: they carry real behavior (agent delegation) that no other tool provides. Any future audit finding proposing their removal is **rejected by this doc** unless the owner re-decides the anchor. The model lock on `kiro` (`claude-sonnet-4.5`) is a hard requirement — the model is not a tool parameter, so no prompt can escalate the tier (`scripts/kiro-mcp.js`).
+
+## History
+
+- `kiro_write` was removed 2026-08-10 — it duplicated the `filesystem` arm's `write_file`/`edit_file` (a genuine primitive-vs-primitive duplication, unlike `kiro_read`). `docs/plan/done/remove-kiro-write.md`.
+- Arm CLI facts (flags, model ids, effort enums) by evidence tier: `docs/ref/harness-fact.md`.
+- Integration: `docs/plan/done/integrate-kiro-cli.md`, `docs/plan/done/integrate-gemini-grok.md`.

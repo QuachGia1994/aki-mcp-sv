@@ -37,7 +37,7 @@ The real `mcp-hub` still only listens on loopback `19999`, and `/api/*` is never
 - **DCR creates one stored client per ChatGPT connector instance** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations.
 
 ## Cross-references
-- `docs/ref/oauth-research-2026-08-07.md` — research that drove the Claude pre-registered path
+- `docs/research/claude-ai-oauth-connector.md` — research that drove the Claude pre-registered path
 - `docs/ref/claude-connector.md` — fields on claude.ai's dialog
 - `docs/plan/done/init.md` — original architecture decisions
 - OpenAI Apps SDK auth: https://developers.openai.com/apps-sdk/build/auth

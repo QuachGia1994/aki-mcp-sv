@@ -21,7 +21,7 @@ Fix, in order: re-push `tailscale funnel --bg 9999`; if the `--resolve` probe is
 tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --bg 9999
 ```
 
-Re-probe until the public edge returns 200. Full history and evidence: `docs/ref/oauth-research-2026-08-07.md` (rounds 5 and 8).
+Re-probe until the public edge returns 200. Full history and evidence: `docs/research/claude-ai-oauth-connector.md` (rounds 5 and 8).
 
 ## Two client paths, one OAuth server
 

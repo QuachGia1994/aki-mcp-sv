@@ -1,5 +1,6 @@
 node_modules/
 data/
+dev/
 .DS_Store
 
 # macOS custom folder icon resource
