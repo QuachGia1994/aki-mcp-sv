@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Changed
+- **README expanded beyond infra/security to product positioning** (`README.md`): new "When to use & Core Use-Cases" subsection (desk/CLI vs remote/mobile vs scheduled automation) under "Why this exists"; new "Autonomous Cloud Automation (Grok + Local MCP)" section covering cloud-triggered headless execution; the multi-account paragraph expanded to spell out browser-profile switching; one new bullet under "Why whitelist, not blocklist" on neutralizing prompt injection. Plan: `docs/plan/done/improve-readme-content.md`.
+
 ## [1.4.0] — 2026-08-11
 
 Panel onboarding is rebuilt for multi-client setup: a step-overview header, sections reordered to follow the real flow, and the Connectors section split into shared values + per-client tabs (Claude/Grok/ChatGPT/Gemini). Instructions now deep-links each client's settings page, not only Claude's. Plus a second usage-watch extension for Grok, an install-when-missing prompt line, a locked `index.md` rule checkbox, and case-insensitive extended-regex `search_content`.

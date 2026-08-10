@@ -7,15 +7,21 @@ Version: **1.4.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Li
 
 <img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
-**Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
 Claude.ai's web/Pro quota is far cheaper than paying per token via the API for equivalent usage. But most real work is project work: reading, editing, and running commands against files on your machine, not open-ended chat.
 
-The Claude Desktop app already does local file access, but ties usage to a device ID you don't control, and running multiple accounts means repeated login/logout instead of just switching a Chrome profile.
+The Claude Desktop app already does local file access, but ties usage to a device ID you don't control, and running multiple accounts means repeated login/logout. With this web-based approach, you get true multi-account flexibility instead: just switch browser profiles to pick up a different account (e.g. several Claude Pro subscriptions), all pointed at the same local machine, no device lock-in.
 
 This project routes around both problems: run an MCP server on your machine, expose it over HTTPS through Tailscale Funnel, and connect it to claude.ai as a custom connector. You get local file/shell access from the browser, on the web quota, with no app install and no account lock-in.
+
+### When to use & Core Use-Cases
+
+- **At your desk:** a native Terminal/CLI (Claude Code, Antigravity CLI, Cursor) is still the fastest, most fluid option — use that.
+- **Away from your desk (mobile / web / a machine that isn't yours):** use `aki-mcp-sv` via Claude Web, ChatGPT Mobile, or Grok to check on a running job, read logs, clean up temp files, or pull the latest code on your home/office machine.
+- **On a schedule, with nobody watching:** pair Grok's scheduled prompts with `aki-mcp-sv` for cloud-triggered local execution — see [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp).
 
 ### How this differs from Desktop Commander
 
@@ -187,6 +193,14 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 
 **Grok**: **self-registers** via the `/register` DCR path like ChatGPT — paste only the MCP URL, no Client ID. Its real `redirect_uri` `https://grok.com/connectors-oauth-exchange-code/` was observed live 2026-08-09 and is allowlisted via `GROK_CALLBACK_PREFIX`. Verified working end to end (`authorize → token` 200). If a future Grok change moves that callback, a rejected registration logs `register REJECTED (redirect_uri not allowlisted): [...]` so the new value can be re-allowlisted.
 
+## Autonomous Cloud Automation (Grok + Local MCP)
+
+Grok's scheduled prompts turn your machine into a headless "personal remote AI node": no browser tab, no desktop app, just `npm start` running in the background.
+
+- **Cloud-triggered local execution:** set up a scheduled prompt in Grok (Automation) that fires at a fixed time.
+- **Headless:** Grok's cloud service sends the request to `/mcp` over your Tailscale Funnel URL, and `aki-mcp-sv` runs the task — health check, log sweep, `git pull`, cleanup — with nothing open on your end.
+- **Zero UI required:** as long as the process is running, no browser or app needs to be open for the scheduled task to execute.
+
 ### Connector icon
 
 claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host:
@@ -220,6 +234,7 @@ See [How this differs from Desktop Commander](#how-this-differs-from-desktop-com
 - **Fail-safe**: an unfamiliar or new command is blocked automatically, no guessing required.
 - **Minimal attack surface**: only the exact commands you've approved can run, nothing more.
 - **Granular down to the subcommand**: `git` is scoped to `status/log/diff/show`, something a blocklist can't express cleanly.
+- **Neutralizes prompt injection**: exposed to the open internet, a hard whitelist means a malicious or injected instruction has nothing to escalate to — there's no unlisted command for it to reach for.
 - **Read-only by construction**: the built-in set is read-only — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2); adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
 
 ## Screenshots

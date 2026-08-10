@@ -59,3 +59,5 @@ Bổ sung ý về Multi-account bằng Profile trình duyệt và điểm mạnh
 ## 4. Các bước triển khai tiếp theo
 1. Review bản plan này với người dùng.
 2. Cập nhật nội dung `README.md` theo khung kế hoạch đã đề ra khi được yêu cầu.
+
+**Shipped:** 2026-08-11, `[Unreleased]` in CHANGELOG.md. All 4 edits applied (Muc A `When to use & Core Use-Cases`, Muc B `Autonomous Cloud Automation`, Muc C surgical edits to "Why this exists" + "Why whitelist, not blocklist"), cross-checked against README-as-written by agy gemini-3.1-pro-high to avoid duplicating existing Grok/Gemini connector and whitelist sections.
