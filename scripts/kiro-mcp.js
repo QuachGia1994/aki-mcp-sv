@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
-import { resolveUnderRoot } from './roots.js';
+import { resolveOrFail } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
 // Owner requirement ("khóa cứng"): the model is not a tool parameter, so a prompt cannot escalate to a pricier or different tier.
@@ -12,12 +12,9 @@ import { ok, err, fail } from './mcp-tool.js';
 const MODEL = 'claude-sonnet-4.5';
 
 function run(trustTools, { prompt, effort, cwd }) {
-  let dir;
-  try {
-    dir = resolveUnderRoot(cwd);
-  } catch (e) {
-    return Promise.resolve(fail(e));
-  }
+  const r = resolveOrFail(cwd);
+  if (!r.ok) return Promise.resolve(fail(r.error));
+  const dir = r.dir;
   const args = ['chat', '--no-interactive', '--model', MODEL, `--trust-tools=${trustTools}`];
   if (effort) args.push('--effort', effort);
   args.push(prompt);

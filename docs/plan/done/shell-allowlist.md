@@ -7,6 +7,19 @@ Four related problems in the shell-allowlist subsystem, bundled in one doc becau
 3. New read-only default commands.
 4. A second, independent trust mechanism — preallow-by-directory for `~/.aki` and `~/.claude` — so that new Aki-authored skills/scripts don't need a manual `setting.json` edit every time. This is architecturally distinct from 1–3 (it's a new trust *model*, not a data or UI change) and is the reason the doc dropped "-ux" from its name.
 
+## Status & decisions (2026-08-10)
+
+| Item | State | Note |
+|---|---|---|
+| P0 storage `{overrides,revoked}` + `loadAllowlist()` | ✅ code done | still needs live panel→setting.json→enforce runtime check |
+| OS + cross-platform read-only defaults | ✅ code done | |
+| `jq` | keep — add `jq: null` | pure read-only, no write/exec primitive |
+| `sort` `fd` `rg` `find` | ✗ excluded | argv-escape (`sort -o`, `fd -x`, `rg --pre`, `find -exec/-delete`) not gatable by `args[0]`; redundant with `search__find_path`/`search__search_content`. Supersedes the 2026-08-09 "accepted risk" ruling — on mechanism, not user count |
+| Phase 3 row-list UI | ✅ code done | needs live browser check; panel is the product's face for many users (60★/2d), not a solo tool |
+| Phase 4 `allowlistDirs` preallow | ✅ code done | both conditions met, incl. interpreter case; editable panel UI (add/remove/save, live) |
+
+Phase 4 conditions, both met: (a) a preallow dir overlapping a filesystem write root is dropped at load, fail-safe, with a stderr warning (`activeTrustedDirs` in `shell-mcp.js`, using `roots.js` `overlaps`); (b) interpreter case — `node`/`python3`/… resolve the first non-flag arg as the script path and check it via `roots.js` `containedIn`, so `node ~/.aki/x.js` is allowed but `node -e '<code>'` (no file arg) stays blocked.
+
 ## Findings (evidence, not opinion)
 
 ### P0 — revoke bug (security-relevant, fix before any UX work)
@@ -46,6 +59,12 @@ Root cause: the storage format has no way to express "explicitly removed" vs "ne
 | Risk indicator | Static list of known write/destructive binaries (`rm`, `mv`, `cp -f`, `git commit`, `git push`, `npm publish`, …) checked client-side; row renders with a yellow/red border + short reason when matched | Immediate feedback at the point of risk, not just a paragraph read once |
 | Raw JSON access | Kept behind a collapsed "Advanced" toggle, defaulting closed | Power users keep the fast path; newbies get the guided path by default |
 | Validation errors | Point at the specific row/key, not a generic string | Directly answers the "feedback" UX gap found above |
+
+### Revision 2026-08-10 — storage + UI superseded (same unreleased cycle)
+Three of the decisions above were refined once built; the enforcement path (`checkPermission`, the in-memory `{bin:null|array}` map) is unchanged, so the risk profile is identical.
+- **Storage** is now `{ added: [2-level entries], revoked: string[] }`, where `added` is the same array `DEFAULT_ALLOWLIST` uses (bare string = any subcommand, `[bin, ...subs]` = restricted). This drops the hand-written `bin: null` the `overrides` map required. `loadAllowlist()` reads all three shapes (v3 `added`, v2 `overrides`, v1 flat map) via `normalizeStored`, discriminated by `added` then `overrides`. `revoked` is unchanged and still the P0 fix.
+- **Panel UI** dropped the raw-JSON "Advanced" toggle entirely and split the flat row-list into compact **chips** (any-subcommand) + **rows** (restricted, with a subcommand field). Clicking a chip promotes it to a row; a row emptied of subcommands collapses back to a chip on save (level inferred from the data), or explicitly via an **"any"** button on the row. Risk flag is now chip/row coloring + tooltip, not a per-row note line.
+- **Trusted-dir UI** became an editable list (add / remove / save, sharing the one `flist` field pattern), replacing the earlier read-only status readout: users configure `shell.allowlistDirs` from the panel instead of hand-editing `setting.json` (the audience for this feature is mostly non-technical). A zone overlapping a section-3 write root still renders disabled with the offending folder named. Save writes `setting.json` and takes effect live with no hub restart, because `checkPermission` reads `loadAllowlistDirs()` per command (`shell-mcp.js`).
 
 ## Default read-only allowlist additions
 
@@ -146,8 +165,12 @@ Preallow by **trust zone**, not by **file**. `~/.aki` and `~/.claude` are direct
 
 **Reuse, don't duplicate, the containment check.** `scripts/roots.js` already has `containedIn(abs, root)` — case-insensitive on Windows, prefix-with-separator on Unix, written specifically because "a second copy of a security boundary is a second chance to get it subtly wrong" (the file's own comment). The new check must import and reuse it, not reimplement path-prefix matching in `shell-mcp.js`.
 
-### Known gap — does not cover interpreter + script-argument invocations
-The check above only protects the case where `bin` itself is the script path (e.g. `~/.aki/scripts/foo.sh` run directly). It does **not** cover `node ~/.claude/skills/foo/run.js` or `python3 ~/.aki/scripts/bar.py` — there `bin` is `node`/`python3`, resolved via `PATH`, not under the trusted dirs, so the directory check never fires; that invocation still needs `node`/`python3` in the name-based allowlist to run at all — and granting it that way defeats the directory scoping, since `node`/`python3` would then run *any* script anywhere, not just ones under the trusted dirs. Since most skill scripts are `.js`/`.py` run via an interpreter, this gap covers the common case, not an edge case, and needs its own decision (e.g. a second check: `bin` is `node`/`python3` **and** `args[0]` resolves under an `allowlistDirs` entry) before this proposal meets its stated goal.
+### Interpreter + script-argument invocations — RESOLVED
+The direct case (`bin` itself is the script, e.g. `~/.aki/scripts/foo.sh`) and the interpreter case (`node ~/.claude/skills/foo/run.js`, `python3 ~/.aki/scripts/bar.py`) are both covered by `preallowedByDir` in `shell-mcp.js`:
+- **Direct:** `bin` contains a path separator → resolve, require it under a trusted dir **and** executable (`X_OK`).
+- **Interpreter:** `path.basename(bin)` ∈ `INTERPRETERS` (`node python python3 bun deno tsx ruby perl php`; shells deliberately excluded — their arg is arbitrary code, not a locatable file) → the first non-flag arg is the script; require it under a trusted dir. `node -e '<code>'`/`python3 -c '<code>'` have no file arg, so they never match and stay blocked.
+- Crucially, the check runs even when `bin` **is** in the name allowlist but the subcommand is not (e.g. `node` is name-allowed only for `-v`): `checkPermission` is now `name-allow OR dir-allow`, so `node ~/.aki/x.js` passes via the dir path without loosening `node`'s name entry.
+- **Known limitation (fail-safe):** a *relative* script path is resolved against the server's cwd, not the run `cwd`, so it will be under-permitted, not over-permitted. Pass an absolute script path (the norm for skill invocations) for the preallow to fire. Not worth threading `cwd` into `checkPermission` for the MVP.
 
 ### Threat model — the trade-off, stated precisely
 Today: `run_cmd` access can only run the ~20 named, individually-reviewed binaries. After this change: it can run anything that ends up under `~/.aki` or `~/.claude`. The composition risk: if those directories are also inside the filesystem MCP's writable roots (panel section 3), a write via `write_file` followed by a run via `run_cmd` becomes arbitrary code execution with no allowlist review in between — that overlap (write-access zone == exec-preallow zone), not the preallow mechanism alone, is the thing actually being accepted. Worth checking at implementation time whether `~/.aki`/`~/.claude` are in the configured filesystem roots, so the trade-off is verified, not assumed.
@@ -155,8 +178,13 @@ Today: `run_cmd` access can only run the ~20 named, individually-reviewed binari
 Recorded here as a deliberate scope decision, consistent with the philosophy above — not a design flaw needing a fix, per the owner's framing.
 
 ## Execution order
-1. Fix P0 storage format + `loadAllowlist()` (small, self-contained, unblocks trusting the UI copy).
-2. Add the OS-specific + cross-platform default entries (data-only change to `allowlist.js`) — all unblocked now, nothing left pending on the flag-restriction question.
-3. Rebuild section 4 UI as row-list + Advanced/raw-JSON toggle.
-4. Design + implement `allowlistDirs` preallow, resolving the interpreter-invocation gap first — larger and more security-sensitive than 1–3, its own review pass.
-5. Separately: someone resolves the merge-conflict markers in `panel.js` (not part of this plan's scope).
+1. ✅ Fix P0 storage format + `loadAllowlist()`. Done — needs live runtime check.
+2. ✅ Add OS-specific + cross-platform read-only defaults. Done. `jq` still to add; `sort`/`fd`/`rg`/`find` excluded (see Status).
+3. ✅ Section 4 UI: compact chips (any-subcommand) + rows (restricted, with a subcommand field); raw-JSON editor removed; risk flag via chip/row coloring + tooltip. Code done — needs live browser check. (See Revision 2026-08-10.)
+   - Defaults now authored as a list where structure carries the level (`'ls'` = any subcommand · `['git','status',…]` = restricted); `toMap` builds the `{bin: null|array}` map once, so no hand-written `null` and the rest of the subsystem is untouched.
+4. ✅ `allowlistDirs` preallow implemented with both conditions (see Status). `roots.js` now exports `containedIn` + `overlaps`; `allowlist.js` adds `loadAllowlistDirs()` (default `~/.aki`, `~/.claude`, `~`-expanded); `shell-mcp.js` adds `activeTrustedDirs`/`underTrusted`/`preallowedByDir` and the `name-allow OR dir-allow` `checkPermission`; panel shows an editable active/inactive list per zone (`POST /api/trusted-dirs`, live, no restart). Needs a live run to confirm a trusted-dir script executes end-to-end.
+5. Separately: merge-conflict markers in `panel.js` — already resolved (finding above), no action.
+
+## What still needs a live check (not statically verifiable — `coding.B3`)
+- Phase 3 panel: rows render, risk borders fire, Save round-trips through `setting.json` and re-enforces.
+- Phase 4: a script under `~/.aki`/`~/.claude` actually runs via `run_cmd` when those zones are disjoint from the filesystem roots; a zone overlapping a root shows `disabled` in the panel and is refused by the server.

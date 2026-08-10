@@ -5,7 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
 import { readSettings } from './allowlist.js';
-import { resolveUnderRoot } from './roots.js';
+import { resolveOrFail } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
 // 'plan' is agy's non-mutating mode — the only one enabled out of the box. Anything else must be explicitly opted into via setting.json -> { "agy": { "allowedModes": [...] } }.
@@ -61,12 +61,9 @@ server.registerTool(
     if (!allowed.includes(useMode)) {
       return err(`rejected: mode "${useMode}" is not allowlisted (allowed: ${allowed.join(', ')})`);
     }
-    let dir;
-    try {
-      dir = resolveUnderRoot(cwd);
-    } catch (e) {
-      return fail(e);
-    }
+    const r = resolveOrFail(cwd);
+    if (!r.ok) return fail(r.error);
+    const dir = r.dir;
     // -p takes the prompt as its value and must come last — anything after it is silently swallowed as part of the prompt, not parsed as a flag (harness-facts.md § Cross-CLI worker, the flag-order trap).
     const args = ['--mode', useMode, '--model', model ?? DEFAULT_MODEL];
     if (effort) args.push('--effort', effort);

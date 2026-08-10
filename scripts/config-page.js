@@ -1,4 +1,4 @@
-// Renders the control panel page. Served only by panel.js on loopback — credentials never travel over the Funnel.
+// Renders the control panel page. Served only by panel.js on loopback; credentials never travel over the Funnel.
 import os from 'node:os';
 import path from 'node:path';
 import { esc } from './html.js';
@@ -20,7 +20,7 @@ const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funn
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
 const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-design-core.md'];
 
-// Footer mirrors akitao.com's own — same products, same order, same 20px icons hotlinked from that site — but in this panel's tokens so it follows the light/dark theme.
+// Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
 const ECOSYSTEM = [
   ['AkiTao.com', 'https://akitao.com', '/pj/icon-akitao.com-96.png'],
@@ -66,15 +66,15 @@ const ecoLink =([name, url, icon]) =>
 const socialLink = ([label, url, path]) =>
   `<a class="social" href="${esc(url)}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg></a>`;
 
-function field(label, value, mono = true) {
-  return `<div class="row"><label>${esc(label)}</label><div class="val ${mono ? 'mono' : ''}" data-copy>${esc(value)}</div><button onclick="copyFrom(this)">copy</button></div>`;
+function field(label, value, mono = true, hl = false) {
+  return `<div class="row"><label>${esc(label)}</label><div class="val ${mono ? 'mono' : ''}${hl ? ' hl' : ''}" data-copy>${esc(value)}</div><button onclick="copyFrom(this)">copy</button></div>`;
 }
 
 export function renderPanel({ origin, client, passphrase, token, repoRoot, dataDir, rulesDir, userDir }) {
-  const url = origin ? `${origin}/mcp` : 'not available yet — see section 1';
-  const regUrl = origin ? `${origin}/register` : 'not available yet — see section 1';
+  const url = origin ? `${origin}/mcp` : 'not available yet, see section 1';
+  const regUrl = origin ? `${origin}/register` : 'not available yet, see section 1';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(MCP_NAME)} — panel</title>
+<title>${esc(MCP_NAME)} · panel</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
 <style>
 :root { color-scheme: light dark; --bg:#faf9f7; --card:#fff; --line:#e5e2dc; --fg:#1a1a1a; --muted:#6b6b6b; --accent:#ff4800; --ok:#2e7d32; --err:#c62828; }
@@ -89,23 +89,41 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: v
 h3.subh { font-size: 13px; margin: 16px 0 8px; color: var(--fg); font-weight: 600; }
 h3.subh:first-of-type { margin-top: 4px; }
 .hint { color: var(--muted); font-size: 12.5px; line-height: 1.7; margin: 0 0 10px; }
+.fine { color: var(--muted); font-size: 11px; font-style: italic; opacity: .8; margin: 4px 0 8px; }
 .row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px; }
 .row label { color: var(--muted); font-size: 13px; }
-.val { padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; white-space: nowrap; }
+.val { padding: 5px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; overflow-x: auto; white-space: nowrap; font-size: 11.5px; }
+.val.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .mono, textarea, input[type=text], code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 code { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
 button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
 button:hover { border-color: var(--accent); color: var(--accent); }
 button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
 button[disabled] { opacity: .55; cursor: progress; }
-textarea, input[type=text] { width: 100%; padding: 9px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
+textarea, input[type=text] { width: 100%; padding: 6px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
 textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 .lnk { font-size: 12px; margin: 0 0 10px; }
 .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 4px 12px; margin-bottom: 12px; }
 .checks label { display: flex; gap: 6px; align-items: center; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
-.pathlist { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.pathlist div { display: flex; gap: 6px; }
+.flist { display: flex; flex-direction: column; margin-bottom: 8px; }
+.flist > * { display: flex; align-items: center; margin-bottom: 3px; }
+.flist input[type=text] { margin-right: 4px; }
+.acts input[type=text] { flex: 0 1 220px; width: auto; }
+.chips { display: flex; flex-wrap: wrap; margin-bottom: 8px; }
+.chip { display: inline-flex; align-items: center; margin: 0 4px 4px 0; padding: 2px 3px 2px 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: 11.5px ui-monospace, Menlo, monospace; }
+.chip span { cursor: pointer; }
+.chip button { border: 0; background: none; padding: 0 3px; color: var(--muted); font-size: 13px; cursor: pointer; }
+.chip.risk-hi { border-color: var(--err); color: var(--err); }
+.chip.risk-md { border-color: var(--accent); color: var(--accent); }
+.cmdrow .cmd-bin { width: 96px; flex-shrink: 0; font-weight: 600; font: 12px ui-monospace, Menlo, monospace; }
+.cmdrow .cmd-subs { flex: 1; }
+.cmdrow.risk-hi .cmd-subs { border-color: var(--err); }
+.cmdrow button { border: 0; background: none; padding: 0 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.cmdrow button:hover { color: var(--accent); }
+details.adv { margin-top: 12px; }
+details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+details.adv summary:hover { color: var(--accent); }
 .msg { font-size: 12px; margin-left: 4px; }
 .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
 a { color: var(--accent); }
@@ -113,8 +131,6 @@ a { color: var(--accent); }
 .btnlink:hover { border-color: var(--accent); }
 .steps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; line-height: 1.9; }
 .steps li { margin-bottom: 2px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
-.stats b { color: var(--accent); font-size: 14px; }
 .dot { display: inline-block; width: 15px; font-weight: 700; }
 .dot.ok { color: var(--ok); } .dot.err { color: var(--err); }
 .empty { color: var(--muted); font-size: 12.5px; font-family: inherit; }
@@ -126,7 +142,9 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 .foot-logo { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; width: fit-content; font-size: 17px; font-weight: 800; color: var(--fg); }
 .foot-logo img { border-radius: 7px; }
 .foot-logo b { color: var(--accent); font-weight: 800; }
-.foot-desc { font-size: 12.5px; line-height: 1.6; margin: 0; max-width: 260px; }
+.foot-desc { font-size: 12.5px; line-height: 1.6; margin: 0; }
+.donate { margin-top: 6px; }
+.donate .qr { width: 118px; height: 118px; border: 1px solid var(--line); border-radius: 8px; display: block; margin-top: 6px; background: #fff; }
 .foot-social { display: flex; flex-wrap: wrap; gap: 6px; }
 .social { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); transition: color .15s, border-color .15s; }
 .social:hover { color: var(--accent); border-color: var(--accent); }
@@ -143,66 +161,65 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 @media (max-width: 560px) { .row { grid-template-columns: 1fr; } .eco-grid { grid-template-columns: 1fr; } }
 </style></head><body><main>
 <h1>${esc(MCP_NAME)}</h1>
-<p class="sub">Local panel (127.0.0.1) — never goes through Funnel, never reaches the internet.<br>Running repo: <span class="mono">${esc(repoRoot)}</span> · Your config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
+<p class="sub">Local panel (127.0.0.1); never goes through Funnel, never reaches the internet.<br>Running repo: <span class="mono">${esc(repoRoot)}</span> · Your config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
 
-<section><h2>1 · Tailscale — how clients reach this machine</h2>
+<section><h2>1 · Tailscale: how clients reach this machine</h2>
 <p class="hint">Claude.ai and ChatGPT need an address to call your machine. Two steps below, one time only.</p>
 <ol class="steps">
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
-  <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet — free on every plan. <code>npm start</code> enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
+  <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. <code>npm start</code> enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
 </ol>
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 </section>
 
-<section id="connector"><h2>2 · Connectors — Claude + ChatGPT + Gemini + Grok</h2>
+<section id="connector"><h2>2 · Connectors: Claude, ChatGPT, Gemini, Grok</h2>
 <p class="hint">Same Funnel URL for both. Folders / shell allowlist apply to whoever connects.</p>
 
 <h3 class="subh">Claude.ai</h3>
 <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
 <p class="hint">These five values go into Claude's connector dialog. The Client ID / Secret are Claude-only; ChatGPT registers its own client below, so do not paste these there.</p>
 ${field('MCP Name', MCP_NAME, false)}
-${field('MCP URL', url)}
+${field('MCP URL', url, true, true)}
 ${field('OAuth Client ID', client.clientId)}
 ${field('OAuth Client Secret', client.clientSecret)}
 ${field('Passphrase', passphrase)}
-<div class="acts"><button class="primary" data-act="copyAll">Copy all 5 values</button><span class="msg" id="msgConn"></span></div>
 
-<h3 class="subh">ChatGPT (Plus / Pro / Business — Developer mode)</h3>
+<h3 class="subh">ChatGPT (Developer mode)</h3>
 <ol class="steps">
-  <li>Turn on <a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">Developer mode</a> (Settings → Connectors → Advanced). Needs a paid plan.</li>
+  <li>Turn on <a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">Developer mode</a> (Settings → Connectors → Advanced).</li>
   <li><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">Create a connector</a>.</li>
-  <li><strong>Connection</strong>: set <strong>Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above).</li>
+  <li><strong>Connection</strong>: <strong>Server URL</strong> = MCP URL.</li>
   <li><strong>Authentication = OAuth</strong>, then open <strong>Advanced OAuth settings</strong>.</li>
-  <li>Under <strong>OAuth endpoints</strong>, set <strong>Registration URL</strong> = the value below. This is the step that lets ChatGPT register itself; the other endpoints auto-fill from discovery.</li>
-  <li><strong>Registration method = DCR</strong> and <strong>Token endpoint auth method = none</strong>. Do not paste Claude's Client ID or Secret here.</li>
+  <li>Under <strong>OAuth endpoints</strong>, set <strong>Registration URL</strong> = the value below. This lets ChatGPT register itself; <strong>the other endpoints auto-fill from discovery</strong>.</li>
+  <li><strong>Registration method = DCR</strong> and <strong>Token endpoint auth method = none</strong>. <span class="fine">Do not paste Claude's Client ID or Secret here.</span></li>
   <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
-  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
+  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong>.</li>
 </ol>
 ${field('Registration URL', regUrl)}
 <p class="hint">ChatGPT registers its own client (PKCE, no secret). Write tools may be limited on ChatGPT depending on OpenAI’s current policy.</p>
 
-<h3 class="subh">Gemini (paid tiers — Pro / Business / Enterprise)</h3>
-<ol class="steps">
-  <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> (Gemini → your paid subscriptions → Custom apps). Available on paid consumer tiers (Pro) as well as Business / Enterprise; the free tier may not show it.</li>
-  <li>Set the <strong>custom app link / Server URL</strong> = <code>${esc(url)}</code> (the MCP URL above).</li>
-  <li>Open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> shown above — Gemini uses the same confidential client as Claude (paste, not self-registration).</li>
-  <li>Ignore Gemini's <strong>Copy redirect URI</strong> button — the redirect is already allowlisted server-side.</li>
-  <li>On <strong>Continue</strong>, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
-</ol>
-<p class="hint">Note: Gemini connects and accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — the connection shows healthy, yet tool use is unreliable. Claude and Grok are the dependable clients today.</p>
-
 <h3 class="subh">Grok</h3>
 <ol class="steps">
   <li><a href="${esc(GROK_CONNECTOR_URL)}" target="_blank" rel="noopener">Open Connectors</a> → New Connector → Custom.</li>
-  <li>Enter any <strong>Name</strong> and set <strong>Server URL</strong> = <code>${esc(url)}</code>. Grok discovers the OAuth endpoints and registers its own client automatically — there is no Client ID or Registration URL to paste.</li>
-  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong> shown above.</li>
+  <li>Set <strong>Name</strong> = the MCP Name above (it must match exactly; the paste-in instruction keys off this name), and <strong>Server URL</strong> = MCP URL. Grok self-registers (PKCE); nothing else to paste.</li>
+  <li>On connect, enter the <strong>Passphrase</strong>.</li>
 </ol>
-<p class="hint">Grok self-registers as a public client (PKCE, no secret); its redirect URI is allowlisted server-side. If a future Grok change moves that callback, <code>npm start</code> prints <code>register REJECTED (redirect_uri not allowlisted): [...]</code> with the new value to re-allowlist.</p>
+
+<details class="adv"><summary>Gemini (paid tiers): connects, but not smart enough to drive the tools; not recommended</summary>
+<p class="hint" style="margin-top:8px">Tested 2026-08-09: the connection is healthy, but Gemini web doesn't reliably discover or invoke the MCP tools. Use Claude or Grok instead.</p>
+<ol class="steps">
+  <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> (Gemini → paid subscriptions → Custom apps).</li>
+  <li>Set the <strong>custom app link / Server URL</strong> = MCP URL.</li>
+  <li>Open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> above (same confidential client as Claude).</li>
+  <li>Ignore Gemini's <strong>Copy redirect URI</strong> button; the redirect is already allowlisted server-side.</li>
+  <li>On <strong>Continue</strong>, enter the <strong>Passphrase</strong>.</li>
+</ol>
+</details>
 </section>
 
 <section><h2>3 · Folders the connector may reach</h2>
-<p class="hint">This list scopes the filesystem tool and the shell's default working directory. It is not a hard wall: the curated shell binaries run as your user, so an absolute path can still reach outside it. Claude and ChatGPT share this list.</p>
-<div class="pathlist" id="paths"></div>
+<p class="hint">These folders scope file tools and the shell's working directory. Allowed shell commands run with your user permissions and may access files outside this list.</p>
+<div class="flist" id="paths"></div>
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>
   <button data-act="savePaths">Save &amp; restart hub</button>
@@ -212,22 +229,30 @@ ${field('Registration URL', regUrl)}
 </section>
 
 <section><h2>4 · Allowed shell commands</h2>
-<p class="hint">The default set runs curated binaries as your user; they can read whatever your user can read. Deleting a line revokes that command. Adding a write command (<code>rm</code>, <code>git commit</code>…) is you deliberately widening access — think it through.<br>
-<code>null</code> = every subcommand allowed · array = only the subcommands listed.</p>
-<textarea id="allowlist" spellcheck="false" style="min-height:170px"></textarea>
-<div class="acts"><button class="primary" data-act="saveAllowlist">Save allowlist</button><span class="msg" id="msgAllow"></span></div>
+<p class="hint">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (<code>rm</code>, <code>git commit</code>…) widens access.</p>
+<div class="chips" id="cmdChips"></div>
+<div class="flist" id="cmdRows"></div>
+<div class="acts">
+  <input type="text" id="newCmd" placeholder="add a command, e.g. docker">
+  <button data-act="addCmd">+ Add</button>
+  <button class="primary" data-act="saveAllowlist">Save allowlist</button>
+  <span class="msg" id="msgAllow"></span>
+</div>
+
+<h3 class="subh">Trusted script directories</h3>
+<p class="hint">Scripts under these folders run without a command row above, for Aki-authored skills and scripts. A folder that overlaps a writable folder from section 3 is disabled (write + run = code execution).</p>
+<div class="flist" id="trustedDirs"></div>
+<div class="acts">
+  <button class="primary" data-act="addTrusted">+ Add directory…</button>
+  <button data-act="saveTrusted">Save</button>
+  <span class="msg" id="msgTrusted"></span>
+</div>
 </section>
 
-<section><h2>5 · akidevrule — working rules for the AI (optional)</h2>
-<p class="hint">Every new session, Claude guesses from scratch: how long to write, how far it may self-correct, how to name things. <strong>akidevrule</strong> pins those decisions into files, loaded exactly when needed.</p>
-<div class="stats">
-  <span><b>Rule files</b> — code, docs, UI, DB, SEO, release, security</span>
-  <span><b>Skills</b> — <code>/akithink</code>, <code>/akilint</code>, <code>/akiflow</code>, <code>/akigitcommit</code>…</span>
-  <span><b>Dedicated subagents</b> — find, judge, challenge, build</span>
-  <span>Install once, shared across every supported CLI: Claude Code, Gemini, Codex, Kiro, Grok</span>
-</div>
-<p class="hint">The "Install / update" button runs exactly the command below. No sudo, only writes to <span class="mono">~/.aki</span> and <span class="mono">~/.claude</span>, removable with <code>rm -rf</code>. Skipping this section doesn't affect anything else.</p>
+<section><h2>5 · akidevrule: working rules for the AI (optional)</h2>
+<p class="hint">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Pick which files load in section 6 below.</p>
 ${field('Install command', RULES_INSTALL_CMD)}
+<p class="fine">install.sh is for mac &amp; linux. On Windows, ask your AI/agent to read install.sh and replicate the steps. No sudo; writes only to ~/.aki and ~/.claude, removable with rm -rf.</p>
 <div class="acts">
   <button class="primary" data-act="installRules">Install / update</button>
   <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
@@ -235,7 +260,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </div>
 </section>
 
-<section><h2>6 · Instructions — prompt to paste into claude.ai</h2>
+<section><h2>6 · Instructions: prompt to paste into claude.ai</h2>
 <p class="hint">Paste the text below into Settings → General → Personal preferences. It teaches Claude to use this server's tools correctly, and to load rules if you installed them in section 5.</p>
 <p class="lnk"><a href="${SETTINGS_URL}" target="_blank" rel="noopener">↗ Open Settings → General</a></p>
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:10px">
@@ -247,10 +272,10 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </section>
 
 <section><h2>7 · Utilities</h2>
-<p class="hint"><strong>Claude Token Counter</strong> — a Chrome extension that shows your hourly and weekly usage bar right under claude.ai's input box, <strong>including on the Free plan</strong>. claude.ai doesn't surface that number anywhere itself.</p>
+<p class="hint"><strong>Claude Token Counter</strong>: a Chrome extension that shows your hourly and weekly usage bar right under claude.ai's input box, <strong>including on the Free plan</strong>. claude.ai doesn't surface that number anywhere itself.</p>
 <div class="acts"><a class="btnlink" href="${esc(TOKENIZER_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
 <figure><img src="/claude-tokenizer-chrome-extension.png" alt="Token usage bar shown under claude.ai's input box" loading="lazy"></figure>
-<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane — paste the snippet below into the browser tab's Console (<code>Cmd/Ctrl ⌥ J</code>).</p>
+<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane; paste the snippet below into the browser tab's Console (<code>Cmd/Ctrl ⌥ J</code>).</p>
 ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
@@ -260,6 +285,11 @@ ${field('Widen command', WIDEN_SNIPPET)}
       <a class="foot-logo" href="${SITE}" target="_blank" rel="noopener"><img src="${SITE}/favicon/icon-192.png" alt="" width="32" height="32">Aki<b>Tao</b></a>
       <p class="foot-desc">Technology moves; the brand's identity doesn't.</p>
       <div class="foot-social">${SOCIAL.map(socialLink).join('')}<a class="social" href="https://zalo.me/0869297957" target="_blank" rel="noopener" aria-label="Zalo" title="Zalo"><img src="${SITE}/img/icon-zalo.png" alt="" width="15" height="15" loading="lazy"></a></div>
+      <div class="donate">
+        <p class="foot-title">Buy me a coffee</p>
+        <img class="qr" src="/QR-Aki.MOMO.jpg" alt="MoMo donate QR" width="118" height="118" loading="lazy">
+        <span class="fine">MoMo</span>
+      </div>
     </div>
     <div>
       <p class="foot-title">Ecosystem</p>
@@ -294,7 +324,7 @@ async function api(method, path, body) {
     });
   } catch {
     // A dead panel process is the single most likely failure here, and the browser's own wording for it says nothing a user can act on.
-    throw new Error('could not reach the panel — check whether "npm start" is still running');
+    throw new Error('could not reach the panel; check whether "npm start" is still running');
   }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'unknown error');
@@ -322,18 +352,16 @@ function copyText(text, btn) {
 function copyFrom(btn) { copyText(btn.closest('.row').querySelector('[data-copy]').textContent, btn); }
 
 function buildPrompt() {
-  const lines = ['ALWAYS answer short, dense, on point. Never speculate or invent; every claim needs evidence, every search a citation.'];
+  const lines = ['ALWAYS short dense on-point. DON\\'T YAPPING. Claim=evidence; search=citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
   if (picked.length) {
-    lines.push('At session start with MCP "' + MCP_NAME + '", first read ' + CLAUDE_DIR + '/CLAUDE.md and these files under ' + RULES_DIR + ': ' + picked.join(', ') + ', then follow them all session. Router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
+    lines.push('Session start MCP "' + MCP_NAME + '": read ' + CLAUDE_DIR + '/CLAUDE.md + these under ' + RULES_DIR + ': ' + picked.join(', ') + '; follow all session. Router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
   }
-  lines.push('Every task: investigate and confirm scope with me before editing; then keep a plan at $HOME/.aki/mcpsv/task/<id>/working.md and update it as you go so a later session can resume. <id> = a short task slug.');
-  lines.push('Finding files/folders: always use find_path (one call, whole tree, returns folders, ~0.2s), not list_directory level-by-level, not filesystem search_files. Use search_content for text inside files.');
-  lines.push('Run git/ls/grep in a folder via run_cmd with cwd (absolute, under ' + DATA_DIR + '), never cd or -C.');
-  lines.push('This server\\'s own repo: ' + REPO_ROOT + '; edit it there directly.');
-  lines.push('The chat\\'s own sandbox tools (create_file/str_replace/view/bash_tool) write to a throwaway container, not this machine. For any path under ' + DATA_DIR + ', only this MCP\\'s filesystem tools touch the real machine; after writing, read the file back through the same MCP before calling it done.');
+  lines.push('Every task: confirm scope with me before edit; plan $HOME/.aki/mcpsv/task/<id>/working.md (update live). <id>=short slug.');
+  lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under ' + DATA_DIR + ', never cd/-C.');
+  lines.push('Repo: ' + REPO_ROOT + ', edit there. Sandbox tools write throwaway only; paths under ' + DATA_DIR + ' use MCP FS only; after write, read back via MCP before done.');
   const value = lines.join('\\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
@@ -348,7 +376,7 @@ function markDirty() {
   say('msgPaths', 'unsaved changes', false);
 }
 
-// The rule trust zones read as ordinary folder rows; deleting one silently cuts the AI off from its rules, so those rows are locked instead of deletable.
+// Deleting a rule-zone row would silently cut the AI off from its rules, so those rows are locked, not deletable.
 const isProtectedPath = (p) => p === RULES_DIR || p === CLAUDE_DIR || p === AKI_DIR;
 
 function addPath(value, dirty) {
@@ -357,10 +385,9 @@ function addPath(value, dirty) {
   input.type = 'text'; input.value = value;
   if (isProtectedPath(value)) {
     input.readOnly = true;
-    input.title = 'Rule-file access for the AI. Removing it silently revokes the rules, so this row is locked.';
     const lock = document.createElement('span');
-    lock.className = 'empty';
-    lock.textContent = 'locked · rules';
+    lock.textContent = '🔒';
+    lock.title = 'Rule-file access, locked so it cannot be revoked by accident.';
     wrap.append(input, lock);
   } else {
     input.oninput = markDirty;
@@ -373,11 +400,113 @@ function addPath(value, dirty) {
   if (dirty) markDirty();
 }
 
+// Feedback at the point of risk (plan §Decisions): a destructive binary is flagged whenever present; a safe-only-when-restricted one is flagged only while it allows any subcommand.
+const ALWAYS_RISK = { rm: 'deletes files', rmdir: 'deletes dirs', mv: 'moves/overwrites', cp: 'can overwrite', dd: 'raw disk write', shred: 'destroys files', chmod: 'changes permissions', chown: 'changes ownership', ln: 'creates links', tee: 'writes files', truncate: 'truncates files', kill: 'kills processes', pkill: 'kills processes', killall: 'kills processes', curl: 'network write / exfil', wget: 'downloads', sh: 'runs a shell', bash: 'runs a shell', zsh: 'runs a shell', eval: 'runs code', find: '-exec/-delete escapes read-only', sort: '-o overwrites files', fd: '-x runs commands' };
+const RISK_IF_ANY = { git: 'push/commit/reset with any subcommand', npm: 'install/publish with any subcommand', pip: 'install with any subcommand', node: '-e runs arbitrary code', python: '-c runs arbitrary code', python3: '-c runs arbitrary code' };
+
+function markAllowDirty() {
+  document.querySelector('[data-act="saveAllowlist"]').classList.add('primary');
+  say('msgAllow', 'unsaved changes', false);
+}
+
+const riskOf = (bin, anySub) =>
+  ALWAYS_RISK[bin] ? { cls: 'risk-hi', text: '⚠ ' + ALWAYS_RISK[bin] }
+  : anySub && RISK_IF_ANY[bin] ? { cls: 'risk-md', text: RISK_IF_ANY[bin] + '; click to restrict and narrow it' }
+  : null;
+
+const listed = (bin) => [...document.querySelectorAll('#cmdChips .chip, #cmdRows .cmdrow')].some((el) => el.dataset.bin === bin);
+
+// Any-subcommand command: one compact chip. Clicking the name promotes it to a restricted row.
+function addChip(bin) {
+  const chip = document.createElement('span');
+  chip.className = 'chip'; chip.dataset.bin = bin;
+  const r = riskOf(bin, true);
+  if (r) { chip.classList.add(r.cls); chip.title = r.text; }
+  const label = document.createElement('span');
+  label.textContent = bin; label.title = 'click to restrict to specific subcommands';
+  label.onclick = () => { chip.remove(); addRow(bin, []); markAllowDirty(); document.querySelector('#cmdRows .cmdrow:last-child .cmd-subs')?.focus(); };
+  const x = document.createElement('button');
+  x.textContent = '×'; x.onclick = () => { chip.remove(); markAllowDirty(); };
+  chip.append(label, x);
+  document.getElementById('cmdChips').append(chip);
+}
+
+// Restricted command: a row with its subcommand list, plus an "any" button that broadens it back to a chip.
+function addRow(bin, subs) {
+  const row = document.createElement('div');
+  row.className = 'cmdrow'; row.dataset.bin = bin;
+  if (ALWAYS_RISK[bin]) { row.classList.add('risk-hi'); row.title = '⚠ ' + ALWAYS_RISK[bin]; }
+  const name = document.createElement('span');
+  name.className = 'cmd-bin'; name.textContent = bin;
+  const subI = document.createElement('input');
+  subI.type = 'text'; subI.className = 'cmd-subs'; subI.value = subs.join(' '); subI.placeholder = 'subcommands (empty = any)';
+  subI.oninput = markAllowDirty;
+  const any = document.createElement('button');
+  any.textContent = 'any'; any.title = 'collapse to a chip (allow any subcommand)';
+  any.onclick = () => { row.remove(); addChip(bin); markAllowDirty(); };
+  const x = document.createElement('button');
+  x.textContent = '×'; x.title = 'remove'; x.onclick = () => { row.remove(); markAllowDirty(); };
+  row.append(name, subI, any, x);
+  document.getElementById('cmdRows').append(row);
+}
+
+// A non-empty subcommand list is a row; everything else is a chip. The level is inferred from the data, never stored as a null.
+function renderAllowlist(map) {
+  document.getElementById('cmdChips').innerHTML = '';
+  document.getElementById('cmdRows').innerHTML = '';
+  for (const bin of Object.keys(map).sort()) {
+    if (Array.isArray(map[bin]) && map[bin].length) addRow(bin, map[bin]);
+    else addChip(bin);
+  }
+}
+
+// Chips + rows are the source of truth on save; a row with an empty list collapses to null (any), matching validateAllowlist server-side.
+function collectAllowlist() {
+  const map = {};
+  const add = (bin, subs) => {
+    if (!bin) return;
+    if (bin in map) throw new Error('duplicate command "' + bin + '"');
+    map[bin] = subs;
+  };
+  for (const chip of document.querySelectorAll('#cmdChips .chip')) add(chip.dataset.bin, null);
+  for (const row of document.querySelectorAll('#cmdRows .cmdrow')) {
+    const subs = row.querySelector('.cmd-subs').value.trim();
+    add(row.dataset.bin, subs ? subs.split(/\\s+/) : null);
+  }
+  return map;
+}
+
+// Editable trust zones. A zone overlapping a writable root is disabled server-side (write+exec = RCE); the panel shows it with a ✕ and names the offending folder, but still lets the user fix or remove it.
+function markTrustedDirty() {
+  document.querySelector('[data-act="saveTrusted"]').classList.add('primary');
+  say('msgTrusted', 'unsaved changes', false);
+}
+
+function addTrustedDir(value, conflict, dirty) {
+  const wrap = document.createElement('div');
+  const mark = document.createElement('span');
+  if (conflict) { mark.className = 'dot err'; mark.textContent = '✕'; mark.title = 'disabled: overlaps writable folder ' + conflict + ' (write + run = code execution)'; }
+  else if (value) { mark.className = 'dot ok'; mark.textContent = '✓'; mark.title = 'active'; }
+  else { mark.className = 'dot'; }
+  const input = document.createElement('input');
+  input.type = 'text'; input.value = value; input.oninput = markTrustedDirty;
+  const del = document.createElement('button');
+  del.textContent = '×'; del.onclick = () => { wrap.remove(); markTrustedDirty(); };
+  wrap.append(mark, input, del);
+  document.getElementById('trustedDirs').append(wrap);
+  if (dirty) markTrustedDirty();
+}
+
+function renderTrustedDirs(dirs) {
+  document.getElementById('trustedDirs').innerHTML = '';
+  for (const d of dirs) addTrustedDir(d.dir, d.conflict, false);
+}
+
 function renderRuleChecks(files) {
   const checks = document.getElementById('ruleChecks');
   checks.innerHTML = '';
   if (!files.length) {
-    checks.innerHTML = '<span class="empty">akidevrule isn\\'t installed yet — install it in section 5 above, or skip and use the prompt without rules.</span>';
+    checks.innerHTML = '<span class="empty">akidevrule isn\\'t installed yet; install it in section 5 above, or skip and use the prompt without rules.</span>';
     return;
   }
   for (const f of files) {
@@ -390,11 +519,13 @@ function renderRuleChecks(files) {
 
 async function loadState() {
   const s = await api('GET', '/api/state');
-  document.getElementById('allowlist').value = JSON.stringify(s.allowlist, null, 2);
+  renderAllowlist(s.allowlist);
+  renderTrustedDirs(s.trustedDirs || []);
   s.paths.forEach((p) => addPath(p));
   renderRuleChecks(s.ruleFiles);
   document.getElementById('ruleChecks').onchange = buildPrompt;
   document.getElementById('loadRules').onchange = buildPrompt;
+  document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
   buildPrompt();
 }
 
@@ -414,29 +545,35 @@ async function loadTailscale() {
 
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
-  copyAll: (btn) => act(btn, 'msgConn', async () => {
-    // Scoped to this section: every copyable command elsewhere on the page is a .row too.
-    const rows = [...document.querySelectorAll('#connector .row')].map((r) => r.querySelector('label').textContent + ': ' + r.querySelector('[data-copy]').textContent);
-    await navigator.clipboard.writeText(rows.join('\\n'));
-    return 'copied ' + rows.length + ' values';
-  }),
   addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
-    if (!paths.length) throw new Error('an empty list cuts off all of Claude\\'s file access — add at least one folder');
+    if (!paths.length) throw new Error('an empty list cuts off all of Claude\\'s file access; add at least one folder');
     const { message } = await api('POST', '/api/paths', { paths });
     btn.classList.remove('primary');
     return message;
   }),
   restart: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/restart')).message),
+  addTrusted: () => { addTrustedDir('', null, true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
+  saveTrusted: (btn) => act(btn, 'msgTrusted', async () => {
+    const dirs = [...document.querySelectorAll('#trustedDirs input')].map((i) => i.value.trim()).filter(Boolean);
+    const { message } = await api('POST', '/api/trusted-dirs', { dirs });
+    btn.classList.remove('primary');
+    renderTrustedDirs((await api('GET', '/api/state')).trustedDirs || []);
+    return message;
+  }),
+  addCmd: () => {
+    const input = document.getElementById('newCmd');
+    const bin = input.value.trim();
+    if (!bin) return;
+    if (listed(bin)) { say('msgAllow', '"' + bin + '" is already listed', false); return; }
+    addChip(bin); input.value = ''; markAllowDirty(); input.focus();
+  },
   saveAllowlist: (btn) => act(btn, 'msgAllow', async () => {
-    let allowlist;
-    try {
-      allowlist = JSON.parse(document.getElementById('allowlist').value || '{}');
-    } catch {
-      throw new Error('invalid JSON — usually a missing comma or a trailing comma on the last line');
-    }
-    return (await api('POST', '/api/allowlist', { allowlist })).message;
+    const allowlist = collectAllowlist();
+    const { message } = await api('POST', '/api/allowlist', { allowlist });
+    btn.classList.remove('primary');
+    return message;
   }),
   installRules: (btn) => act(btn, 'msgRules', async () => {
     const { message } = await api('POST', '/api/install-rules');
@@ -449,7 +586,7 @@ const ACTIONS = {
 document.querySelectorAll('[data-act]').forEach((btn) => (btn.onclick = () => ACTIONS[btn.dataset.act](btn)));
 
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
-loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgRules'].forEach((id) => say(id, e.message, false)));
+loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
 </script>
 </body></html>`;

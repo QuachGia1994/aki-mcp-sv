@@ -6,7 +6,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel } from './config-page.js';
-import { loadAllowlist, readSettings } from './allowlist.js';
+import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
+import { overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
@@ -61,9 +62,35 @@ function validatePaths(paths) {
   return paths.map((p) => path.normalize(p));
 }
 
+const sameSubs = (a, b) =>
+  a === null || b === null ? a === b : Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+
+// Diff against DEFAULT_ALLOWLIST so a deleted default lands in `revoked`, not silently back to default. `added` is the 2-level array (string = any, [bin, ...subs] = restricted): no hand-written null.
+const entryOf = ([bin, subs]) => (subs === null ? bin : [bin, ...subs]);
+function toStored(effective) {
+  const added = Object.entries(effective)
+    .filter(([bin, subs]) => !(bin in DEFAULT_ALLOWLIST) || !sameSubs(subs, DEFAULT_ALLOWLIST[bin]))
+    .map(entryOf);
+  const revoked = Object.keys(DEFAULT_ALLOWLIST).filter((bin) => !(bin in effective));
+  return { added, revoked };
+}
+
 function setShellAllowlist(allowlist) {
   const settings = readSettings();
-  settings.shell = { ...settings.shell, allowlist };
+  settings.shell = { ...settings.shell, allowlist: toStored(allowlist) };
+  writeFileSync(SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+function validateTrustedDirs(dirs) {
+  if (!Array.isArray(dirs) || !dirs.every((d) => typeof d === 'string' && path.isAbsolute(d))) {
+    throw new Error('trusted directories must be absolute paths');
+  }
+  return dirs.map((p) => path.normalize(p));
+}
+
+function setTrustedDirs(dirs) {
+  const settings = readSettings();
+  settings.shell = { ...settings.shell, allowlistDirs: dirs };
   writeFileSync(SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
@@ -101,11 +128,21 @@ async function installRules() {
   }
 }
 
+// Mirror shell-mcp's classification: a zone overlapping a writable root is dropped (write+exec = RCE). Name the offending root so the panel can show why a zone is disabled.
+function trustedDirStatus(dataDir) {
+  const roots = filesystemPaths(dataDir).map((p) => path.resolve(p));
+  return loadAllowlistDirs().map((dir) => {
+    const conflict = roots.find((root) => overlaps(dir, root)) || null;
+    return { dir, active: !conflict, conflict };
+  });
+}
+
 const ROUTES = {
   'GET /api/state': async (body, ctx) => ({
     paths: filesystemPaths(ctx.dataDir),
     // The same call the MCP server enforces with, so the textarea can never show a set that isn't the live one.
     allowlist: loadAllowlist(),
+    trustedDirs: trustedDirStatus(ctx.dataDir),
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
@@ -117,6 +154,11 @@ const ROUTES = {
   'POST /api/allowlist': async (body) => {
     setShellAllowlist(validateAllowlist(body.allowlist));
     return { ok: true, message: `saved allowlist to ${SETTINGS_PATH}` };
+  },
+  // No hub restart: shell-mcp reads allowlistDirs fresh per command (checkPermission → preallowedByDir), so a save takes effect on the next run_cmd.
+  'POST /api/trusted-dirs': async (body) => {
+    setTrustedDirs(validateTrustedDirs(body.dirs));
+    return { ok: true, message: `saved trusted directories to ${SETTINGS_PATH}` };
   },
   'POST /api/restart': async (body, ctx) => {
     ctx.restartHub();

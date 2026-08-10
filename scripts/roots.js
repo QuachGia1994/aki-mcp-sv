@@ -12,7 +12,7 @@ const parsed = (process.env.MCP_DATA_DIR || os.homedir())
 export const ROOTS = parsed.length ? parsed : [path.resolve(os.homedir())];
 export const ROOT = ROOTS[0];
 
-function containedIn(abs, root) {
+export function containedIn(abs, root) {
   // Windows paths are case-insensitive; drive letter casing from different APIs must not bypass the boundary.
   if (process.platform === 'win32') {
     const a = abs.toLowerCase();
@@ -22,6 +22,9 @@ function containedIn(abs, root) {
   return abs === root || abs.startsWith(root + path.sep);
 }
 
+// Either direction of containment counts as overlap: a trusted exec dir inside a writable root (or vice versa) is the write+exec = RCE composition the trusted-dir preallow must refuse.
+export const overlaps = (a, b) => containedIn(a, b) || containedIn(b, a);
+
 export function resolveUnderRoot(target) {
   if (!target) return ROOT;
   const abs = path.isAbsolute(target) ? path.resolve(target) : path.resolve(ROOT, target);
@@ -30,4 +33,13 @@ export function resolveUnderRoot(target) {
     throw new Error(`path is outside the allowed roots: ${ROOTS.join(', ')}`);
   }
   return abs;
+}
+
+// Non-throwing variant for CLI-arm handlers: returns { ok, dir } or { ok:false, error }, so a caller wraps the failure however its context needs (sync fail() vs async) without repeating the try/catch and its Promise-wrapping footgun.
+export function resolveOrFail(target) {
+  try {
+    return { ok: true, dir: resolveUnderRoot(target) };
+  } catch (e) {
+    return { ok: false, error: e };
+  }
 }

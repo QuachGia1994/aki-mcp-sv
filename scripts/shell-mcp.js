@@ -3,10 +3,57 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
-import { loadAllowlist } from './allowlist.js';
-import { ROOT, ROOTS, resolveUnderRoot } from './roots.js';
+import { loadAllowlist, loadAllowlistDirs } from './allowlist.js';
+import { ROOT, ROOTS, resolveUnderRoot, containedIn, overlaps } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
+
+// Interpreters run a script file passed as an argument, so trust must follow the script's path, not the interpreter binary (which lives on PATH, outside the trusted zones). Shells (sh/bash/zsh) are excluded on purpose — their argument is arbitrary code, not a file to locate under a zone.
+const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx', 'ruby', 'perl', 'php']);
+
+const warnedDirs = new Set();
+// A trusted dir inside a writable filesystem root would let write_file + run_cmd become arbitrary code execution with no allowlist review in between. Drop it, fail-safe, and say why once.
+function activeTrustedDirs() {
+  return loadAllowlistDirs().filter((dir) => {
+    const clash = ROOTS.find((root) => overlaps(dir, root));
+    if (clash && !warnedDirs.has(dir)) {
+      warnedDirs.add(dir);
+      process.stderr.write(`[shell] trusted dir ignored — overlaps writable root ${clash} (write+exec = RCE): ${dir}\n`);
+    }
+    return !clash;
+  });
+}
+
+// realpath first so a symlink pointing out of a zone can't masquerade as being inside it; a non-existent path can't be a trusted script, so a throw here is a correct "no".
+function underTrusted(p, dirs) {
+  try {
+    const abs = fs.realpathSync(path.resolve(p));
+    return dirs.some((dir) => containedIn(abs, dir));
+  } catch {
+    return false;
+  }
+}
+
+function preallowedByDir(bin, args) {
+  const dirs = activeTrustedDirs();
+  if (!dirs.length) return false;
+  if (bin.includes('/') || bin.includes('\\')) {
+    if (!underTrusted(bin, dirs)) return false;
+    try {
+      fs.accessSync(fs.realpathSync(path.resolve(bin)), fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (INTERPRETERS.has(path.basename(bin))) {
+    const script = args.find((a) => !a.startsWith('-')); // first non-flag arg is the script; `node -e '<code>'` has none under a zone, so it stays blocked
+    return script ? underTrusted(script, dirs) : false;
+  }
+  return false;
+}
 
 class Shell {
   // Backslash is escape/chaining on Unix but the normal path separator on Windows — only treat it as dangerous off-Windows.
@@ -54,13 +101,12 @@ class Shell {
 
   checkPermission(bin, args) {
     const allowlist = loadAllowlist();
-    if (!(bin in allowlist)) {
-      throw new Error(`"${bin}" is not in the allowlist`);
+    if (bin in allowlist) {
+      const allowedSubcommands = allowlist[bin];
+      if (!Array.isArray(allowedSubcommands) || allowedSubcommands.includes(args[0])) return;
     }
-    const allowedSubcommands = allowlist[bin];
-    if (Array.isArray(allowedSubcommands) && !allowedSubcommands.includes(args[0])) {
-      throw new Error(`"${bin} ${args[0] ?? ''}" is not in the allowlist`);
-    }
+    if (preallowedByDir(bin, args)) return; // not named (or the named subcommand is blocked), but it targets a script under a trusted zone
+    throw new Error(`"${bin}${args[0] ? ` ${args[0]}` : ''}" is not in the allowlist`);
   }
 
   run(bin, args, cwd) {
