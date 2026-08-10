@@ -2,7 +2,7 @@
 
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
 
-Version: **1.2.1** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.3.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="288" height="438" alt="Screenshot 2026-08-07 at 23 25 12" src="https://github.com/user-attachments/assets/8947f948-c012-4802-8936-28d2495586b1" />
 <img width="1024" height="1536" alt="aki-mcp-sv-instruct" src="https://github.com/user-attachments/assets/9d1342a8-cd59-4fa8-a3e3-dd753b5da06f" />
@@ -55,7 +55,7 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
 
 `mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/done/init.md`).
 
-OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/ref/oauth-research-2026-08-07.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
+OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/research/claude-ai-oauth-connector.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
 
 ## Requirements
 
@@ -157,7 +157,7 @@ dig @8.8.8.8 <host> A +short   # real public IP
 curl --resolve <host>:443:<IP-from-above> https://<host>/.well-known/oauth-authorization-server
 ```
 
-If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` saying "on", re-run `tailscale funnel --bg 9999` to force a config re-push (not a code bug). Full writeup: `docs/ref/oauth-research-2026-08-07.md`, section "Debug round 5".
+If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` saying "on", re-run `tailscale funnel --bg 9999` to force a config re-push (not a code bug). Full writeup: `docs/research/claude-ai-oauth-connector.md`, section "Debug round 5".
 
 ## Connecting from Claude web
 
@@ -166,7 +166,7 @@ If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` sa
 3. **Advanced settings → OAuth Client ID / OAuth Client Secret**: paste the two values `npm start` printed
 4. Click **Connect**: a local confirmation page opens; enter the **passphrase** (contents of `~/.aki/mcpsv/passphrase.txt`) to approve
 
-Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/ref/oauth-research-2026-08-07.md`.
+Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
 claude.ai connects and calls 14 tools: `filesystem__*`, `search__find_path`, `search__search_content`, `shell__run_cmd`.
 
