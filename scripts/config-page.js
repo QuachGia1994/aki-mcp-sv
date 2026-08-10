@@ -7,12 +7,16 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const AKI_DIR = path.join(os.homedir(), '.aki');
 const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
+const GROK_SETTINGS_URL = 'https://grok.com/?_s=personality';
+const CHATGPT_SETTINGS_URL = 'https://chatgpt.com/#settings/Personalization';
+const GEMINI_SETTINGS_URL = 'https://gemini.google.com/saved-info';
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
 const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/plugins#settings/Security?section=developer-mode';
 const CHATGPT_CONNECTOR_URL = 'https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins';
 const GEMINI_CONNECTOR_URL = 'https://support.google.com/g/answer/17106276';
 const GROK_CONNECTOR_URL = 'https://grok.com/connectors';
 const TOKENIZER_URL = 'https://chromewebstore.google.com/detail/claude-token-counter/bioobpobpbeohjoefndgkiaakboimpch';
+const GROK_USAGE_URL = 'https://chromewebstore.google.com/detail/grok-usage-watch-%E2%80%93-rate-l/bmpboaihdkpkjehbceegdmndkonlpdge';
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule';
 const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvietanh/akidevrule/master/install.sh | bash';
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
@@ -70,9 +74,9 @@ function field(label, value, mono = true, hl = false) {
   return `<div class="row"><label>${esc(label)}</label><div class="val ${mono ? 'mono' : ''}${hl ? ' hl' : ''}" data-copy>${esc(value)}</div><button onclick="copyFrom(this)">copy</button></div>`;
 }
 
-export function renderPanel({ origin, client, passphrase, token, repoRoot, dataDir, rulesDir, userDir }) {
-  const url = origin ? `${origin}/mcp` : 'not available yet, see section 1';
-  const regUrl = origin ? `${origin}/register` : 'not available yet, see section 1';
+export function renderPanel({ origin, client, passphrase, token, repoRoot, rulesDir, userDir }) {
+  const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
+  const regUrl = origin ? `${origin}/register` : 'not available yet, see section 0';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(MCP_NAME)} · panel</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
@@ -103,6 +107,22 @@ button[disabled] { opacity: .55; cursor: progress; }
 textarea, input[type=text] { width: 100%; padding: 6px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
 textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 .lnk { font-size: 12px; margin: 0 0 10px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 18px 0 0; flex-wrap: wrap; }
+.tab { border: 1px solid var(--line); border-bottom: none; background: var(--bg); color: var(--muted); border-radius: 8px 8px 0 0; padding: 7px 15px; cursor: pointer; font-size: 12.5px; }
+.tab:hover { color: var(--accent); }
+.tab.active { color: var(--accent); border-color: var(--accent); background: var(--card); font-weight: 600; margin-bottom: -1px; padding-bottom: 8px; }
+.tabpane { display: none; padding-top: 14px; }
+.tabpane.active { display: block; }
+.stepper h2 { margin-bottom: 10px; }
+.steps-nav { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+.steps-nav li { flex: 1 1 auto; }
+.steps-nav a { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--muted); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; font-size: 12.5px; background: var(--bg); white-space: nowrap; }
+.steps-nav a:hover { border-color: var(--accent); color: var(--accent); }
+.step-n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid currentColor; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.step.done a { color: var(--ok); border-color: var(--ok); }
+.step.done .step-n { border-color: var(--ok); background: var(--ok); color: #fff; }
+.step.opt em { font-style: normal; opacity: .65; font-size: 10.5px; }
+.done-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ok); border: 1px solid var(--ok); border-radius: 5px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
 .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 4px 12px; margin-bottom: 12px; }
 .checks label { display: flex; gap: 6px; align-items: center; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
@@ -163,61 +183,123 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 <h1>${esc(MCP_NAME)}</h1>
 <p class="sub">Local panel (127.0.0.1); never goes through Funnel, never reaches the internet.<br>Running repo: <span class="mono">${esc(repoRoot)}</span> · Your config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
 
-<section><h2>1 · Tailscale: how clients reach this machine</h2>
-<p class="hint">Claude.ai and ChatGPT need an address to call your machine. Two steps below, one time only.</p>
+<section class="stepper"><h2>Setup steps</h2>
+<ol class="steps-nav">
+  <li class="step done"><a href="#s0"><span class="step-n">✓</span> Setup</a></li>
+  <li class="step"><a href="#s1"><span class="step-n">1</span> Connectors</a></li>
+  <li class="step"><a href="#s2"><span class="step-n">2</span> Install rules</a></li>
+  <li class="step"><a href="#s3"><span class="step-n">3</span> Instructions</a></li>
+  <li class="step opt"><a href="#s4"><span class="step-n">4</span> Extension <em>optional</em></a></li>
+</ol>
+</section>
+
+<section id="s0"><h2>0 · Setup <span class="done-tag">done</span></h2>
+<p class="hint">One-time prerequisites. You're reading this panel, so the last three already ran; the two Tailscale checks below are live.</p>
 <ol class="steps">
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
   <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. <code>npm start</code> enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
+  <li><span class="dot ok">✓</span> Clone / download the <span class="mono">aki-mcp-sv</span> repo.</li>
+  <li><span class="dot ok">✓</span> <code>npm install</code>.</li>
+  <li><span class="dot ok">✓</span> <code>npm start</code> — running now.</li>
 </ol>
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 </section>
 
-<section id="connector"><h2>2 · Connectors: Claude, ChatGPT, Gemini, Grok</h2>
-<p class="hint">Same Funnel URL for both. Folders / shell allowlist apply to whoever connects.</p>
-
-<h3 class="subh">Claude.ai</h3>
-<p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
-<p class="hint">These five values go into Claude's connector dialog. The Client ID / Secret are Claude-only; ChatGPT registers its own client below, so do not paste these there.</p>
+<section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini</h2>
+<p class="hint">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
 ${field('MCP Name', MCP_NAME, false)}
 ${field('MCP URL', url, true, true)}
-${field('OAuth Client ID', client.clientId)}
-${field('OAuth Client Secret', client.clientSecret)}
 ${field('Passphrase', passphrase)}
 
-<h3 class="subh">ChatGPT (Developer mode)</h3>
-<ol class="steps">
-  <li>Turn on <a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">Developer mode</a> (Settings → Connectors → Advanced).</li>
-  <li><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">Create a connector</a>.</li>
-  <li><strong>Connection</strong>: <strong>Server URL</strong> = MCP URL.</li>
-  <li><strong>Authentication = OAuth</strong>, then open <strong>Advanced OAuth settings</strong>.</li>
-  <li>Under <strong>OAuth endpoints</strong>, set <strong>Registration URL</strong> = the value below. This lets ChatGPT register itself; <strong>the other endpoints auto-fill from discovery</strong>.</li>
-  <li><strong>Registration method = DCR</strong> and <strong>Token endpoint auth method = none</strong>. <span class="fine">Do not paste Claude's Client ID or Secret here.</span></li>
-  <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
-  <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong>.</li>
-</ol>
-${field('Registration URL', regUrl)}
-<p class="hint">ChatGPT registers its own client (PKCE, no secret). Write tools may be limited on ChatGPT depending on OpenAI’s current policy.</p>
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="claude">Claude</button>
+  <button class="tab" data-tab="grok">Grok</button>
+  <button class="tab" data-tab="chatgpt">ChatGPT</button>
+  <button class="tab" data-tab="gemini">Gemini</button>
+</nav>
 
-<h3 class="subh">Grok</h3>
-<ol class="steps">
-  <li><a href="${esc(GROK_CONNECTOR_URL)}" target="_blank" rel="noopener">Open Connectors</a> → New Connector → Custom.</li>
-  <li>Set <strong>Name</strong> = the MCP Name above (it must match exactly; the paste-in instruction keys off this name), and <strong>Server URL</strong> = MCP URL. Grok self-registers (PKCE); nothing else to paste.</li>
-  <li>On connect, enter the <strong>Passphrase</strong>.</li>
-</ol>
+<div class="tabpane active" id="tab-claude">
+  <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
+  <p class="hint">Paste the three common values above, plus these two Claude-only credentials, into the connector dialog.</p>
+  ${field('OAuth Client ID', client.clientId)}
+  ${field('OAuth Client Secret', client.clientSecret)}
+</div>
 
-<details class="adv"><summary>Gemini (paid tiers): connects, but not smart enough to drive the tools; not recommended</summary>
-<p class="hint" style="margin-top:8px">Tested 2026-08-09: the connection is healthy, but Gemini web doesn't reliably discover or invoke the MCP tools. Use Claude or Grok instead.</p>
-<ol class="steps">
-  <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> (Gemini → paid subscriptions → Custom apps).</li>
-  <li>Set the <strong>custom app link / Server URL</strong> = MCP URL.</li>
-  <li>Open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> above (same confidential client as Claude).</li>
-  <li>Ignore Gemini's <strong>Copy redirect URI</strong> button; the redirect is already allowlisted server-side.</li>
-  <li>On <strong>Continue</strong>, enter the <strong>Passphrase</strong>.</li>
-</ol>
-</details>
+<div class="tabpane" id="tab-grok">
+  <ol class="steps">
+    <li><a href="${esc(GROK_CONNECTOR_URL)}" target="_blank" rel="noopener">Open Connectors</a> → New Connector → Custom.</li>
+    <li>Set <strong>Name</strong> = the MCP Name above (it must match exactly; the paste-in instruction keys off this name), and <strong>Server URL</strong> = MCP URL. Grok self-registers (PKCE); nothing else to paste.</li>
+    <li>On connect, enter the <strong>Passphrase</strong>.</li>
+  </ol>
+</div>
+
+<div class="tabpane" id="tab-chatgpt">
+  <p class="hint">Developer mode required.</p>
+  <ol class="steps">
+    <li>Turn on <a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">Developer mode</a> (Settings → Connectors → Advanced).</li>
+    <li><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">Create a connector</a>.</li>
+    <li><strong>Connection</strong>: <strong>Server URL</strong> = MCP URL.</li>
+    <li><strong>Authentication = OAuth</strong>, then open <strong>Advanced OAuth settings</strong>.</li>
+    <li>Under <strong>OAuth endpoints</strong>, set <strong>Registration URL</strong> = the value below. This lets ChatGPT register itself; <strong>the other endpoints auto-fill from discovery</strong>.</li>
+    <li><strong>Registration method = DCR</strong> and <strong>Token endpoint auth method = none</strong>. <span class="fine">Do not paste Claude's Client ID or Secret here.</span></li>
+    <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
+    <li>On connect, the browser opens the confirm page; enter the same <strong>Passphrase</strong>.</li>
+  </ol>
+  ${field('Registration URL', regUrl)}
+  <p class="hint">ChatGPT registers its own client (PKCE, no secret). Write tools may be limited on ChatGPT depending on OpenAI’s current policy.</p>
+</div>
+
+<div class="tabpane" id="tab-gemini">
+  <p class="hint">Paid tiers only. Tested 2026-08-09: the connection is healthy, but Gemini web doesn't reliably discover or invoke the MCP tools — use Claude or Grok instead. Not recommended.</p>
+  <ol class="steps">
+    <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> (Gemini → paid subscriptions → Custom apps).</li>
+    <li>Set the <strong>custom app link / Server URL</strong> = MCP URL.</li>
+    <li>Open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> from the Claude tab (same confidential client).</li>
+    <li>Ignore Gemini's <strong>Copy redirect URI</strong> button; the redirect is already allowlisted server-side.</li>
+    <li>On <strong>Continue</strong>, enter the <strong>Passphrase</strong>.</li>
+  </ol>
+</div>
 </section>
 
-<section><h2>3 · Folders the connector may reach</h2>
+<section id="s2"><h2>2 · Install AkiDevRule (optional)</h2>
+<p class="hint">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Choose which files load in section 3 below.</p>
+${field('Install command', RULES_INSTALL_CMD)}
+<p class="fine">install.sh is for mac &amp; linux. On Windows, ask your AI/agent to read install.sh and replicate the steps. No sudo; writes only to ~/.aki and ~/.claude, removable with rm -rf.</p>
+<div class="acts">
+  <button class="primary" data-act="installRules">Install / update</button>
+  <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
+  <span class="msg" id="msgRules"></span>
+</div>
+</section>
+
+<section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
+<p class="hint">Choose which rule files load, then copy the prompt into your client's custom-instructions / personalization field. It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
+<div class="acts">
+  <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener">Claude ↗</a>
+  <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener">Grok ↗</a>
+  <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener">ChatGPT ↗</a>
+  <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener">Gemini ↗</a>
+</div>
+<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
+  <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
+</label>
+<div class="checks" id="ruleChecks"></div>
+<textarea id="prompt" readonly style="min-height:130px"></textarea>
+<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
+</section>
+
+<section id="s4"><h2>4 · Browser utilities <span class="done-tag" style="color:var(--muted);border-color:var(--line)">optional</span></h2>
+<p class="hint"><strong>Claude Token Counter</strong>: a Chrome extension that shows your hourly and weekly usage bar right under claude.ai's input box, <strong>including on the Free plan</strong>. claude.ai doesn't surface that number anywhere itself.</p>
+<div class="acts"><a class="btnlink" href="${esc(TOKENIZER_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
+<figure><img src="/extension-claude-usage.png" alt="Token usage bar shown under claude.ai's input box" loading="lazy"></figure>
+<p class="hint" style="margin:14px 0 0"><strong>Grok Usage Watch</strong>: the same idea for grok.com — a rate-limit / usage bar for your Grok quota, which the site doesn't show on its own.</p>
+<div class="acts"><a class="btnlink" href="${esc(GROK_USAGE_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
+<figure><img src="/extension-grok-usage.png" alt="Usage / rate-limit bar shown on grok.com" loading="lazy"></figure>
+<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane; paste the snippet below into the browser tab's Console (<code>Cmd/Ctrl ⌥ J</code>).</p>
+${field('Widen command', WIDEN_SNIPPET)}
+</section>
+
+<section id="s5"><h2>5 · Folders the connector may reach</h2>
 <p class="hint">These folders scope file tools and the shell's working directory. Allowed shell commands run with your user permissions and may access files outside this list.</p>
 <div class="flist" id="paths"></div>
 <div class="acts">
@@ -228,7 +310,7 @@ ${field('Registration URL', regUrl)}
 </div>
 </section>
 
-<section><h2>4 · Allowed shell commands</h2>
+<section id="s6"><h2>6 · Allowed shell commands</h2>
 <p class="hint">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (<code>rm</code>, <code>git commit</code>…) widens access.</p>
 <div class="chips" id="cmdChips"></div>
 <div class="flist" id="cmdRows"></div>
@@ -240,43 +322,13 @@ ${field('Registration URL', regUrl)}
 </div>
 
 <h3 class="subh">Trusted script directories</h3>
-<p class="hint">Scripts under these folders run without a command row above, for Aki-authored skills and scripts. A folder that overlaps a writable folder from section 3 is disabled (write + run = code execution).</p>
+<p class="hint">Scripts under these folders run without a command row above, for Aki-authored skills and scripts. A folder that overlaps a writable folder from section 5 is disabled (write + run = code execution).</p>
 <div class="flist" id="trustedDirs"></div>
 <div class="acts">
   <button class="primary" data-act="addTrusted">+ Add directory…</button>
   <button data-act="saveTrusted">Save</button>
   <span class="msg" id="msgTrusted"></span>
 </div>
-</section>
-
-<section><h2>5 · akidevrule: working rules for the AI (optional)</h2>
-<p class="hint">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Pick which files load in section 6 below.</p>
-${field('Install command', RULES_INSTALL_CMD)}
-<p class="fine">install.sh is for mac &amp; linux. On Windows, ask your AI/agent to read install.sh and replicate the steps. No sudo; writes only to ~/.aki and ~/.claude, removable with rm -rf.</p>
-<div class="acts">
-  <button class="primary" data-act="installRules">Install / update</button>
-  <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
-  <span class="msg" id="msgRules"></span>
-</div>
-</section>
-
-<section><h2>6 · Instructions: prompt to paste into claude.ai</h2>
-<p class="hint">Paste the text below into Settings → General → Personal preferences. It teaches Claude to use this server's tools correctly, and to load rules if you installed them in section 5.</p>
-<p class="lnk"><a href="${SETTINGS_URL}" target="_blank" rel="noopener">↗ Open Settings → General</a></p>
-<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:10px">
-  <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
-</label>
-<div class="checks" id="ruleChecks"></div>
-<textarea id="prompt" readonly style="min-height:130px"></textarea>
-<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
-</section>
-
-<section><h2>7 · Utilities</h2>
-<p class="hint"><strong>Claude Token Counter</strong>: a Chrome extension that shows your hourly and weekly usage bar right under claude.ai's input box, <strong>including on the Free plan</strong>. claude.ai doesn't surface that number anywhere itself.</p>
-<div class="acts"><a class="btnlink" href="${esc(TOKENIZER_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
-<figure><img src="/claude-tokenizer-chrome-extension.png" alt="Token usage bar shown under claude.ai's input box" loading="lazy"></figure>
-<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane; paste the snippet below into the browser tab's Console (<code>Cmd/Ctrl ⌥ J</code>).</p>
-${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
 <footer>
@@ -308,7 +360,6 @@ const RULES_DIR = ${JSON.stringify(rulesDir)};
 const CLAUDE_DIR = ${JSON.stringify(CLAUDE_DIR)};
 const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
-const DATA_DIR = ${JSON.stringify(dataDir)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
 const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
 
@@ -359,9 +410,14 @@ function buildPrompt() {
   if (picked.length) {
     lines.push('Session start MCP "' + MCP_NAME + '": read ' + CLAUDE_DIR + '/CLAUDE.md + these under ' + RULES_DIR + ': ' + picked.join(', ') + '; follow all session. Router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
   }
+  const rulesOn = document.getElementById('loadRules').checked;
+  const hasIndex = [...document.querySelectorAll('#ruleChecks input')].some((i) => i.value === 'index.md');
+  if (rulesOn && !hasIndex) {
+    lines.push('Rules not installed: ask the user to press Install/update in the Aki panel (section 2) before starting.');
+  }
   lines.push('Every task: confirm scope with me before edit; plan $HOME/.aki/mcpsv/task/<id>/working.md (update live). <id>=short slug.');
-  lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under ' + DATA_DIR + ', never cd/-C.');
-  lines.push('Repo: ' + REPO_ROOT + ', edit there. Sandbox tools write throwaway only; paths under ' + DATA_DIR + ' use MCP FS only; after write, read back via MCP before done.');
+  lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under an allowed root, never cd/-C.');
+  lines.push('Repo: ' + REPO_ROOT + ', edit there. Sandbox tools write throwaway only; all local paths use Aki MCP FS only; after write, read back via MCP before done.');
   const value = lines.join('\\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
@@ -506,13 +562,17 @@ function renderRuleChecks(files) {
   const checks = document.getElementById('ruleChecks');
   checks.innerHTML = '';
   if (!files.length) {
-    checks.innerHTML = '<span class="empty">akidevrule isn\\'t installed yet; install it in section 5 above, or skip and use the prompt without rules.</span>';
+    checks.innerHTML = '<span class="empty">akidevrule isn\\'t installed yet; install it in section 2 above, or skip and use the prompt without rules.</span>';
     return;
   }
-  for (const f of files) {
+  // index.md is the rule map — always first, and locked so it can't be unchecked.
+  const sorted = [...files].sort((a, b) => (a === 'index.md' ? -1 : b === 'index.md' ? 1 : 0));
+  for (const f of sorted) {
     const label = document.createElement('label');
-    label.innerHTML = '<input type="checkbox" value="' + f + '"' + (DEFAULT_RULES.includes(f) ? ' checked' : '') + '>';
-    label.append(document.createTextNode(f.replace(/^(RULE|METHOD)-/, '').replace(/\\.md$/, '')));
+    const locked = f === 'index.md';
+    const checked = locked || DEFAULT_RULES.includes(f);
+    label.innerHTML = '<input type="checkbox" value="' + f + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + '>';
+    label.append(document.createTextNode(f.replace(/^(RULE|METHOD)-/, '').replace(/\\.md$/, '') + (locked ? ' 🔒' : '')));
     checks.append(label);
   }
 }
@@ -584,6 +644,11 @@ const ACTIONS = {
 };
 
 document.querySelectorAll('[data-act]').forEach((btn) => (btn.onclick = () => ACTIONS[btn.dataset.act](btn)));
+
+document.querySelectorAll('.tab').forEach((tab) => (tab.onclick = () => {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+  document.querySelectorAll('.tabpane').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + tab.dataset.tab));
+}));
 
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));

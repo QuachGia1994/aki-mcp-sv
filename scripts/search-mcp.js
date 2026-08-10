@@ -66,7 +66,7 @@ function findPath(query, from, limit) {
 
 function searchContent(query, from, glob, limit) {
   const base = resolveUnderRoot(from);
-  const args = ['-rnI', '--binary-files=without-match', ...[...SKIP_DIRS].map((d) => `--exclude-dir=${d}`)];
+  const args = ['-rniIE', '--binary-files=without-match', ...[...SKIP_DIRS].map((d) => `--exclude-dir=${d}`)];
   if (glob) args.push(`--include=${glob}`);
   args.push('-e', query, base);
   return new Promise((resolve) => {
@@ -106,7 +106,7 @@ server.registerTool(
   'search_content',
   {
     title: 'Search Content',
-    description: `Search file contents recursively under ${ROOT} and return file:line:text. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
+    description: `Search file contents recursively under ${ROOT} and return file:line:text. Case-insensitive extended regex (grep -iE): put every alias in one query with | — "funnel|ingress|thay.*funnel" hits EN+VI+synonym in one call, no need for separate calls per term. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
     inputSchema: {
       query: z.string(),
       path: z.string().optional(),

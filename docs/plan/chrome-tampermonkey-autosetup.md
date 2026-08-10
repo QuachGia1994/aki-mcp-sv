@@ -12,7 +12,7 @@ Don't build/maintain our own Chrome extension. Use **Tampermonkey** (Web Store I
 | Need | Script | Source |
 |---|---|---|
 | Token count / cache timer / session+weekly usage bar | `claude-counter.user.js` | Installed directly from `she-llac/claude-counter` (MIT) raw GitHub URL — no vendoring, no copy into this repo |
-| Widen chat pane (`max-w-3xl → max-w-7xl`) | new small userscript, own repo | `@match https://claude.ai/*`, `MutationObserver` to reapply on SPA nav (replaces the current manual console-paste snippet in `config-page.js` section 7) |
+| Widen chat pane (`max-w-3xl → max-w-7xl`) | new small userscript, own repo | `@match https://claude.ai/*`, `MutationObserver` to reapply on SPA nav (replaces the current manual console-paste snippet in `config-page.js` section 4) |
 
 ## Architecture decisions
 
@@ -27,12 +27,12 @@ Don't build/maintain our own Chrome extension. Use **Tampermonkey** (Web Store I
 
 ## Execution checklist
 - [ ] New `scripts/chrome-extensions.js`: profile-dir resolver (`Local State` → active profile), `Preferences` JSON reader, Tampermonkey install/enabled-state check
-- [ ] New userscript file (repo-owned) for the widen-UI tweak, replacing the manual snippet currently shown in `scripts/config-page.js` section 7
+- [ ] New userscript file (repo-owned) for the widen-UI tweak, replacing the manual snippet currently shown in `scripts/config-page.js` section 4
 - [ ] Wire into `scripts/start.js`: one check call before/alongside the existing `openBrowser(panelUrl)` call, using the existing `openBrowser()` helper for every URL it needs to open
 - [ ] Marker file under `USER_DIR` (from `scripts/userdata.js`) so a fully-set-up machine does nothing on subsequent starts
-- [ ] Update panel section 7 (`config-page.js`) to reflect the new one-time-setup flow instead of the manual console-paste instructions
+- [ ] Update panel section 4 (`config-page.js`) to reflect the new one-time-setup flow instead of the manual console-paste instructions
 - [ ] Manual test on a clean Chrome profile: no Tampermonkey → Web Store tab opens; Tampermonkey installed, scripts missing → 2 install tabs open; everything installed → `npm start` opens nothing extra
-- [ ] Update `README.md` if section 7 workflow is documented there
+- [ ] Update `README.md` if section 4 workflow is documented there
 
 ## Out of scope
 - Building/maintaining a custom Chrome extension in this repo instead of using Tampermonkey — no evidence the maintenance cost buys anything the existing MIT userscript doesn't already cover
@@ -42,8 +42,8 @@ Don't build/maintain our own Chrome extension. Use **Tampermonkey** (Web Store I
 ## Cross-references
 - `docs/research/chrome-cdp-default-profile-block.md` — why CDP-based injection is not viable
 - `scripts/open-browser.js` — existing cross-platform browser-open helper, reused as-is
-- `scripts/config-page.js` section 7 — current manual instructions this plan replaces
+- `scripts/config-page.js` section 4 — current manual instructions this plan replaces
 - `scripts/userdata.js` — existing `USER_DIR` convention for the marker file
 
 ## Decision
-**Action** → build `scripts/chrome-extensions.js` + the widen-UI userscript per the tables above, wire into `scripts/start.js`, update panel section 7. Not started yet — this doc records the design only.
+**Action** → build `scripts/chrome-extensions.js` + the widen-UI userscript per the tables above, wire into `scripts/start.js`, update panel section 4. Not started yet — this doc records the design only.

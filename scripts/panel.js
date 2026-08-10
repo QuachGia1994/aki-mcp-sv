@@ -178,7 +178,7 @@ export function startPanel({ port, token, origin, client, passphrase, dataDir, r
         return res.end('wrong token — open the URL that `npm start` printed');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, dataDir, rulesDir: RULES_DIR, userDir: USER_DIR }));
+      return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR }));
     }
 
     if (req.method === 'GET' && await serveStatic(res, urlPath)) return;

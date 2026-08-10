@@ -1,4 +1,4 @@
-# Claude control center — Electron shell, multi-profile, self-hosted usage tracking
+# Aki MCP control center — multi-profile, self-hosted usage tracking (Electron vs Tauri open)
 
 ## Status
 Not started. Written as a note for a future session — see owner's request in chat, 2026-08-10. Research-then-plan, no code yet.
@@ -24,30 +24,33 @@ That recommendation covered only "detect limit + auto-continue" — it did not h
 - Whether the `/usage` endpoint and `message_limit` SSE field are stable, undocumented internal APIs (most likely, given claude-counter reverse-engineered them) — expect breakage risk on Anthropic-side changes, same class of risk this repo already accepted for the DOM-anchor approach in `chrome-tampermonkey-autosetup.md`.
 - Whether claude.ai's custom-connector flow (this repo's own MCP integration) can point at `localhost` from an Electron-embedded page, which would let a profile window keep this repo's filesystem/shell tools without Funnel/OAuth. Nice-to-have, not required for v1 — do not let it block the plan.
 
-## Decision: Electron, session-partition profiles, no Chrome extension anywhere
+## Hard requirement: multi-profile
 
-| Requirement | Mechanism | Why this and not another |
+Profile isolation is non-negotiable (same operating model as AkiTgAuto game multibox). Each profile = isolated cookies/storage so multiple claude.ai accounts run side-by-side. Shell choice (Electron vs Tauri) is still open; isolation maturity is the deciding lens.
+
+## Shell comparison — Electron vs Tauri (open, not decided)
+
+| Dimension | Electron | Tauri v2 |
 |---|---|---|
-| 1. Control center sees every profile's status/account/usage at a glance | Main-process in-memory store, one entry per open profile window, pushed to a dedicated Control Center `BrowserWindow` over IPC | Same process owns every window already — no cross-process bridge needed, unlike the aki-mcp-sv panel (separate process, would need a new IPC/HTTP hop for no benefit) |
-| 2. Usage bar + context size, no third-party extension | Preload script (`contextBridge`) injected into every claude.ai window: (a) patches `fetch`/`EventSource` in page context to capture live `message_limit` SSE, replicating claude-counter's proven MAIN-world technique, (b) polls `/usage` directly using the window's own session cookies, (c) `gpt-tokenizer` for the same client-side context estimate claude-counter uses, since no server-exact number exists | Reuses a technique already proven in production (1.1k★ extension) instead of inventing a new detection method; "no extension" is satisfied because the same JS now ships as our own preload, not a Chrome extension |
-| 3. Auto-widen + arbitrary injected JS per new window | `webContents.on('dom-ready', …)` → `executeJavaScript` with the widen script this repo already drafted for Tampermonkey (`docs/plan/chrome-tampermonkey-autosetup.md`, "Widen chat pane" row) | Reuse, not reinvent (`coding.A3` prefer existing code/patterns) — port the same script, drop the Tampermonkey delivery mechanism |
-| 4. Profile CRUD, open new window from a profile | Each profile = `session.fromPartition('persist:<id>')` (isolated cookies/storage, exactly Chrome-profile semantics) + our own JSON registry (name, color, notes) under `~/.aki/mcpsv-cc/profiles.json`, new convention parallel to this repo's `userdata.js` pattern | Electron partitions are already Chrome-profile-equivalent; no custom multi-profile engine to build |
-| 5. Minimal window, custom titlebar | `frame: false`, custom `-webkit-app-region: drag` region in the injected/host chrome | Standard Electron pattern; conceptually the same "titlebar sacred boundary" this org already codifies for Tauri (`RULE-stack-tauri.md` B1) — same idea, different mechanism (CSS var + drag region, not Tauri's window API), not a literal reuse of that rule |
+| **Multi-profile isolation** | `session.fromPartition('persist:<id>')` — one line, shipped, cross-platform stable | Weak today: #11491 (data_directory only partial isolation; full WKWebsiteDataStore control requested, not shipped); #10981 (localStorage isolation broken/inconsistent on Linux); wry #621 (cookie share needs WKProcessPool workaround on macOS) |
+| **Inject into claude.ai** | preload + `contextBridge` / `ipcRenderer`; or `executeJavaScript` on dom-ready — proven on AkiTgAuto remote origins | `initialization_script()` (runs before page JS on remote origin) + capabilities `remote.urls` allowlist; no invoke bridge into foreign origin by default — talk back via postMessage/custom events |
+| **Titlebar / custom chrome** | `frame: false` + `-webkit-app-region: drag` | First-class: `decorations:false` + `transparent:true` + `top: var(--titlebar-h)` (`RULE-stack-tauri.md` B1) |
+| **Binary / memory** | Bundled Chromium — heavy per profile window | System webview (WKWebView/WebView2) — lighter; fingerprint ≠ Chromium → anti-bot risk different |
+| **Backend / reuse** | Node — direct reuse of widen-script, `/usage`+SSE logic, panel-style JSON registry | Rust — inject JS still plain JS; profile-registry/IPC needs rewrite or Node sidecar (`tauri.A2` PATH race); `/usage` poll must be `async` + `spawn_blocking` (`tauri.A1`) |
+| **Fingerprint / anti-bot** | Chromium-like; Phase 0 still must prove claude.ai does not challenge a plain BrowserWindow | WKWebView fingerprint different from Chromium; may be better or worse on claude.ai — untested |
 
-## Why not Tauri (checked on request, evidence below)
+**Current lean (not locked):** Electron wins on isolation certainty (the one hard requirement). Tauri stays viable if #11491 closes or a verified workaround gives real per-webview data-store isolation on the ship platforms. Do not treat the lean as a decision — owner is still undecided for v2.
 
-Titlebar customization is not the blocker — Tauri has a first-class, already-house-documented pattern for it (`RULE-stack-tauri.md` B1: `decorations:false` + `transparent:true` + `top: var(--titlebar-h)`), at least as mature as the Electron equivalent.
+## Requirement → mechanism (shell-agnostic where possible)
 
-**Multi-profile isolation (requirement 4) is the blocker, and it is currently weak in Tauri, not just untested:**
-- `tauri-apps/tauri` issue #11491 (open) — a developer needs exactly this app's requirement 4 ("multiple users to log in to the same website simultaneously, each with their own isolated session") and reports Tauri's current `data_directory` option only gives "some level of isolation"; full per-webview data-store control (e.g. macOS `WKWebsiteDataStore`) is a *requested feature*, not a shipped one.
-- `tauri-apps/tauri` issue #10981 (open) — localStorage does not even stay isolated *correctly* across multiple webview windows on Linux (syncs on Windows/macOS, silently diverges and gets dropped on exit on Linux) — a correctness bug on top of the isolation gap, and platform-inconsistent.
-- `tauri-apps/wry` issue #621 (open) — cookie/web-storage sharing between multiple webviews needs a manual `WKProcessPool` workaround on macOS; no cross-platform solution yet.
-
-Electron's `session.fromPartition('persist:<id>')` is one line, shipped, and cross-platform stable — this is precisely the requirement this plan's whole app exists to satisfy, so it is the one place a maturity gap is disqualifying rather than cosmetic.
-
-**Secondary cost, not the deciding one:** Tauri backend is Rust — zero reuse of this repo's existing Node code (the widen-script port, the `/usage`+SSE preload logic could still be plain JS injected into the webview either way, but profile-registry/IPC orchestration would need a rewrite or a Node sidecar, adding `tauri.A2`'s PATH-resolution-race class of problem for no benefit this app needs). `tauri.A1`'s absolute no-blocking-UI rule also means every `/usage` poll must be `async fn` + `spawn_blocking` by policy — enforceable, just more ceremony than the equivalent Node code.
-
-Conclusion unchanged: Electron. Revisit only if issue #11491 ships and closes the isolation gap.
+| Requirement | Mechanism sketch |
+|---|---|
+| 1. Control center sees every profile status/account/usage | In-process store of open profiles → dedicated control window (IPC / Tauri events) |
+| 2. Usage bar + context size, no third-party extension | Init/preload script in page context: patch `fetch`/`EventSource` for `message_limit` SSE + poll `/usage` with session cookies + `gpt-tokenizer` client estimate (claude-counter technique) |
+| 3. Auto-widen + arbitrary injected JS per new window | Port widen script from `docs/plan/chrome-tampermonkey-autosetup.md` into init/preload |
+| 4. Profile CRUD, open window from profile | **Must** be real isolated stores — Electron partition *or* Tauri equivalent once proven |
+| 5. Minimal window, custom titlebar | Electron `frame:false` **or** Tauri decorations pattern |
+| No Chrome extension | Own inject path only |
 
 ## Critique (mandatory pass, `METHOD-deep-think.md` B3)
 
@@ -65,7 +68,7 @@ Conclusion unchanged: Electron. Revisit only if issue #11491 ships and closes th
 
 ## Execution checklist (phased, not started)
 
-- [ ] **Phase 0 — spike, answers the one unverified blocker.** Bare Electron `BrowserWindow` loading claude.ai, log in by hand, confirm no bot challenge and that `/usage` + SSE both respond normally to a request issued from that window's context. Stop and rethink if this fails.
+- [ ] **Phase 0 — spike, answers the unverified blockers.** (a) Bare window loading claude.ai on the chosen shell — Electron `BrowserWindow` and/or Tauri webview — log in by hand, confirm no bot challenge and that `/usage` + SSE respond from that context. (b) If evaluating Tauri: prove real per-profile cookie/storage isolation on ship OS (or document a working workaround). Stop and rethink if either fails for the shell under test.
 - [ ] **Phase 1 — profile registry.** JSON store + partition-per-profile create/rename/delete, no UI yet (CLI or panel-style temp UI for testing).
 - [ ] **Phase 2 — claude.ai window.** Preload script: widen-pane injection (ported from the Tampermonkey draft) + fetch/EventSource patch for `message_limit` + `/usage` poll, IPC the parsed numbers to main.
 - [ ] **Phase 3 — control center window.** Lists all profiles + live status pushed from main; start/open/close actions per profile.
@@ -84,6 +87,7 @@ Conclusion unchanged: Electron. Revisit only if issue #11491 ships and closes th
 - `docs/research/chrome-cdp-default-profile-block.md` — why "attach to the user's live default Chrome" was never an option, for either this or the old `chrome.js`.
 - `she-llac/claude-counter` (MIT, github.com/she-llac/claude-counter) — source of the `/usage` + SSE `message_limit` mechanism this plan reuses; read `userscript/claude-counter.user.js` directly when Phase 2 starts, don't reimplement from this summary alone.
 - `RULE-stack-tauri.md` B1 — titlebar-boundary pattern this plan's Phase 4 echoes conceptually (Electron mechanism differs).
+- AkiTgAuto (`/Volumes/DEV/Frameworks/Electron/AkiTgAuto`) — proven Electron multi-profile + preload inject into remote origin (same pattern this plan uses for claude.ai).
 
 ## Decision
-**Action** → build per phases above, Phase 0 first, next session with implementation time. Not started.
+**Open** — shell not locked (Electron lean on isolation; Tauri still in play). **Action** → Phase 0 spikes for the shell(s) under consideration first; multi-profile remains the hard gate. Not started.
