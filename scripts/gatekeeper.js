@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Public entry: OAuth AS (Claude pre-registered + ChatGPT DCR) + reverse-proxy to mcp-hub
+// Public entry: OAuth AS (Claude pre-registered + ChatGPT DCR) + Streamable HTTP /mcp via streamable-bridge
 import http from 'node:http';
 import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken, handleRegister, verifyBearer } from './oauth.js';
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
@@ -7,7 +7,6 @@ import { log, logErr } from './log.js';
 import { serveStatic } from './http.js';
 
 const PUBLIC_PORT = Number(process.env.GATEKEEPER_PORT || 9999);
-const UPSTREAM_PORT = Number(process.env.MCP_HUB_PORT || 19999);
 const ORIGIN = process.env.PUBLIC_ORIGIN;
 
 if (!ORIGIN) {
@@ -17,21 +16,6 @@ if (!ORIGIN) {
 
 const passphrase = loadOrCreatePassphrase();
 const meta = metadataHandlers(ORIGIN);
-
-function forwardToHub(req, res) {
-  const proxyReq = http.request(
-    { host: '127.0.0.1', port: UPSTREAM_PORT, path: req.url, method: req.method, headers: req.headers },
-    (proxyRes) => {
-      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-      proxyRes.pipe(res);
-    },
-  );
-  proxyReq.on('error', (e) => {
-    res.writeHead(502, { 'Content-Type': 'text/plain' });
-    res.end(`upstream error: ${e.message}`);
-  });
-  req.pipe(proxyReq);
-}
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 
@@ -56,7 +40,7 @@ const server = http.createServer(async (req, res) => {
   if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) return handleAuthorize(req, res, passphrase, ORIGIN);
   if (path === '/token' && req.method === 'POST') return handleToken(req, res);
 
-  if (path === '/mcp' || path === '/messages') {
+  if (path === '/mcp') {
     if (!verifyBearer(req.headers.authorization)) {
       res.writeHead(401, {
         'Content-Type': 'text/plain',
@@ -65,18 +49,15 @@ const server = http.createServer(async (req, res) => {
       res.end('unauthorized');
       return;
     }
-    if (path === '/mcp' && req.method === 'POST') return handleStreamableMcp(req, res);
-    if (path === '/mcp' && req.method === 'DELETE') {
+    if (req.method === 'POST') return handleStreamableMcp(req, res);
+    if (req.method === 'DELETE') {
       const sid = req.headers['mcp-session-id'];
       if (sid) terminateSession(sid);
       res.writeHead(204);
       return res.end();
     }
-    if (path === '/mcp' && req.method === 'GET') {
-      res.writeHead(405, { 'Content-Type': 'text/plain', Allow: 'POST, DELETE' });
-      return res.end('server push not supported');
-    }
-    return forwardToHub(req, res);
+    res.writeHead(405, { 'Content-Type': 'text/plain', Allow: 'POST, DELETE' });
+    return res.end('server push not supported');
   }
 
   if (req.method === 'GET' && await serveStatic(res, path, STATIC_ALIASES)) return;
@@ -90,5 +71,5 @@ server.on('error', (e) => {
   process.exit(1);
 });
 server.listen(PUBLIC_PORT, () => {
-  log(`[gatekeeper] listening on :${PUBLIC_PORT} -> 127.0.0.1:${UPSTREAM_PORT} (OAuth-protected /mcp)`);
+  log(`[gatekeeper] listening on :${PUBLIC_PORT} (OAuth-protected /mcp)`);
 });

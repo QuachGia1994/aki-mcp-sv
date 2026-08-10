@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/ref/oauth-research-2026-08-07.md "Debug round 7".
+// Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/research/claude-ai-oauth-connector.md "Debug round 7".
 // One shared hub session for the whole process — rationale in docs/plan/bridge-session-churn.md (Option B) and CLAUDE.md § Session lifecycle.
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
