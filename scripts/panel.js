@@ -34,9 +34,7 @@ function filesystemPaths(dataDir) {
   return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(2).map((p) => expandPath(p, dataDir));
 }
 
-// The tool arms enforce path containment via the same list, so it never drifts from what this panel shows as "allowed".
-// After the consolidation the roots live on `local` (they used to live on the separate `search`/`shell` arms); update every
-// server that scopes by MCP_DATA_DIR, whichever exist, so this survives both the old and the migrated config shape.
+// The tool arms enforce path containment via this same list, so it never drifts from what the panel shows as "allowed". Update every server scoped by MCP_DATA_DIR, whichever exist, so it holds across both the pre- and post-consolidation config shape.
 function setFilesystemPaths(paths) {
   const config = readJson(HUB_CONFIG, {});
   const [flag, pkg] = config.mcpServers.filesystem.args;
