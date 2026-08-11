@@ -26,14 +26,25 @@ if (!existsSync(HUB_CONFIG_PATH)) {
 } else {
   const template = JSON.parse(readFileSync(TEMPLATE_PATH, 'utf8'));
   const live = JSON.parse(readFileSync(HUB_CONFIG_PATH, 'utf8'));
-  const liveRoots = live.mcpServers?.search?.env?.MCP_DATA_DIR;
-  let added = false;
+  // Authoritative roots the panel keeps in sync, read from whichever server still carries them: it used to be
+  // `search`, but the tool arms were consolidated into `local`, so an old install may have search while a new one has local.
+  const liveRoots = Object.values(live.mcpServers ?? {}).find((s) => s.env?.MCP_DATA_DIR)?.env?.MCP_DATA_DIR;
+  let changed = false;
   for (const [name, entry] of Object.entries(template.mcpServers ?? {})) {
     if (live.mcpServers[name]) continue;
     const merged = structuredClone(entry);
     if (liveRoots && merged.env?.MCP_DATA_DIR) merged.env.MCP_DATA_DIR = liveRoots;
     live.mcpServers[name] = merged;
-    added = true;
+    changed = true;
   }
-  if (added) writeFileSync(HUB_CONFIG_PATH, `${JSON.stringify(live, null, 2)}\n`);
+  // Prune servers the template dropped so a legacy install migrates cleanly instead of trying to boot arms that no
+  // longer exist standalone (shell/agy/kiro/search became register() modules under `local`). The template is the single
+  // source of truth for the server set; the panel only ever edits folders/commands, never adds its own server entries.
+  for (const name of Object.keys(live.mcpServers ?? {})) {
+    if (!template.mcpServers?.[name]) {
+      delete live.mcpServers[name];
+      changed = true;
+    }
+  }
+  if (changed) writeFileSync(HUB_CONFIG_PATH, `${JSON.stringify(live, null, 2)}\n`);
 }

@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-// Dedicated MCP for the `kiro-cli` "arm": passes the prompt as a separate execFile arg so no shell-tokenizing step can mis-split a multi-word prompt (same reason agy-mcp.js exists). Read-only — kiro_write was removed 2026-08-10 (docs/plan/done/remove-kiro-write.md): the filesystem MCP arm's write_file/edit_file already covers the same capability.
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+// Dedicated MCP tool for the `kiro-cli` "arm": passes the prompt as a separate execFile arg so no shell-tokenizing step can mis-split a multi-word prompt (same reason agy-mcp.js exists). Read-only — kiro_write was removed 2026-08-10 (docs/plan/done/remove-kiro-write.md): the filesystem MCP arm's write_file/edit_file already covers the same capability.
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
 import { resolveOrFail } from './roots.js';
@@ -31,25 +28,23 @@ function run(trustTools, { prompt, effort, cwd }) {
   });
 }
 
-const server = new McpServer({ name: 'kiro', version: '1.0.0', title: 'Kiro CLI' });
-
 const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional().describe('kiro-cli --effort, thinking budget');
 
-server.registerTool(
-  'kiro_read',
-  {
-    title: 'Kiro CLI (read-only)',
-    description:
-      `Delegate a read-only task to a Kiro CLI session locked to ${MODEL}. ` +
-      'Restricted to fs_read by mechanism (--trust-tools=fs_read) — it can read files under the allowed roots but cannot write or run shell. ' +
-      'prompt is passed straight to kiro-cli as one argument — no shell quoting, spaces/punctuation are safe as-is.',
-    inputSchema: {
-      prompt: z.string(),
-      effort: effortSchema,
-      cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
+export function register(server) {
+  server.registerTool(
+    'kiro_read',
+    {
+      title: 'Kiro CLI (read-only)',
+      description:
+        `Delegate a read-only task to a Kiro CLI session locked to ${MODEL}. ` +
+        'Restricted to fs_read by mechanism (--trust-tools=fs_read) — it can read files under the allowed roots but cannot write or run shell. ' +
+        'prompt is passed straight to kiro-cli as one argument — no shell quoting, spaces/punctuation are safe as-is.',
+      inputSchema: {
+        prompt: z.string(),
+        effort: effortSchema,
+        cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
+      },
     },
-  },
-  async ({ prompt, effort, cwd }) => run('fs_read', { prompt, effort, cwd }),
-);
-
-await server.connect(new StdioServerTransport());
+    async ({ prompt, effort, cwd }) => run('fs_read', { prompt, effort, cwd }),
+  );
+}

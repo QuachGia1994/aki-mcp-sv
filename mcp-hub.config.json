@@ -4,24 +4,9 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_DATA_DIR}", "${HOME}/.aki", "${HOME}/.claude"]
     },
-    "search": {
+    "local": {
       "command": "node",
-      "args": ["./scripts/search-mcp.js"],
-      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
-    },
-    "shell": {
-      "command": "node",
-      "args": ["./scripts/shell-mcp.js"],
-      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
-    },
-    "agy": {
-      "command": "node",
-      "args": ["./scripts/agy-mcp.js"],
-      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
-    },
-    "kiro": {
-      "command": "node",
-      "args": ["./scripts/kiro-mcp.js"],
+      "args": ["./scripts/local-tools-mcp.js"],
       "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
     }
   }

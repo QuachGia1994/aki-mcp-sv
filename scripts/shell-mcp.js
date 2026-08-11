@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-// Allowlist-gated shell MCP, in-house (npm `shell-mcp` has no real whitelist) — rationale: docs/plan/init.md
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+// Allowlist-gated shell MCP tool, in-house (npm `shell-mcp` has no real whitelist) — rationale: docs/plan/init.md
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -136,16 +133,14 @@ class Shell {
 
 const shell = new Shell();
 
-const server = new McpServer({ name: 'shell', version: '1.0.0', title: 'Shell' });
-
-server.registerTool(
-  'run_cmd',
-  {
-    title: 'Run Command',
-    description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Use the search tools (find_path/search_content) for file/text lookup — find is not in the set because its own flags escape read-only. Pass cwd (absolute path under one of ${ROOTS.join(', ')}, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
-    inputSchema: { command: z.string(), cwd: z.string().optional() },
-  },
-  ({ command, cwd }) => shell.execute(command, cwd),
-);
-
-await server.connect(new StdioServerTransport());
+export function register(server) {
+  server.registerTool(
+    'run_cmd',
+    {
+      title: 'Run Command',
+      description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Use the search tools (find_path/search_content) for file/text lookup — find is not in the set because its own flags escape read-only. Pass cwd (absolute path under one of ${ROOTS.join(', ')}, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
+      inputSchema: { command: z.string(), cwd: z.string().optional() },
+    },
+    ({ command, cwd }) => shell.execute(command, cwd),
+  );
+}

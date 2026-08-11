@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-// Whole-tree search in one call. The filesystem MCP's search_files returns no directories and times out on a large root.
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+// Whole-tree search MCP tool in one call. The filesystem MCP's search_files returns no directories and times out on a large root.
 import { execFile } from 'node:child_process';
 import { opendirSync } from 'node:fs';
 import path from 'node:path';
@@ -80,47 +77,45 @@ function searchContent(query, from, glob, limit) {
   });
 }
 
-const server = new McpServer({ name: 'search', version: '1.0.0', title: 'File Index' });
-
-server.registerTool(
-  'find_path',
-  {
-    title: 'Find Path',
-    description: `Find files AND directories anywhere under ${ROOT} in one call — use this first when locating a project, repo, or file by name, instead of walking directories one level at a time. query is a case-insensitive substring by default ("mcp" finds aki-mcp-sv), or a glob when it contains * or ? ("*.config.js", "src/**/*.ts"). Globs without a slash match the basename. Skips node_modules/.git/build output automatically. Directories come back with a trailing slash.`,
-    inputSchema: {
-      query: z.string(),
-      path: z.string().optional().describe('subdirectory to search under, absolute or relative to the root'),
-      limit: z.number().optional(),
+export function register(server) {
+  server.registerTool(
+    'find_path',
+    {
+      title: 'Find Path',
+      description: `Find files AND directories anywhere under ${ROOT} in one call — use this first when locating a project, repo, or file by name, instead of walking directories one level at a time. query is a case-insensitive substring by default ("mcp" finds aki-mcp-sv), or a glob when it contains * or ? ("*.config.js", "src/**/*.ts"). Globs without a slash match the basename. Skips node_modules/.git/build output automatically. Directories come back with a trailing slash.`,
+      inputSchema: {
+        query: z.string(),
+        path: z.string().optional().describe('subdirectory to search under, absolute or relative to the root'),
+        limit: z.number().optional(),
+      },
     },
-  },
-  ({ query, path: from, limit }) => {
-    try {
-      return ok(findPath(query, from, limit ?? DEFAULT_LIMIT));
-    } catch (e) {
-      return fail(e);
-    }
-  },
-);
-
-server.registerTool(
-  'search_content',
-  {
-    title: 'Search Content',
-    description: `Search file contents recursively under ${ROOT} and return file:line:text. Case-insensitive extended regex (grep -iE): put every alias in one query with | — "funnel|ingress|thay.*funnel" hits EN+VI+synonym in one call, no need for separate calls per term. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
-    inputSchema: {
-      query: z.string(),
-      path: z.string().optional(),
-      glob: z.string().optional(),
-      limit: z.number().optional(),
+    ({ query, path: from, limit }) => {
+      try {
+        return ok(findPath(query, from, limit ?? DEFAULT_LIMIT));
+      } catch (e) {
+        return fail(e);
+      }
     },
-  },
-  async ({ query, path: from, glob, limit }) => {
-    try {
-      return ok(await searchContent(query, from, glob, limit ?? DEFAULT_LIMIT));
-    } catch (e) {
-      return fail(e);
-    }
-  },
-);
+  );
 
-await server.connect(new StdioServerTransport());
+  server.registerTool(
+    'search_content',
+    {
+      title: 'Search Content',
+      description: `Search file contents recursively under ${ROOT} and return file:line:text. Case-insensitive extended regex (grep -iE): put every alias in one query with | — "funnel|ingress|thay.*funnel" hits EN+VI+synonym in one call, no need for separate calls per term. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
+      inputSchema: {
+        query: z.string(),
+        path: z.string().optional(),
+        glob: z.string().optional(),
+        limit: z.number().optional(),
+      },
+    },
+    async ({ query, path: from, glob, limit }) => {
+      try {
+        return ok(await searchContent(query, from, glob, limit ?? DEFAULT_LIMIT));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+}

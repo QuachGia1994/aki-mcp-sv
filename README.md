@@ -171,7 +171,7 @@ If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` sa
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls 14 tools: `filesystem__*`, `search__find_path`, `search__search_content`, `shell__run_cmd`.
+claude.ai connects and calls the tool suite: `filesystem__*` plus the in-house `local__*` tools (`local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`).
 
 ## Connecting from ChatGPT
 
@@ -213,7 +213,7 @@ https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32
 
 ## Finding files
 
-Use `search__find_path`, not `filesystem__search_files`, to locate a file or directory. The built-in `search_files` doesn't return directories and tends to time out on large trees, so a remote session can appear to "not see" the very project it has access to. `find_path` scans the whole tree in one call (measured: ~0.2s across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
+Use `local__find_path`, not `filesystem__search_files`, to locate a file or directory. The built-in `search_files` doesn't return directories and tends to time out on large trees, so a remote session can appear to "not see" the very project it has access to. `find_path` scans the whole tree in one call (measured: ~0.2s across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
 
 ## Security
 

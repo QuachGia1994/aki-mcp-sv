@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
+import { startGatekeeper } from './gatekeeper.js';
 import { startPanel } from './panel.js';
 import { HUB_CONFIG_PATH, USER_DIR } from './userdata.js';
 
@@ -54,6 +55,7 @@ if (origin) {
 }
 
 let hub;
+let panel;
 let shuttingDown = false;
 
 function spawnHub() {
@@ -74,12 +76,16 @@ function restartHub() {
 }
 
 spawnHub();
-const gate = spawnNode(['./scripts/gatekeeper.js'], {
-  env: { ...env, MCP_HUB_PORT: hubPort, GATEKEEPER_PORT: gatePort, PUBLIC_ORIGIN: origin || '' },
-});
-gate.on('error', (e) => console.error(`[start] gatekeeper failed to start: ${e.message}`));
+// Gatekeeper runs in-process (docs/plan/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so the hub is never left orphaned.
+let gateServer;
+try {
+  gateServer = startGatekeeper(origin, shutdown);
+} catch (e) {
+  console.error(`[start] gatekeeper failed to start: ${e.message}`);
+  shutdown();
+}
 
-const panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub });
+panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
 try {
   await openBrowser(panelUrl);
@@ -91,9 +97,9 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   hub?.kill();
-  gate.kill();
-  panel.close();
+  gateServer?.close();
+  panel?.close();
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-gate.on('exit', shutdown);
+process.on('exit', () => hub?.kill()); // safety net: never leave the hub child orphaned if this process exits abruptly
