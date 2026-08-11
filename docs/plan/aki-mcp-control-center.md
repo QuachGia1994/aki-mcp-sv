@@ -39,7 +39,10 @@ Profile isolation is non-negotiable (same operating model as AkiTgAuto game mult
 | **Backend / reuse** | Node — direct reuse of widen-script, `/usage`+SSE logic, panel-style JSON registry | Rust — inject JS still plain JS; profile-registry/IPC needs rewrite or Node sidecar (`tauri.A2` PATH race); `/usage` poll must be `async` + `spawn_blocking` (`tauri.A1`) |
 | **Fingerprint / anti-bot** | Chromium-like; Phase 0 still must prove claude.ai does not challenge a plain BrowserWindow | WKWebView fingerprint different from Chromium; may be better or worse on claude.ai — untested |
 
-**Current lean (not locked):** Electron wins on isolation certainty (the one hard requirement). Tauri stays viable if #11491 closes or a verified workaround gives real per-webview data-store isolation on the ship platforms. Do not treat the lean as a decision — owner is still undecided for v2.
+**Decision lean (owner-confirmed 2026-08-11):**
+- **v1 ship path = Electron** — multi-profile isolation is the hard gate and is already solved (`session.fromPartition`); reuse AkiTgAuto inject pattern; Phase 0 = claude.ai fingerprint only.
+- **Tauri stays on the table for a later pass** — only if isolation is proven (issue #11491 closed, or a verified per-webview data-store workaround on ship OS). Do not plan an Electron→Tauri rewrite until that spike passes.
+- **Do not mix shells in v1.**
 
 ## Requirement → mechanism (shell-agnostic where possible)
 
@@ -90,4 +93,4 @@ Profile isolation is non-negotiable (same operating model as AkiTgAuto game mult
 - AkiTgAuto (`/Volumes/DEV/Frameworks/Electron/AkiTgAuto`) — proven Electron multi-profile + preload inject into remote origin (same pattern this plan uses for claude.ai).
 
 ## Decision
-**Open** — shell not locked (Electron lean on isolation; Tauri still in play). **Action** → Phase 0 spikes for the shell(s) under consideration first; multi-profile remains the hard gate. Not started.
+**v1 = Electron** (isolation gate). Tauri deferred until isolation spike passes — not a parallel v1 track. **Action** → Phase 0 Electron spike first (claude.ai load + `/usage`/SSE). Not started.
