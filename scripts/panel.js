@@ -34,14 +34,17 @@ function filesystemPaths(dataDir) {
   return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(2).map((p) => expandPath(p, dataDir));
 }
 
-// search/shell enforce path containment via the same list, so it never drifts from what this panel shows as "allowed".
+// The tool arms enforce path containment via the same list, so it never drifts from what this panel shows as "allowed".
+// After the consolidation the roots live on `local` (they used to live on the separate `search`/`shell` arms); update every
+// server that scopes by MCP_DATA_DIR, whichever exist, so this survives both the old and the migrated config shape.
 function setFilesystemPaths(paths) {
   const config = readJson(HUB_CONFIG, {});
   const [flag, pkg] = config.mcpServers.filesystem.args;
   config.mcpServers.filesystem.args = [flag, pkg, ...paths];
   const rootsEnv = paths.join(',');
-  config.mcpServers.search.env.MCP_DATA_DIR = rootsEnv;
-  config.mcpServers.shell.env.MCP_DATA_DIR = rootsEnv;
+  for (const srv of Object.values(config.mcpServers)) {
+    if (srv.env && 'MCP_DATA_DIR' in srv.env) srv.env.MCP_DATA_DIR = rootsEnv;
+  }
   writeFileSync(HUB_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
 }
 
