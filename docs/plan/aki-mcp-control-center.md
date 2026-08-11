@@ -66,7 +66,7 @@ Profile isolation is non-negotiable (same operating model as AkiTgAuto game mult
 ## Open questions to resolve before execution starts
 
 - Confirm item 1 of the critique: window-based or headless-first?
-- Where does this app live — new repo, or a subfolder of `aki-mcp-sv`? Different bounded context (`design.A6`) from the existing MCP server; leaning new repo, not decided.
+- Where does this app live — new repo, or a subfolder of `aki-mcp-sv`? Different bounded context (`pattern.A6`) from the existing MCP server; leaning new repo, not decided.
 - Concurrent profile count target — shapes whether Chromium-per-window memory cost (critique #2) needs addressing in v1 or can wait.
 
 ## Execution checklist (phased, not started)

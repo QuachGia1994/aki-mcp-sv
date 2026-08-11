@@ -9,6 +9,7 @@ import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startGatekeeper } from './gatekeeper.js';
 import { startPanel } from './panel.js';
+import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { HUB_CONFIG_PATH, USER_DIR } from './userdata.js';
 
 const dataDir = process.env.MCP_DATA_DIR || os.homedir();
@@ -54,6 +55,13 @@ if (origin) {
   console.error('[start] could not get the MagicDNS name — run `tailscale status` to look up the URL yourself');
 }
 
+// One check per `npm start`; own version stays on top, then the rule corpus. Never blocks boot.
+const updateInfo = await checkForUpdate();
+writeStatusFile(updateInfo);
+const bar = (s) => console.log(`\x1b[43m\x1b[30m ${s} \x1b[0m`);
+if (updateInfo.mcp.updateAvailable) bar(`[update] aki-mcp-sv ${updateInfo.mcp.current} → ${updateInfo.mcp.latest} — open the panel to pull & restart`);
+if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel, then RE-PASTE the instruction into each account (claude/grok/chatgpt/gemini)`);
+
 let hub;
 let panel;
 let shuttingDown = false;
@@ -85,7 +93,7 @@ try {
   shutdown();
 }
 
-panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub });
+panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub, updateInfo });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
 try {
   await openBrowser(panelUrl);

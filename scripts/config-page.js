@@ -18,11 +18,12 @@ const GROK_CONNECTOR_URL = 'https://grok.com/connectors';
 const TOKENIZER_URL = 'https://chromewebstore.google.com/detail/claude-token-counter/bioobpobpbeohjoefndgkiaakboimpch';
 const GROK_USAGE_URL = 'https://chromewebstore.google.com/detail/grok-usage-watch-%E2%80%93-rate-l/bmpboaihdkpkjehbceegdmndkonlpdge';
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule';
+const MCP_REPO_URL = 'https://github.com/lacvietanh/aki-mcp-sv';
 const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvietanh/akidevrule/master/install.sh | bash';
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
-const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-design-core.md'];
+const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'];
 
 // Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
@@ -70,13 +71,25 @@ const ecoLink =([name, url, icon]) =>
 const socialLink = ([label, url, path]) =>
   `<a class="social" href="${esc(url)}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg></a>`;
 
-function field(label, value, mono = true, hl = false) {
-  return `<div class="row"><label>${esc(label)}</label><div class="val ${mono ? 'mono' : ''}${hl ? ' hl' : ''}" data-copy>${esc(value)}</div><button onclick="copyFrom(this)">copy</button></div>`;
+// The one copyable-code primitive (ui.A1 Tier-2 pattern class): every command/value/inline code renders as `.copy` and click-copies. `.mono` is plain monospace text, never a copy chip — the two roles stay visually distinct so nothing masquerades as copyable.
+const copyEl = (value, hl = false) => `<code class="copy${hl ? ' hl' : ''}" title="click to copy"><span class="txt">${esc(value)}</span></code>`;
+
+function field(label, value, hl = false) {
+  return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
 
-export function renderPanel({ origin, client, passphrase, token, repoRoot, rulesDir, userDir }) {
+export function renderPanel({ origin, client, passphrase, token, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
   const regUrl = origin ? `${origin}/register` : 'not available yet, see section 0';
+  const mcpUpd = updateInfo.mcp || {};
+  const ruleUpd = updateInfo.rule || {};
+  const mcpVer = mcpUpd.current || '?';
+  const ruleVer = ruleUpd.current || '?';
+  // "Own update on top, rule update below" per the request; the rule row carries the re-paste warning because updating the corpus makes every pasted instruction stale.
+  const updateBanner = (mcpUpd.updateAvailable || ruleUpd.updateAvailable) ? `<div class="updbar">
+  ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>aki-mcp-sv</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> ${hasGit ? '<button class="primary" data-act="pullUpdate">Pull &amp; restart</button>' : `<a class="btnlink" href="${MCP_REPO_URL}" target="_blank" rel="noopener">Download ↗</a>`}<span class="msg" id="msgUpd"></span></div>` : ''}
+  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span><div class="updwarn">⚠ After updating, RE-PASTE the section-3 instruction into EACH account: claude / grok / chatgpt / gemini.</div></div>` : ''}
+</div>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(MCP_NAME)} · panel</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
@@ -94,12 +107,18 @@ h3.subh { font-size: 13px; margin: 16px 0 8px; color: var(--fg); font-weight: 60
 h3.subh:first-of-type { margin-top: 4px; }
 .hint { color: var(--muted); font-size: 12.5px; line-height: 1.7; margin: 0 0 10px; }
 .fine { color: var(--muted); font-size: 11px; font-style: italic; opacity: .8; margin: 4px 0 8px; }
-.row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px; }
+.row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; margin-bottom: 8px; }
 .row label { color: var(--muted); font-size: 13px; }
-.val { padding: 5px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; overflow-x: auto; white-space: nowrap; font-size: 11.5px; }
-.val.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.mono, textarea, input[type=text], code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-code { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.mono, textarea, input[type=text] { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.copy { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: 12px ui-monospace, Menlo, monospace; }
+.copy .txt { overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.copy .txt::-webkit-scrollbar { display: none; }
+.copy::after { content: '⧉'; flex-shrink: 0; color: var(--muted); }
+.copy:hover { border-color: var(--accent); }
+.copy:hover::after { color: var(--accent); }
+.copy.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.copy.copied { border-color: var(--ok); }
+.copy.copied::after { content: '✓'; color: var(--ok); }
 button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
 button:hover { border-color: var(--accent); color: var(--accent); }
 button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
@@ -124,6 +143,18 @@ textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 .step.opt em { font-style: normal; opacity: .65; font-size: 10.5px; }
 .done-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ok); border: 1px solid var(--ok); border-radius: 5px; padding: 1px 6px; margin-left: 6px; vertical-align: middle; }
 .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.to-top { position: fixed; right: 20px; bottom: 20px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-size: 18px; line-height: 1; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.18); z-index: 50; }
+.to-top:hover { border-color: var(--accent); color: var(--accent); }
+.to-top.show { display: inline-flex; }
+.spy { position: fixed; top: 50%; right: 16px; transform: translateY(-50%); display: none; flex-direction: column; gap: 7px; z-index: 40; }
+.spy a { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--muted); font: 700 11px system-ui; text-decoration: none; }
+.spy a:hover { border-color: var(--accent); color: var(--accent); }
+.spy a.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+@media (min-width: 1040px) { .spy { display: flex; } }
+.updbar { border: 1px solid var(--accent); border-left: 4px solid var(--accent); background: var(--card); border-radius: 10px; padding: 12px 16px; margin: 0 0 14px; }
+.updrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.updrow + .updrow { margin-top: 10px; }
+.updwarn { flex-basis: 100%; color: var(--err); font-size: 12px; font-weight: 600; margin: 2px 0 0; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 4px 12px; margin-bottom: 12px; }
 .checks label { display: flex; gap: 6px; align-items: center; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
 .flist { display: flex; flex-direction: column; margin-bottom: 8px; }
@@ -178,11 +209,11 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 .eco-icon { border-radius: 4px; object-fit: cover; flex-shrink: 0; background: #fff; padding: 1px; }
 .foot-bottom { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 14px; text-align: center; font-size: 11.5px; opacity: .7; }
 @media (max-width: 700px) { .foot-grid { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .row { grid-template-columns: 1fr; } .eco-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .row { grid-template-columns: minmax(0, 1fr); } .eco-grid { grid-template-columns: 1fr; } }
 </style></head><body><main>
 <h1>${esc(MCP_NAME)}</h1>
 <p class="sub">Local panel (127.0.0.1); never goes through Funnel, never reaches the internet.<br>Running repo: <span class="mono">${esc(repoRoot)}</span> · Your config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
-
+${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
 <ol class="steps-nav">
   <li class="step done"><a href="#s0"><span class="step-n">✓</span> Setup</a></li>
@@ -197,19 +228,20 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 <p class="hint">One-time prerequisites. You're reading this panel, so the last three already ran; the two Tailscale checks below are live.</p>
 <ol class="steps">
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
-  <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. <code>npm start</code> enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
+  <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. ${copyEl('npm start')} enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
   <li><span class="dot ok">✓</span> Clone / download the <span class="mono">aki-mcp-sv</span> repo.</li>
-  <li><span class="dot ok">✓</span> <code>npm install</code>.</li>
-  <li><span class="dot ok">✓</span> <code>npm start</code> — running now.</li>
+  <li><span class="dot ok">✓</span> ${copyEl('npm install')}.</li>
+  <li><span class="dot ok">✓</span> ${copyEl('npm start')} — running now.</li>
 </ol>
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
-<p class="hint">Connector keeps dropping with <em>"hostname doesn't resolve / isn't reachable"</em>? The Funnel edge desynced — a Tailscale-side issue, not this server. Re-sync it in a terminal (needs <code>sudo</code>, so it can't be a button here), then reconnect the connector:<br><code>tailscale funnel --https=443 off &amp;&amp; tailscale serve reset &amp;&amp; tailscale funnel --bg 9999</code><br>Why: <span class="mono">docs/research/claude-ai-oauth-connector.md</span> round 9.</p>
+<p class="hint">Connector keeps dropping with <em>"hostname doesn't resolve / isn't reachable"</em>? The Funnel edge desynced — a Tailscale-side issue, not this server. Re-sync it in a terminal (needs ${copyEl('sudo')}, so it can't be a button here), then reconnect the connector. Why: <span class="mono">docs/research/claude-ai-oauth-connector.md</span> round 9.</p>
+${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --bg 9999')}
 </section>
 
 <section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini</h2>
 <p class="hint">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
-${field('MCP Name', MCP_NAME, false)}
-${field('MCP URL', url, true, true)}
+${field('MCP Name', MCP_NAME)}
+${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
 
 <nav class="tabs" role="tablist">
@@ -284,6 +316,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
   <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
 </label>
+${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste this prompt into each account (claude / grok / chatgpt / gemini).</div>` : ''}
 <div class="checks" id="ruleChecks"></div>
 <textarea id="prompt" readonly style="min-height:130px"></textarea>
 <div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
@@ -296,7 +329,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <p class="hint" style="margin:14px 0 0"><strong>Grok Usage Watch</strong>: the same idea for grok.com — a rate-limit / usage bar for your Grok quota, which the site doesn't show on its own.</p>
 <div class="acts"><a class="btnlink" href="${esc(GROK_USAGE_URL)}" target="_blank" rel="noopener">Install from Chrome Web Store ↗</a></div>
 <figure><img src="/extension-grok-usage.png" alt="Usage / rate-limit bar shown on grok.com" loading="lazy"></figure>
-<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane; paste the snippet below into the browser tab's Console (<code>Cmd/Ctrl ⌥ J</code>).</p>
+<p class="hint" style="margin:14px 0 0">Widen the claude.ai chat pane; paste the snippet below into the browser tab's Console (${copyEl('Cmd/Ctrl ⌥ J')}).</p>
 ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
@@ -312,7 +345,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
 <section id="s6"><h2>6 · Allowed shell commands</h2>
-<p class="hint">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (<code>rm</code>, <code>git commit</code>…) widens access.</p>
+<p class="hint">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access.</p>
 <div class="chips" id="cmdChips"></div>
 <div class="flist" id="cmdRows"></div>
 <div class="acts">
@@ -355,6 +388,8 @@ ${field('Widen command', WIDEN_SNIPPET)}
   <p class="foot-bottom">© 2020–<span id="year"></span> AkiTao. All rights reserved.</p>
 </footer>
 </main>
+<nav class="spy" id="spy" aria-label="Sections"></nav>
+<button class="to-top" id="toTop" aria-label="Scroll to top" title="Scroll to top">↑</button>
 <script>
 const TOKEN = ${JSON.stringify(token)};
 const RULES_DIR = ${JSON.stringify(rulesDir)};
@@ -363,8 +398,35 @@ const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
 const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
+const MCP_VERSION = ${JSON.stringify(mcpVer)};
+const RULE_VERSION = ${JSON.stringify(ruleVer)};
 
 document.getElementById('year').textContent = new Date().getFullYear();
+
+const toTop = document.getElementById('toTop');
+toTop.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+addEventListener('scroll', () => toTop.classList.toggle('show', window.scrollY > 400), { passive: true });
+
+// Spy-TOC rail: built from the sections themselves (SSoT), so numbers/labels never drift from the page.
+const spy = document.getElementById('spy');
+const spySecs = [...document.querySelectorAll('main section[id]')];
+const spyLinks = {};
+spySecs.forEach((sec) => {
+  const a = document.createElement('a');
+  a.href = '#' + sec.id;
+  a.textContent = sec.id.replace('s', '');
+  a.title = (sec.querySelector('h2')?.textContent || sec.id).replace(/\\s+(done|optional)$/i, '').trim();
+  spy.append(a);
+  spyLinks[sec.id] = a;
+});
+const spyObs = new IntersectionObserver((entries) => {
+  entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    for (const a of Object.values(spyLinks)) a.classList.remove('active');
+    spyLinks[e.target.id]?.classList.add('active');
+  });
+}, { rootMargin: '-45% 0px -50% 0px' });
+spySecs.forEach((s) => spyObs.observe(s));
 
 async function api(method, path, body) {
   let res;
@@ -401,10 +463,17 @@ function copyText(text, btn) {
     const old = btn.textContent; btn.textContent = 'copied'; setTimeout(() => (btn.textContent = old), 1200);
   });
 }
-function copyFrom(btn) { copyText(btn.closest('.row').querySelector('[data-copy]').textContent, btn); }
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('.copy');
+  if (!el) return;
+  navigator.clipboard.writeText((el.querySelector('.txt') || el).textContent).then(() => {
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1000);
+  });
+});
 
 function buildPrompt() {
-  const lines = ['ALWAYS short dense on-point. DON\\'T YAPPING. Claim=evidence; search=citation.'];
+  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] ALWAYS short dense on-point. DON\\'T YAPPING. Claim=evidence; search=citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
@@ -419,6 +488,7 @@ function buildPrompt() {
   lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md (live); reply path on create. Skip pure Q&A. <id>=short slug.');
   lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under an allowed root, never cd/-C.');
   lines.push('Repo: ' + REPO_ROOT + '. local paths=Aki MCP FS only; sandbox throwaway; after write read-back MCP.');
+  lines.push('Also read ' + AKI_DIR + '/aki-mcp-status.json; if its mcp.current/rule.current differ from the [akimcp·akidevrule] header above or any updateAvailable is true, tell me to update in the Aki panel and re-paste this into each account (claude/grok/chatgpt/gemini).');
   const value = lines.join('\\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
@@ -640,6 +710,16 @@ const ACTIONS = {
     const { message } = await api('POST', '/api/install-rules');
     renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
     buildPrompt();
+    return message;
+  }),
+  pullUpdate: (btn) => act(btn, 'msgUpd', async () => (await api('POST', '/api/pull-update')).message),
+  updateRules: (btn) => act(btn, 'msgUpdRule', async () => {
+    const { message } = await api('POST', '/api/install-rules');
+    renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
+    buildPrompt();
+    // The banner and section-3 warning both claimed a stale corpus; the update just cleared it.
+    document.querySelector('.updrule')?.remove();
+    document.getElementById('s3warn')?.remove();
     return message;
   }),
 };

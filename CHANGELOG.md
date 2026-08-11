@@ -4,6 +4,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-08-12
+
+### Added
+- **Update check for both aki-mcp-sv and akidevrule on every `npm start`** (`scripts/update-check.js`): one `checkForUpdate()` compares local vs GitHub — this repo via `main/package.json`, the rule corpus via the newest released header in `master/CHANGELOG.md` (akidevrule has no version field). Surfaced as a colored console banner (own update on top, rule below) and a panel banner under the title: mcp shows **Pull & restart** on a git checkout or a **Download** link on a zip install; akidevrule shows **Install / update** plus a warning to re-paste the instruction into each account. The same rule-update warning repeats in section 3 (rule select). New `POST /api/pull-update` route (`scripts/panel.js`) pulls this repo only when the tree is clean (`git status --porcelain` gate at click-time). Plan: `docs/plan/update-check-notify.md`.
+- **Paste-in instruction now carries versions + a staleness self-check** (`scripts/config-page.js` `buildPrompt`): the prompt opens with `[akimcp <ver> · akidevrule <ver>]` and gains one line telling the model to read `~/.aki/aki-mcp-status.json` at session start and warn the user to re-paste (per account) when the pasted versions are older than what's installed, or an update is available. `start.js` writes that status file each boot under `~/.aki` (an already-allowed root the connector can read).
+- **Scroll-to-top button + spy-TOC rail in the panel** (`scripts/config-page.js`): a fixed bottom-right button appears past 400px of scroll and smooth-scrolls up (every breakpoint incl. mobile); a fixed vertical numbered rail (sections 0–6, built from the sections themselves so labels never drift) highlights the section in view via `IntersectionObserver` and jumps on click, shown only ≥1040px where there is side room. Closes `docs/plan/panel-ux-improve.md` feature 4.
+
+### Changed
+- **One copy pattern for every copyable value/command** (`scripts/config-page.js`): a single `.copy` primitive (ui.A1 Tier-2 pattern class) replaces both the old `field()` label+value+button rows and the inline `<code>` boxes that looked copyable but weren't. Every command/value/inline-code (MCP URL, passphrase, `npm start`, `sudo`, the Funnel re-sync command, …) is now the same monospace chip: click anywhere to copy, ⧉ glyph, ✓ feedback — driven by one delegated click handler. `.mono` stays a plain-text monospace helper (no box, not clickable) so nothing masquerades as copyable. The long Funnel re-sync command moved out of prose into a proper copy row.
+
+### Fixed
+- **Long commands no longer overflow the panel on mobile** (`scripts/config-page.js`): the `.row` value track was `1fr` (implicitly `minmax(auto,1fr)`), so a long non-wrapping `.copy` command forced the track past the viewport instead of scrolling inside its chip. Changed to `minmax(0,1fr)` (desktop + the 560px breakpoint) so the chip caps at 100% width and the command scrolls within it.
+- **Default rule selection tracks the akidevrule rename** (`scripts/config-page.js`): `RULE-design-core.md` → `RULE-pattern-core.md` in `DEFAULT_RULES`, so the generated instruction points the model at the file that now exists. Living plan docs repointed `design.*` → `pattern.*`; historical records (research, `done/`) intentionally keep the old name.
+
 ## [1.5.0] — 2026-08-12
 
 ### Changed

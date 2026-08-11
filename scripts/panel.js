@@ -129,6 +129,19 @@ async function installRules() {
   }
 }
 
+// Pull this repo, but only when the tree is clean — an unattended pull over local edits can conflict or lose work (agent.B3). Checked at click-time, not page-load, since the tree can change in between.
+async function pullUpdate() {
+  if (!existsSync(path.join(REPO_ROOT, '.git'))) {
+    throw new Error('this is not a git checkout — download the latest zip from the repo instead');
+  }
+  const dirty = (await run('git', ['-C', REPO_ROOT, 'status', '--porcelain'])).trim();
+  if (dirty && dirty !== '(no output)') {
+    throw new Error('working tree has uncommitted changes — commit or stash them first, then pull');
+  }
+  await run('git', ['-C', REPO_ROOT, 'pull', '--ff-only']);
+  return 'pulled latest — press Ctrl+C and run `npm start` again to load the new code';
+}
+
 // Mirror shell-mcp's classification: a zone overlapping a writable root is dropped (write+exec = RCE). Name the offending root so the panel can show why a zone is disabled.
 function trustedDirStatus(dataDir) {
   const roots = filesystemPaths(dataDir).map((p) => path.resolve(p));
@@ -166,9 +179,10 @@ const ROUTES = {
     return { ok: true, message: 'restarted mcp-hub' };
   },
   'POST /api/install-rules': async () => ({ ok: true, message: await installRules() }),
+  'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
 };
 
-export function startPanel({ port, token, origin, client, passphrase, dataDir, restartHub }) {
+export function startPanel({ port, token, origin, client, passphrase, dataDir, restartHub, updateInfo }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
     const route = `${req.method} ${urlPath}`;
@@ -179,7 +193,7 @@ export function startPanel({ port, token, origin, client, passphrase, dataDir, r
         return res.end('wrong token — open the URL that `npm start` printed');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR }));
+      return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, hasGit: existsSync(path.join(REPO_ROOT, '.git')) }));
     }
 
     if (req.method === 'GET' && await serveStatic(res, urlPath)) return;

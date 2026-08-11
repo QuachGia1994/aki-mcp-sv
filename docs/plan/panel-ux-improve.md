@@ -1,7 +1,12 @@
 # Plan: Control-panel UX improvements (sections 5 & 6, plus a scroll-spy TOC)
 
 ## Status
-Design only — not started. No code written. Four independent features; feature 3 is the load-bearing one and carries a latent-bug must-fix. All evidence is `file:line` against the current working tree.
+Feature 4 (scroll-to-top + spy-TOC rail) is SHIPPED (2026-08-12). Features 1–3 are design only. Feature 3 is the load-bearing one still outstanding.
+
+## Update note (2026-08-12, after the update-check batch)
+- **Line anchors are pre-1.5.0.** Every `file:line` below was captured against the working tree *before* the Stage-1 consolidation (1.5.0) and the update-check batch, both of which inserted/moved lines in `config-page.js` and `panel.js`. Treat the numbers as approximate — **re-verify each anchor when this plan is actually built**, don't trust the exact line. The prose descriptions still hold; only the line numbers drifted.
+- **Feature 3's "must-fix latent bug" is already resolved (1.5.0), not outstanding.** `setFilesystemPaths` (`panel.js`) now loops `Object.values(config.mcpServers)` setting `MCP_DATA_DIR` on whichever server carries it, and `userdata.js` finds the roots the same way — both handle the consolidated `filesystem`+`local` shape. The bug described in Feature 3 and Risk #1 below is historical; leave them for context but do not schedule that fix.
+- **Feature 4 fully done.** Scroll-to-top button + the vertical numbered spy-TOC rail both shipped (2026-08-12). See the Feature 4 section below for what was built.
 
 ## Goal
 Make the local panel (`scripts/config-page.js`) faster to operate and bring the two list editors (section 5 Folders, section 6 Allowed shell commands) to behavioral parity. The headline change is feature 3: a folder add/remove should take effect at **runtime**, the way a command allowlist edit already does, instead of forcing "Save & restart hub".
@@ -29,7 +34,7 @@ Scope is the panel page and the folder-scope wiring it drives (`scripts/roots.js
 
 **Current state.** `savePaths` (`config-page.js:610-616`) collects `#paths input` values, filters empties, POSTs them verbatim; server `validatePaths` (`panel.js:58-63`) only normalizes, never orders; the list persists in whatever order it arrived.
 
-**Design.** In `savePaths`, sort the collected list before POST with a stated key: **case-insensitive by full path** — `a.localeCompare(b, undefined, { sensitivity: 'base' })`. The server re-serves the saved order on next `GET /api/state`, so the sorted order is what the user sees after save — no separate re-render needed. Persisted sorted = SSoT of order (`design.A1`).
+**Design.** In `savePaths`, sort the collected list before POST with a stated key: **case-insensitive by full path** — `a.localeCompare(b, undefined, { sensitivity: 'base' })`. The server re-serves the saved order on next `GET /api/state`, so the sorted order is what the user sees after save — no separate re-render needed. Persisted sorted = SSoT of order (`pattern.A1`).
 - **Locked rows** (`RULES_DIR`/`CLAUDE_DIR`/`AKI_DIR`, `config-page.js:437`) sort in place with the rest; they are still submitted (`savePaths` reads all `#paths input`). Optional refinement: pin the three locked rows to the top for recognition (`ux.A2`) — decide at build time, default is plain sort.
 - **Section 6 parity:** section 6 is *already* sorted on render (`config-page.js:514`), so this feature closes the gap rather than adding a second behavior — the goal is one sort rule shared by both list editors (SSoT of behavior, not two implementations). No change needed in section 6.
 
@@ -55,10 +60,10 @@ So commands are live because the gate re-reads its list from disk on every call;
 1. **Our own tools** (`local__*`: shell, `find_path`, `search_content`, agy, kiro) all enforce scope through `roots.js`. This is *our* code — nothing forces the snapshot except that `ROOTS` is a module const. We can read the folder list fresh per call, exactly as the allowlist already does.
 2. **The external `@modelcontextprotocol/server-filesystem` npx child** takes its allowed dirs as **positional spawn args** (`mcp-hub.config.json:5`). Third-party code, re-reads nothing, exposes no runtime API to change dirs. We are not in its call path — mcp-hub proxies `filesystem__*` straight through — so we cannot gate it per call without either a per-child respawn (mcp-hub offers none) or replacing it with our own implementation, which is exactly **Stage 2** (`docs/plan/unify-mcp-tools-single-process.md`), deferred because it means reimplementing ~14 security-sensitive filesystem tools (`consolidate-mcp-tool-processes.md`, Out of scope).
 
-**Design — make folders the SSoT twin of the command allowlist (`design.A1`, `design.A8`).**
+**Design — make folders the SSoT twin of the command allowlist (`pattern.A1`, `pattern.A8`).**
 
 - **Persist folders like the allowlist.** Store the folder list in `setting.json` (a `folders` key beside `shell.allowlist`) as the authoritative source, and add `loadFolders()` mirroring `loadAllowlist()` (`allowlist.js:53-60`): read fresh, filter non-strings, `path.resolve`, dedupe. `mcp-hub.config.json` stops being the folder SSoT — it holds only a stable spawn seed (below).
-- **Convert `roots.js` from a const to a per-call read.** Replace the module-level `ROOTS`/`ROOT` (`roots.js:7-13`) with `getRoots()` that calls `loadFolders()` (optionally memoized with an mtime check to avoid a disk read on every call). `resolveUnderRoot`/`containedIn` (`roots.js:28-36`) call `getRoots()` instead of closing over the frozen const. This makes shell/search/find/agy/kiro honor a folder add/remove on the **next call — runtime, no restart.** It is the "one flow made natural" move (`design.A8`): folders become the same kind of object as commands — a per-call-checked containment list — instead of a spawn-time snapshot.
+- **Convert `roots.js` from a const to a per-call read.** Replace the module-level `ROOTS`/`ROOT` (`roots.js:7-13`) with `getRoots()` that calls `loadFolders()` (optionally memoized with an mtime check to avoid a disk read on every call). `resolveUnderRoot`/`containedIn` (`roots.js:28-36`) call `getRoots()` instead of closing over the frozen const. This makes shell/search/find/agy/kiro honor a folder add/remove on the **next call — runtime, no restart.** It is the "one flow made natural" move (`pattern.A8`): folders become the same kind of object as commands — a per-call-checked containment list — instead of a spawn-time snapshot.
 - **`POST /api/paths` stops restarting** for our tools: write `setting.json`, return. Feature 2's sort applies here.
 - **The npx filesystem child stays spawn-arg-bound until Stage 2 — state this honestly.** Recommended interim: spawn it with a **stable seed root** (write `filesystem.args`/`local.env` once at seed) and split the button — the common actions (narrow/add a folder for shell, search, `find_path`, `search_content`) are live immediately; the file read/write/edit tools pick up the new scope only after an explicit, clearly-labeled optional **"apply to file tools (restarts hub)"** action. This removes the restart from the everyday path while being truthful that the external tool lags. The restart disappears entirely at Stage 2, when the filesystem tools move into `local-tools-mcp` (our code) and `getRoots()` governs them too — cross-reference `unify-mcp-tools-single-process.md`.
 
@@ -68,7 +73,9 @@ So commands are live because the gate re-reads its list from disk on every call;
 
 ---
 
-## Feature 4 — Scroll-spy TOC sidebar
+## Feature 4 — Scroll-spy TOC sidebar — SHIPPED 2026-08-12
+
+> Done. A fixed vertical numbered rail (`.spy`, sections 0–6) shipped in the update-check batch: built from the sections themselves (SSoT — no drift), highlights the section in view via `IntersectionObserver` (`rootMargin: -45%/-50%`), jumps on click, shown only ≥1040px where there is side room, plus a tooltip = section title. Reuses `--muted`/`--accent`/`--line` and a `.step-n`-style circle (`ui.A2` — no new value). Companion scroll-to-top button also shipped. The design below is the record of what was built.
 
 **Problem.** The only in-page nav is the top stepper (`config-page.js:186-194`), which lists steps 0–4 only — sections 5 and 6 have no nav entry, and nothing marks which section the user is currently in while scrolling this long page.
 
@@ -93,7 +100,7 @@ So commands are live because the gate re-reads its list from disk on every call;
 - **RWD / breakpoints:**
   - **≥1100px** (gutter wide enough for text without overlapping the 880px column): number **+ keyword**, fixed left.
   - **700–1100px**: number **only** — a thin fixed rail, no room for text.
-  - **<700px**: hidden. The existing top stepper already serves narrow-screen navigation (`config-page.js:186-194`); a fixed side rail on mobile would steal scarce width (`ux.A1`). Reusing the top stepper as the mobile affordance avoids a second nav to maintain (subtraction before addition, `design.A8`).
+  - **<700px**: hidden. The existing top stepper already serves narrow-screen navigation (`config-page.js:186-194`); a fixed side rail on mobile would steal scarce width (`ux.A1`). Reusing the top stepper as the mobile affordance avoids a second nav to maintain (subtraction before addition, `pattern.A8`).
 - **Fixed positioning:** `position: fixed; top: <below h1>; left: calc((100vw - 880px)/2 - <rail width> - gap)` so the rail rides the left gutter and never overlaps the centered column; clamp `left` to a small min so it degrades gracefully as the viewport narrows toward 1100px.
 - **Active detection — IntersectionObserver, not a scroll handler.** Observe the seven sections; mark active the topmost section currently intersecting, using `rootMargin` biased toward the top (e.g. `-40% 0px -55% 0px`) so "active" flips as a section reaches the upper third. Chosen over a `scroll` listener because it fires only on threshold crossings (no per-frame handler, no manual `getBoundingClientRect` thrash) and is the native primitive for exactly this (`coding.C3`). Click handlers use `scrollIntoView({ behavior: 'smooth' })`; anchor `href="#sN"` remains the no-JS fallback.
 - **Relationship to the top stepper:** they coexist (stepper = onboarding progress 0–4 with done-state; TOC = persistent all-section scroll-spy). A later pass could unify them; not in scope here — noted so it is a decision, not an oversight.

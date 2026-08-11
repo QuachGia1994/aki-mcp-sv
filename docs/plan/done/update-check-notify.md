@@ -1,11 +1,18 @@
-# Update check + notify — banner on every `npm start` + panel
+# Update check + notify — dual-source banner + versioned instruction
 
 ## Goal
-Detect when the GitHub repo (`lacvietanh/aki-mcp-sv`, branch `main`) has a newer `package.json` version than the local checkout, on every `npm start`, and surface it two places: a prominent colored console line, and a banner at the top of the panel HTML. Cover both distribution paths — `git clone` and plain zip download — since a zip has no `.git/` at all, not just "no git binary".
+Detect when either GitHub source — this repo (`lacvietanh/aki-mcp-sv`, `main`, via `package.json`) **or** the rule corpus (`lacvietanh/akidevrule`, `master`, via CHANGELOG) — is newer than the local copy, on every `npm start`, and surface it in a colored console line + a panel banner (own update on top, rule update below with a re-paste warning). Cover both distribution paths — `git clone` and plain zip download — since a zip has no `.git/` at all, not just "no git binary".
+
+## Built — expanded scope (delta from the original single-source design below)
+The original plan (kept below for the design rationale) checked **only** aki-mcp-sv. As built, it does more:
+- **Dual-source.** `checkForUpdate()` returns `{ mcp, rule }`, each `{ current, latest, updateAvailable }`. `current` is always local (never nulls the branch); `latest` is `null` on any network/parse failure. akidevrule has no version field, so its version is the newest released `## [x.y.z]` header in `CHANGELOG.md` (skipping `[Unreleased]`) — `parseChangelogVersion()`.
+- **Status file for the self-check.** `writeStatusFile()` drops `~/.aki/aki-mcp-status.json` (under `~/.aki`, an already-locked allowed root) each boot. The pasted instruction reads it at session start to warn when the instruction itself is stale — see `docs/plan/done/` note in CHANGELOG and the instruction builder in `config-page.js` `buildPrompt()`.
+- **Versioned instruction.** The paste-in prompt now opens with `[akimcp <ver> · akidevrule <ver>]` so a stale paste is visible, plus a self-warn line that reads the status file and tells the user to re-paste into each account (claude/grok/chatgpt/gemini) on any mismatch.
+- **Rule update path reuses `POST /api/install-rules`** (runs `install.sh`); only the mcp self-update needed the new `POST /api/pull-update` route.
 
 ## Context — why HTTP, not `git`
 Earlier draft considered `git ls-remote origin`. Rejected: a zip download has no `.git/` and no configured remote, so that path fails structurally for zip users regardless of whether `git` is on PATH. Chosen instead: one `GET` to
-`https://raw.githubusercontent.com/lacvietanh/aki-mcp-sv/main/package.json`, parse `.version`, compare to the local `package.json`. Works identically for clone or zip, needs no git, no auth, no new dependency (Node ≥18's built-in `fetch`, already an implicit baseline given `@modelcontextprotocol/sdk ^1.30.0`). Compares local `package.json` (SSoT, `design.A1`) against upstream's same field — not against tag/Release presence, which `release.A3` already treats as optional for this app type.
+`https://raw.githubusercontent.com/lacvietanh/aki-mcp-sv/main/package.json`, parse `.version`, compare to the local `package.json`. Works identically for clone or zip, needs no git, no auth, no new dependency (Node ≥18's built-in `fetch`, already an implicit baseline given `@modelcontextprotocol/sdk ^1.30.0`). Compares local `package.json` (SSoT, `pattern.A1`) against upstream's same field — not against tag/Release presence, which `release.A3` already treats as optional for this app type.
 
 ## Architecture decisions
 
@@ -24,13 +31,13 @@ Earlier draft considered `git ls-remote origin`. Rejected: a zip download has no
 | Post-pull restart | Button response text tells the user to `Ctrl+C` and `npm start` again (existing documented behavior — "Node doesn't hot-reload", already in README) | `git pull` updates files on disk; the already-running Node process still has old code loaded in memory — pulling alone does not apply the update |
 
 ## Execution checklist
-- [ ] `scripts/update-check.js`: `checkForUpdate({ timeoutMs = 3000 })`, semver-compare helper, exported `REPO = 'lacvietanh/aki-mcp-sv'`/`BRANCH = 'main'` constants
-- [ ] Wire into `scripts/start.js`: call once near the top, print the colored banner line in the existing info block if `updateAvailable`
-- [ ] Pass the `checkForUpdate()` result into `startPanel({ ..., updateInfo })`
-- [ ] `config-page.js`: render the orange banner under `<h1>` when `updateInfo.updateAvailable`; show "Pull & restart" button when `existsSync(path.join(repoRoot,'.git'))`, else a plain link to the GitHub repo
-- [ ] `panel.js`: new `POST /api/pull-update` route — `git status --porcelain` check, then `run('git', ['pull','--ff-only'], REPO_ROOT)`, return a message telling the user to restart `npm start`
-- [ ] Manual test: mock an older local `package.json` version → confirm both banners appear; test on a zip-extracted copy (no `.git/`) → confirm banner shows link, not button; test with a dirty tree → confirm the pull button refuses with a clear message
-- [ ] `CHANGELOG.md`: add under `## [Unreleased]` once built (`release.A5` — do not bump `package.json` in this task; version is minted at the actual release event)
+- [x] `scripts/update-check.js`: `checkForUpdate()` → `{ mcp, rule }`, `parseChangelogVersion()`, `cmpSemver()`, `getLocalVersions()`, `writeStatusFile()`, exported repo/branch/`STATUS_PATH` constants
+- [x] Wire into `scripts/start.js`: call once, write status file, print colored banner (mcp on top, then rule with re-paste reminder)
+- [x] Pass `updateInfo` into `startPanel({ ..., updateInfo })` → `renderPanel({ ..., updateInfo, hasGit })`
+- [x] `config-page.js`: banner under `<h1>` (mcp: Pull&restart if `.git` else Download link; rule: Install/update + re-paste warning); section-3 warning; `[akimcp·akidevrule]` header + self-warn line in `buildPrompt()`
+- [x] `panel.js`: `POST /api/pull-update` — `git status --porcelain` clean-tree gate, then `git pull --ff-only`, restart message
+- [x] Runtime test (user-triggered): mock older local versions → both banners + console lines; zip copy (no `.git`) → Download link not button; dirty tree → Pull refuses; copy prompt → version header + self-warn present + char count — confirmed by user 2026-08-12
+- [x] `CHANGELOG.md`: entry moved to `## [1.6.0]` at the release event (`release.A5`)
 
 ## Out of scope
 - Fully unattended `git pull` with no user confirmation — crosses `agent.B3`, not bundled into this plan
@@ -44,4 +51,4 @@ Earlier draft considered `git ls-remote origin`. Rejected: a zip download has no
 - `.git/config` — confirmed remote: `git@github.com:lacvietanh/aki-mcp-sv.git`, branch `main`
 
 ## Decision
-**Action** → build `scripts/update-check.js`, wire into `start.js` + `panel.js` + `config-page.js` per the tables above. Not started yet — this doc records the design only.
+**Shipped in 1.6.0** (2026-08-12) with the dual-source + versioned-instruction expansion above. Runtime-confirmed by the user; released after akidevrule shipped its rename.
