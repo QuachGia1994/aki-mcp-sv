@@ -4,6 +4,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-08-12
+
 ### Changed
 - **Panel §0 shows a Funnel re-sync fix for intermittent connector drops** (`scripts/config-page.js`): when a connector flaps with "hostname doesn't resolve / isn't reachable", §0 now prints the `tailscale funnel off → serve reset → funnel --bg 9999` cycle to run (needs sudo, so an instruction, not a button). Root cause + per-IP evidence: `docs/research/claude-ai-oauth-connector.md` round 9 — a second Funnel failure class where the public edge returns `200` but one ingress IP's TLS handshake runs 4–14s; `serve reset` clears it but it recurs (Tailscale-side ingress health, not our code). `docs/plan/cloudflare-tunnel-ingress.md` updated to note the migration is the durable fix if recurrence gets frequent.
 - **MCP tool processes consolidated 8 → 4; tool arms unified under one `local` server** (`scripts/local-tools-mcp.js`; `scripts/{shell,agy,kiro,search}-mcp.js` are now `register(server)` modules; `mcp-hub.config.json` keeps only `filesystem` + `local`; `gatekeeper.js` runs in-process from `start.js`). Tools are renamed `shell__*` / `agy_*` / `kiro_*` / `find_path` / `search_content` → **`local__*`** (`local__run_cmd`, `local__agy_run`, `local__kiro_read`, `local__find_path`, `local__search_content`). **Existing connectors must reconnect** to pick up the new names. `scripts/userdata.js` auto-migrates a legacy deployed config (prunes the dropped standalone arms, re-sources roots from the surviving server) so updating needs no manual config edit. Plans: `docs/plan/consolidate-mcp-tool-processes.md`, `docs/plan/unify-mcp-tools-single-process.md`.
