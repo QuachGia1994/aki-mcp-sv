@@ -19,6 +19,8 @@ Evidence gathered 2026-08-10:
 
 Conclusion: the drop is a property of the Funnel edge (undocumented bandwidth throttle / idle-connection reset), not of this repo's code, and it is not configurable from our side. The only local levers (restart, `serve reset`) do not touch it.
 
+> Update (2026-08-11): a live retest found `serve reset` **does** temporarily clear one variant of this — a slow (not dead) ingress IP where TLS handshake runs 4–14s while the sibling IP stays ~1s. It re-binds to a healthier relay path but the degradation recurs, since the cause is Tailscale ingress health. Evidence and per-IP measurements: `docs/research/claude-ai-oauth-connector.md` round 9. Recurrence frequency is what makes this migration worth revisiting.
+
 ## Hypothesis
 
 A Cloudflare Tunnel terminates at Cloudflare's edge with production-grade handling of long-lived and keep-alive HTTP connections, and without Funnel's unpublished bandwidth cap. Pointing the same gatekeeper at a `cloudflared` tunnel instead of Funnel should eliminate the per-request drops while leaving OAuth, the gatekeeper, and the streamable bridge untouched.

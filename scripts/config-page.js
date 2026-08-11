@@ -203,6 +203,7 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
   <li><span class="dot ok">✓</span> <code>npm start</code> — running now.</li>
 </ol>
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
+<p class="hint">Connector keeps dropping with <em>"hostname doesn't resolve / isn't reachable"</em>? The Funnel edge desynced — a Tailscale-side issue, not this server. Re-sync it in a terminal (needs <code>sudo</code>, so it can't be a button here), then reconnect the connector:<br><code>tailscale funnel --https=443 off &amp;&amp; tailscale serve reset &amp;&amp; tailscale funnel --bg 9999</code><br>Why: <span class="mono">docs/research/claude-ai-oauth-connector.md</span> round 9.</p>
 </section>
 
 <section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini</h2>

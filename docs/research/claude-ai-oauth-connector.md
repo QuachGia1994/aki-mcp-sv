@@ -129,6 +129,27 @@ This is a **recurring operational failure of Tailscale Funnel on this host**, no
 2. Confirm with the real path, never a bare curl: `curl --resolve <host>:443:$(dig @8.8.8.8 <host> +short|head -1) https://<host>/.well-known/oauth-authorization-server` → `000`/exit 35 means desync.
 3. Fix: re-push; if still `000` after ~30s, run the off → `serve reset` → re-enable cycle above; re-probe until 200.
 
+## Debug round 9 (2026-08-11) — a second Funnel failure class: edge returns 200 but one ingress IP is slow, not dead
+
+Distinct from rounds 5/8 (full desync — `--resolve` returns `000`/exit 35, TLS dies). Here the public edge answers **200 on both ingress IPs**, yet many users saw intermittent "hostname doesn't resolve or isn't reachable" for ~2 days. The tell is **per-ingress-IP TLS handshake latency**, not a dead edge.
+
+Public DNS (`dig @8.8.8.8 akimba.tailf23d51.ts.net`) round-robins two Funnel ingress IPs — `103.84.155.217` and `103.84.155.153`. Measured `curl --resolve` breakdown against `/.well-known/oauth-authorization-server`:
+
+| Ingress IP | TCP connect | TLS handshake | total | ICMP RTT |
+|---|---|---|---|---|
+| `103.84.155.217` | 0.068s | **4.4 – 14s** | up to 16.8s | 69ms |
+| `103.84.155.153` | 0.072s | 1.0 – 1.2s | ~1.4s | 74ms |
+
+TCP connect and ICMP RTT are **identical** to both IPs, and the local gatekeeper answers `<1ms` (tailnet-internal path 0.027s) — so the Mac and the code are healthy. The whole delta lives in the TLS handshake, which Funnel relays from the ingress node over DERP to this Mac's tailscaled (it holds the cert). Same Mac terminates TLS for both IPs, so `.217` being 4–14× slower means the **relay path from that specific ingress node is degraded**, entirely Tailscale-side. Clients round-robin onto the bad IP ~50% of the time → intermittent drops for everyone.
+
+Levers tested this day:
+- `tailscale down && tailscale up` — **no help, worse**: `.217` went to 13.9s TLS right after. Local daemon state does not influence ingress assignment.
+- `tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --bg 9999` — **cleared it**: `.217` dropped to ~0.48s TLS and held across 8 consecutive probes; `.153` unchanged. So `serve reset` **does** touch this class — correcting the assumption in `docs/plan/cloudflare-tunnel-ingress.md` ("the only local levers do not touch it"); that plan was written before this reset was tried against the slow-but-200 variant.
+
+**Caveat — it recurs.** The user confirmed instability returned within the hour (a connector call failed with the "unreachable" catch-all, then a reconnect worked). Root cause is Tailscale ingress/relay health, not configurable from our side; `serve reset` only forces a re-bind to a healthier path and buys time. When recurrence gets frequent, the durable answer is a different ingress edge — see `docs/plan/cloudflare-tunnel-ingress.md`.
+
+**Playbook addition:** when claude.ai flaps but the edge is not fully dead, probe **both** IPs' TLS handshake (`-w "%{time_appconnect}"`), not just http_code — a `200` in 8s still times real clients out. Same remedy as round 8 (the `serve reset` cycle); the signature differs (`200`-but-slow vs `000`-dead).
+
 ## Known tradeoffs, accepted for a single-user MVP
 
 - Access/refresh tokens are only stored in-memory in the gatekeeper process — restarting `npm start` loses every issued session, claude.ai needs to "Connect" again. Acceptable since it runs in the foreground, actively started/stopped by design.
