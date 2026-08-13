@@ -28,22 +28,31 @@ console.log(`[start] config & keys: ${USER_DIR}`);
 const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();
 
-let tailscale = await funnelStatus(gatePort);
-if (!tailscale.installed) {
-  console.error('[start] could not run `tailscale` — check it is installed and logged in: https://tailscale.com/download');
-} else {
-  if (!tailscale.running) {
-    const { ok, out } = await bringUp();
-    console[ok ? 'log' : 'error'](`[start] tailscale was stopped, starting it: ${ok ? 'done' : out.trim()}`);
-    tailscale = await funnelStatus(gatePort);
-  }
-  if (tailscale.running && !tailscale.funnel) {
-    const { ok, out } = await enableFunnel(gatePort);
-    console[ok ? 'log' : 'error'](`[start] enabling funnel ${gatePort}: ${ok ? 'done' : out.trim()}`);
-  }
-}
+// PUBLIC_ORIGIN: ingress escape hatch — a stable public URL (e.g. a Cloudflare Tunnel terminating TLS at its edge) that skips Tailscale. The server keys off `origin`, so this is the only branch needed.
+const publicOrigin = process.env.PUBLIC_ORIGIN?.replace(/\/+$/, '') || null;
 
-const origin = tailscale.host ? `https://${tailscale.host}` : null;
+let origin;
+if (publicOrigin) {
+  origin = publicOrigin;
+  console.log(`[start] PUBLIC_ORIGIN set — skipping Tailscale, serving at ${origin}`);
+} else {
+  let tailscale = await funnelStatus(gatePort);
+  if (!tailscale.installed) {
+    console.error('[start] could not run `tailscale` — check it is installed and logged in: https://tailscale.com/download');
+  } else {
+    if (!tailscale.running) {
+      const { ok, out } = await bringUp();
+      console[ok ? 'log' : 'error'](`[start] tailscale was stopped, starting it: ${ok ? 'done' : out.trim()}`);
+      tailscale = await funnelStatus(gatePort);
+    }
+    if (tailscale.running && !tailscale.funnel) {
+      const { ok, out } = await enableFunnel(gatePort);
+      console[ok ? 'log' : 'error'](`[start] enabling funnel ${gatePort}: ${ok ? 'done' : out.trim()}`);
+    }
+  }
+  origin = tailscale.host ? `https://${tailscale.host}` : null;
+  if (!origin) console.error('[start] could not get the MagicDNS name — run `tailscale status` to look up the URL yourself');
+}
 
 if (origin) {
   console.log(`[start] Remote MCP server URL: ${origin}/mcp`);
@@ -51,8 +60,6 @@ if (origin) {
   console.log(`[start] OAuth Client Secret: ${client.clientSecret}`);
   console.log('[start] paste all 3 values above into Add custom connector (URL + Advanced settings)');
   console.log(`[start] Passphrase (enter it when the browser opens the confirmation page): ${passphrase}`);
-} else {
-  console.error('[start] could not get the MagicDNS name — run `tailscale status` to look up the URL yourself');
 }
 
 // One check per `npm start`; own version stays on top, then the rule corpus. Never blocks boot.
