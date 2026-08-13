@@ -25,6 +25,7 @@
 - [plan/done/merge-pr1-windows-chatgpt.md](plan/done/merge-pr1-windows-chatgpt.md) — how PR #1 (Windows fixes + ChatGPT connector) is merged onto our OS-agnostic architecture: integration branch, the 7 real conflicts, the 4 files that auto-merge wrong, and how the PR still lands as Merged
 - [plan/done/audit-1.1.0-todo.md](plan/done/audit-1.1.0-todo.md) — read-only v1.1.0 audit backlog (ChatGPT blocker, honest shell copy, XSS escape, SSoT dedup); shipped 2026-08-09, now a record
 - [plan/done/bridge-session-churn.md](plan/done/bridge-session-churn.md) — flow audit + fix for the mass "client disconnected from MCP HUB" log; the stateless↔stateful session mismatch, and the A/B decision (per-session vs one shared hub session)
+- [plan/manus-connect.md](plan/manus-connect.md) — Manus "Import by JSON" has no OAuth step; JSON template + manual PKCE token-mint recipe (365-day token) to paste into `headers.Authorization`; unverified, no live test yet (design only, not started)
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
 - [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)
 - [ref/harness-fact.md](ref/harness-fact.md) — the agy/kiro CLI facts the arm MCPs depend on (flags, model ids, effort enums), split by evidence tier: agy and kiro both verified live (kiro-cli 2.16.2, 2026-08-09)

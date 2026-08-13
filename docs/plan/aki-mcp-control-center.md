@@ -44,6 +44,17 @@ Profile isolation is non-negotiable (same operating model as AkiTgAuto game mult
 - **Tauri stays on the table for a later pass** — only if isolation is proven (issue #11491 closed, or a verified per-webview data-store workaround on ship OS). Do not plan an Electron→Tauri rewrite until that spike passes.
 - **Do not mix shells in v1.**
 
+### Alternative Path C: Tauri + External Chrome via CDP (Remote Control)
+Instead of Electron or Tauri's system WebView, we could use Tauri as a control app that spawns and controls Google Chrome directly on the host machine via the Chrome DevTools Protocol (CDP) using `--remote-debugging-port`.
+- **Pros:**
+  - **Extremely Lightweight:** No Chromium footprint bundled in the installer.
+  - **Native Isolation:** Using `--user-data-dir` for each spawned Chrome window provides robust profile isolation (cookies, storage, sessions) out of the box.
+  - **Transparency:** The user interacts with a familiar browser instance they trust.
+- **Cons & Fatal Risks:**
+  - **Cloudflare Turnstile Detection (Fatal):** Enabling `--remote-debugging-port` forces `navigator.webdriver = true` and exposes automation flags. Claude.ai's Cloudflare Turnstile bot detection will immediately trigger CAPTCHA loops or block the sessions.
+  - **No Custom Chrome (UI Constraint):** We cannot remove the browser's window borders/titlebars, violating the "minimal custom titlebar" requirement.
+  - **Process Management Overhead:** Tauri must orchestrate external Chrome processes (assigning random unused debug ports, handling crashes, cleanup of zombie processes, WebSocket CDP connections).
+
 ## Requirement → mechanism (shell-agnostic where possible)
 
 | Requirement | Mechanism sketch |
@@ -62,6 +73,7 @@ Profile isolation is non-negotiable (same operating model as AkiTgAuto game mult
 3. **Inversion — how would this fail on purpose?** Ship it depending on the undetected-fingerprint assumption above being false: claude.ai starts challenging the Electron session on day one, every window shows a CAPTCHA instead of chat. That is why it is checklist item #1, not an afterthought.
 4. **Pre-mortem, six months out.** Anthropic changes the `/usage` response shape or SSE field name (unversioned internal API) → usage bars silently show stale/wrong numbers with no error, because nothing currently in this plan validates the shape before trusting it. Add a schema sanity-check, not just a try/catch.
 5. **Second-order effects.** A second, Electron-owned Chromium profile per claude.ai account means login state now lives in two places (the owner's normal browser and this app) — sign-out/2FA/session-expiry handling has to be designed per profile, not assumed away.
+6. **Tauri + External Chrome CDP path.** Exposing the remote debugging port forces `navigator.webdriver = true` and other automated headers. This introduces a critical point of failure where Cloudflare challenges the browser session with endless CAPTCHA prompts.
 
 ## Open questions to resolve before execution starts
 
@@ -71,7 +83,7 @@ Profile isolation is non-negotiable (same operating model as AkiTgAuto game mult
 
 ## Execution checklist (phased, not started)
 
-- [ ] **Phase 0 — spike, answers the unverified blockers.** (a) Bare window loading claude.ai on the chosen shell — Electron `BrowserWindow` and/or Tauri webview — log in by hand, confirm no bot challenge and that `/usage` + SSE respond from that context. (b) If evaluating Tauri: prove real per-profile cookie/storage isolation on ship OS (or document a working workaround). Stop and rethink if either fails for the shell under test.
+- [ ] **Phase 0 — spike, answers the unverified blockers.** (a) Bare window loading claude.ai on the chosen shell — Electron `BrowserWindow` and/or Tauri webview — log in by hand, confirm no bot challenge and that `/usage` + SSE respond from that context. (b) If evaluating Tauri: prove real per-profile cookie/storage isolation on ship OS (or document a working workaround). (c) If evaluating Tauri + External Chrome CDP: verify if claude.ai blocks the debug-enabled instance (via `navigator.webdriver` check) with Cloudflare CAPTCHA challenges. Stop and rethink if any fail for the shell under test.
 - [ ] **Phase 1 — profile registry.** JSON store + partition-per-profile create/rename/delete, no UI yet (CLI or panel-style temp UI for testing).
 - [ ] **Phase 2 — claude.ai window.** Preload script: widen-pane injection (ported from the Tampermonkey draft) + fetch/EventSource patch for `message_limit` + `/usage` poll, IPC the parsed numbers to main.
 - [ ] **Phase 3 — control center window.** Lists all profiles + live status pushed from main; start/open/close actions per profile.
