@@ -720,6 +720,7 @@ const ACTIONS = {
     // The banner and section-3 warning both claimed a stale corpus; the update just cleared it.
     document.querySelector('.updrule')?.remove();
     document.getElementById('s3warn')?.remove();
+    if (!document.querySelector('.updbar .updrow')) document.querySelector('.updbar')?.remove();
     return message;
   }),
 };

@@ -11,6 +11,7 @@ import { overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
+import { getLocalVersions, cmpSemver } from './update-check.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
@@ -151,6 +152,15 @@ function trustedDirStatus(dataDir) {
   });
 }
 
+// A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
+function refreshLocalVersions(updateInfo) {
+  const local = getLocalVersions();
+  for (const key of ['mcp', 'rule']) {
+    updateInfo[key].current = local[key];
+    updateInfo[key].updateAvailable = cmpSemver(local[key], updateInfo[key].latest) < 0;
+  }
+}
+
 const ROUTES = {
   'GET /api/state': async (body, ctx) => ({
     paths: filesystemPaths(ctx.dataDir),
@@ -178,7 +188,12 @@ const ROUTES = {
     ctx.restartHub();
     return { ok: true, message: 'restarted mcp-hub' };
   },
-  'POST /api/install-rules': async () => ({ ok: true, message: await installRules() }),
+  'POST /api/install-rules': async (body, ctx) => {
+    const message = await installRules();
+    refreshLocalVersions(ctx.updateInfo);
+    return { ok: true, message };
+  },
+  // No refresh: a repo pull only lands on disk; the process keeps the old version until restart, so the banner stays as a restart reminder and clears on the next boot.
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
 };
 
@@ -203,7 +218,7 @@ export function startPanel({ port, token, origin, client, passphrase, dataDir, r
     if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
 
     try {
-      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { restartHub, dataDir }));
+      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { restartHub, dataDir, updateInfo }));
     } catch (e) {
       json(res, 400, { error: e.message });
     }

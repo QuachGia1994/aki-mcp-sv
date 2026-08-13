@@ -7,6 +7,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ### Added
 - **macOS shell allowlist gains `open`, `sips`, `ffmpeg`** (`scripts/allowlist.js`): local media handling for a connected client — open a file/URL/app (`open`), resize or convert images (`sips`), transcode media (`ffmpeg`). macOS-only, added to the `MAC_EXTRA` per-OS data table (not the shared Unix set). Unlike the rest of the allowlist these are not read-only.
 
+### Fixed
+- **akidevrule update banner no longer reappears after updating** (`scripts/panel.js`, `scripts/config-page.js`): the boot-time `updateInfo` was never recomputed, so after **Install / update** updated the corpus on disk, a page reload re-rendered the "update available" banner from stale data. The `install-rules` route now re-reads the local version and clears `updateAvailable` for real, and the panel drops the now-empty banner box live. The mcp self-update banner intentionally stays until restart, since its new code isn't loaded until then.
+
 ## [1.6.0] — 2026-08-12
 
 ### Added
