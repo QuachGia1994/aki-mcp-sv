@@ -236,6 +236,7 @@ ${updateBanner}
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 <p class="hint">Connector keeps dropping with <em>"hostname doesn't resolve / isn't reachable"</em>? The Funnel edge desynced — a Tailscale-side issue, not this server. Re-sync it in a terminal (needs ${copyEl('sudo')}, so it can't be a button here), then reconnect the connector. Why: <span class="mono">docs/research/claude-ai-oauth-connector.md</span> round 9.</p>
 ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --bg 9999')}
+<p class="hint">Funnel still unreliable in your region after re-syncing? Bypass Tailscale entirely: set <span class="mono">PUBLIC_ORIGIN</span> to your own stable public URL (e.g. a Cloudflare Tunnel that terminates TLS at its edge and forwards to this server) and it serves at that origin instead of the Funnel host. Setup: <span class="mono">docs/plan/cloudflare-tunnel-ingress.md</span>.</p>
 </section>
 
 <section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini</h2>

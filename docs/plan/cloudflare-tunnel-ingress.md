@@ -1,6 +1,12 @@
 # Cloudflare Tunnel as an alternative ingress
 
-Status: design only, not started. This is a tradeoff study, not a committed migration.
+Status: the manual escape hatch shipped in v1.7.0 (`PUBLIC_ORIGIN`, see below). The auto-`cloudflared` launcher and the drop-rate test remain design only — this stays a tradeoff study for that part, not a committed migration.
+
+## Shipped in v1.7.0 — the manual escape hatch (`PUBLIC_ORIGIN`)
+
+The smallest honest slice of this plan is live: `scripts/start.js` reads `PUBLIC_ORIGIN`, and when set, skips Tailscale entirely and uses that origin as-is. Everything downstream already keys off the single `origin` value, so no OAuth/gatekeeper/bridge code changed — exactly the "ingress is a swappable edge" property this doc argued for. A user who already runs a Cloudflare Tunnel (or any stable TLS edge) points it at `127.0.0.1:9999` and exports `PUBLIC_ORIGIN=https://their-host`; setup is theirs, not automated by this repo. Approach contributed via PR #4 (`@Ran-Xing`); the FRP/local-TLS path from that PR was dropped since a Cloudflare edge terminates TLS itself.
+
+This deliberately does **not** build the `MCP_INGRESS=cloudflared` auto-launcher below — it hands the reliable-ingress option to users who want it without the repo taking on a `cloudflared` dependency or a per-user domain-provisioning burden. A managed fixed-subdomain offering (own domain, per-user subdomain, branded favicon at the apex) is a separate future project, not part of this repo's zero-config default.
 
 ## Goal
 
@@ -67,6 +73,6 @@ If drops persist at a similar rate, the cause is not the Funnel edge — reopen 
 - Requiring every user to own a domain for the default path.
 - A pure-JS or per-OS reimplementation of the tunnel — `cloudflared` is a single external binary, consistent with the existing "shell out to a real binary" decision.
 
-## Decision (pending the test)
+## Decision
 
-Not committed. Funnel remains the default until the test above shows Cloudflare Tunnel measurably fixes the per-request drops and the setup cost is judged acceptable for the users who hit the drops most.
+Manual escape hatch: shipped (v1.7.0, above) — the low-cost half that needs no repo-side automation. Auto-`cloudflared` launcher: not committed. Funnel remains the default until the test above shows Cloudflare Tunnel measurably fixes the per-request drops and the setup cost is judged acceptable for the users who hit the drops most.
