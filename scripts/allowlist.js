@@ -16,8 +16,8 @@ const UNIX_DEFAULT = [
   ['git', 'status', 'log', 'diff', 'show', 'branch', 'remote', 'blame', 'check-ignore', 'ls-files', 'rev-parse', 'tag'],
 ];
 
-// Per-OS read-only extras, selected as data by process.platform (never a business-logic branch).
-const MAC_EXTRA = ['vm_stat', ['sysctl', '-n'], ['top', '-l'], ['diskutil', 'list', 'info'], 'ifconfig', ['netstat', '-an'], 'sw_vers', 'system_profiler'];
+// Per-OS extras, selected as data by process.platform (never a business-logic branch). open/sips/ffmpeg are macOS media helpers — not read-only, unlike the rest of the set.
+const MAC_EXTRA = ['vm_stat', ['sysctl', '-n'], ['top', '-l'], ['diskutil', 'list', 'info'], 'ifconfig', ['netstat', '-an'], 'sw_vers', 'system_profiler', 'sips', 'open', 'ffmpeg'];
 const LINUX_EXTRA = ['free', ['top', '-b'], 'nproc', 'lsblk', ['ip', 'addr'], ['ss', '-tuln']];
 const WIN_EXTRA = ['where', 'findstr', 'tasklist', 'hostname', 'systeminfo', 'Get-CimInstance', 'Get-Counter', 'Get-Process', 'Get-PSDrive', 'Get-Volume', 'Get-Service', 'Get-NetIPAddress', 'Get-NetTCPConnection', 'Test-Connection', 'Get-ComputerInfo'];
 
