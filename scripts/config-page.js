@@ -88,7 +88,7 @@ export function renderPanel({ origin, client, passphrase, token, repoRoot, rules
   // "Own update on top, rule update below" per the request; the rule row carries the re-paste warning because updating the corpus makes every pasted instruction stale.
   const updateBanner = (mcpUpd.updateAvailable || ruleUpd.updateAvailable) ? `<div class="updbar">
   ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>aki-mcp-sv</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> ${hasGit ? '<button class="primary" data-act="pullUpdate">Pull &amp; restart</button>' : `<a class="btnlink" href="${MCP_REPO_URL}" target="_blank" rel="noopener">Download ↗</a>`}<span class="msg" id="msgUpd"></span></div>` : ''}
-  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span><div class="updwarn">⚠ After updating, RE-PASTE the section-3 instruction into EACH account: claude / grok / chatgpt / gemini.</div></div>` : ''}
+  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span><div class="updwarn">⚠ After updating, RE-PASTE the section-3 Instructions into the custom-instructions setting of EACH AI: Claude / Grok / ChatGPT / Gemini.</div></div>` : ''}
 </div>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(MCP_NAME)} · panel</title>
@@ -306,7 +306,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </section>
 
 <section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
-<p class="hint">Choose which rule files load, then copy the prompt into your client's custom-instructions / personalization field. It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
+<p class="hint">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
 <div class="acts">
   <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener">Claude ↗</a>
   <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener">Grok ↗</a>
@@ -316,7 +316,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
   <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
 </label>
-${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste this prompt into each account (claude / grok / chatgpt / gemini).</div>` : ''}
+${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste these Instructions into the custom-instructions setting of each AI (Claude / Grok / ChatGPT / Gemini).</div>` : ''}
 <div class="checks" id="ruleChecks"></div>
 <textarea id="prompt" readonly style="min-height:130px"></textarea>
 <div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
@@ -488,7 +488,7 @@ function buildPrompt() {
   lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md (live); reply path on create. Skip pure Q&A. <id>=short slug.');
   lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under an allowed root, never cd/-C.');
   lines.push('Repo: ' + REPO_ROOT + '. local paths=Aki MCP FS only; sandbox throwaway; after write read-back MCP.');
-  lines.push('Also read ' + AKI_DIR + '/aki-mcp-status.json; if its mcp.current/rule.current differ from the [akimcp·akidevrule] header above or any updateAvailable is true, tell me to update in the Aki panel and re-paste this into each account (claude/grok/chatgpt/gemini).');
+  lines.push('Also read ' + AKI_DIR + '/aki-mcp-status.json; if its mcp.current/rule.current differ from the [akimcp·akidevrule] line above or any updateAvailable is true, tell me to update in the Aki panel and re-paste these instructions into the custom-instructions setting of each AI (claude/grok/chatgpt/gemini).');
   const value = lines.join('\\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
