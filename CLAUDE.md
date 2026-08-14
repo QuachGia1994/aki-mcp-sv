@@ -23,6 +23,8 @@ tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --
 
 Re-probe until the public edge returns 200. Full history and evidence: `docs/research/claude-ai-oauth-connector.md` (rounds 5 and 8).
 
+The permanent way out of fighting Funnel desync is to bypass Funnel entirely: set `PUBLIC_ORIGIN` to a stable HTTPS edge you run, or launch a Cloudflare named tunnel with `npm start -- --tunnel <cred.json> --origin https://your-host` (precedence: `--tunnel` > `PUBLIC_ORIGIN` > Tailscale Funnel). Neither is measured to be more reliable than Funnel — they just move TLS termination off the Tailscale edge. Details: `docs/plan/cloudflare-tunnel-ingress.md`.
+
 ## Two client paths, one OAuth server
 
 `scripts/oauth.js` serves both. Claude uses the **pre-registered** confidential client from `oauth-client.json` (ID/secret pasted into the connector dialog). ChatGPT **self-registers** through `POST /register` (RFC 7591) as a public client — no secret, PKCE only — and lands in `oauth-dcr-clients.json`. `resolveClient()` is the single lookup covering both, so never special-case one client inside a handler. Redirect URIs are allowlisted to `claude.ai` and `chatgpt.com` by `isAllowedRedirect`; widening that function is the one place a bad redirect could enter. Authorization codes and refresh tokens are bound to the client they were issued to.

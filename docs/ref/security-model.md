@@ -1,6 +1,6 @@
 # Security model — minimal OAuth 2.1 (Claude + ChatGPT)
 
-Updated 2026-08-08 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
+Updated 2026-08-14 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
 
 ## Current auth architecture
 
@@ -29,6 +29,8 @@ Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clie
 2. **PKCE S256** — an access token is only issued to the exact client whose `code_challenge` matches the `code_verifier` sent to `/token`.
 
 The real `mcp-hub` still only listens on loopback `19999`, and `/api/*` is never forwarded.
+
+Ingress edge does not change the trust boundary. Public reachability can come from Tailscale Funnel (default), a `PUBLIC_ORIGIN` edge you run, or a Cloudflare named tunnel (`--tunnel`) — these terminate TLS at different edges but all forward to the same loopback server, and the OAuth gate in `scripts/oauth.js` (passphrase at `/authorize` + PKCE S256 at `/token`) stays the only auth layer regardless of which one is used.
 
 ## Real limitations
 

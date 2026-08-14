@@ -197,7 +197,7 @@ const ROUTES = {
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
 };
 
-export function startPanel({ port, token, origin, client, passphrase, dataDir, restartHub, updateInfo }) {
+export function startPanel({ port, token, origin, ingress, client, passphrase, dataDir, restartHub, updateInfo }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
     const route = `${req.method} ${urlPath}`;
@@ -208,7 +208,7 @@ export function startPanel({ port, token, origin, client, passphrase, dataDir, r
         return res.end('wrong token — open the URL that `npm start` printed');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderPanel({ origin, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, hasGit: existsSync(path.join(REPO_ROOT, '.git')) }));
+      return res.end(renderPanel({ origin, ingress, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, hasGit: existsSync(path.join(REPO_ROOT, '.git')) }));
     }
 
     if (req.method === 'GET' && await serveStatic(res, urlPath)) return;

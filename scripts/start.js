@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
@@ -28,14 +29,29 @@ console.log(`[start] config & keys: ${USER_DIR}`);
 const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();
 
-// PUBLIC_ORIGIN: ingress escape hatch — a stable public URL (e.g. a Cloudflare Tunnel terminating TLS at its edge) that skips Tailscale. The server keys off `origin`, so this is the only branch needed.
+// Ingress precedence: --tunnel (spawn cloudflared) > PUBLIC_ORIGIN (bring your own edge) > Tailscale Funnel (default).
+// Everything downstream keys off the single `origin`, so each mode only has to resolve that value.
+const argOf = (flag) => { const i = process.argv.indexOf(flag); return i !== -1 ? process.argv[i + 1] : null; };
+const tunnelCred = argOf('--tunnel');
+const tunnelOrigin = argOf('--origin')?.replace(/\/+$/, '') || null;
 const publicOrigin = process.env.PUBLIC_ORIGIN?.replace(/\/+$/, '') || null;
 
 let origin;
-if (publicOrigin) {
+let ingressMode;
+if (tunnelCred) {
+  if (!tunnelOrigin) {
+    console.error('[start] --tunnel <cred.json> needs --origin https://your-host — the credentials file carries no hostname');
+    process.exit(1);
+  }
+  origin = tunnelOrigin;
+  ingressMode = 'cloudflared';
+  console.log(`[start] Cloudflare tunnel mode — cloudflared will serve ${origin}`);
+} else if (publicOrigin) {
   origin = publicOrigin;
+  ingressMode = 'public-origin';
   console.log(`[start] PUBLIC_ORIGIN set — skipping Tailscale, serving at ${origin}`);
 } else {
+  ingressMode = 'funnel';
   let tailscale = await funnelStatus(gatePort);
   if (!tailscale.installed) {
     console.error('[start] could not run `tailscale` — check it is installed and logged in: https://tailscale.com/download');
@@ -71,6 +87,7 @@ if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.
 
 let hub;
 let panel;
+let cloudflared = null;
 let shuttingDown = false;
 
 function spawnHub() {
@@ -90,7 +107,32 @@ function restartHub() {
   old.kill();
 }
 
+function spawnCloudflared(credPath) {
+  let tunnelId;
+  try {
+    tunnelId = JSON.parse(readFileSync(credPath, 'utf8')).TunnelID;
+  } catch (e) {
+    console.error(`[start] cannot read tunnel credentials at ${credPath}: ${e.message}`);
+    return shutdown();
+  }
+  if (!tunnelId) {
+    console.error(`[start] ${credPath} has no TunnelID — not a cloudflared credentials file`);
+    return shutdown();
+  }
+  // Single-service run without a config file: --url stands in for the yml `ingress` rule, port fixed to the gatekeeper.
+  const child = spawn('cloudflared', ['tunnel', 'run', '--cred-file', credPath, '--url', `http://127.0.0.1:${gatePort}`, tunnelId], { stdio: 'inherit', windowsHide: true });
+  child.on('error', (e) => {
+    console.error(e.code === 'ENOENT'
+      ? '[start] `cloudflared` not found — install it: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'
+      : `[start] cloudflared failed to start: ${e.message}`);
+    shutdown();
+  });
+  child.on('exit', (code) => { if (!shuttingDown) { console.error(`[start] cloudflared exited (code ${code}) — tunnel down`); shutdown(); } });
+  return child;
+}
+
 spawnHub();
+if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(tunnelCred);
 // Gatekeeper runs in-process (docs/plan/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so the hub is never left orphaned.
 let gateServer;
 try {
@@ -100,7 +142,7 @@ try {
   shutdown();
 }
 
-panel = startPanel({ port: Number(panelPort), token: panelToken, origin, client, passphrase, dataDir, restartHub, updateInfo });
+panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, dataDir, restartHub, updateInfo });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
 try {
   await openBrowser(panelUrl);
@@ -112,9 +154,10 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   hub?.kill();
+  cloudflared?.kill();
   gateServer?.close();
   panel?.close();
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-process.on('exit', () => hub?.kill()); // safety net: never leave the hub child orphaned if this process exits abruptly
+process.on('exit', () => { hub?.kill(); cloudflared?.kill(); }); // safety net: never leave a child orphaned if this process exits abruptly

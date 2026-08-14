@@ -78,9 +78,10 @@ function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
 
-export function renderPanel({ origin, client, passphrase, token, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false }) {
+export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
   const regUrl = origin ? `${origin}/register` : 'not available yet, see section 0';
+  const funnelMode = ingress === 'funnel';
   const mcpUpd = updateInfo.mcp || {};
   const ruleUpd = updateInfo.rule || {};
   const mcpVer = mcpUpd.current || '?';
@@ -225,7 +226,7 @@ ${updateBanner}
 </section>
 
 <section id="s0"><h2>0 · Setup <span class="done-tag">done</span></h2>
-<p class="hint">One-time prerequisites. You're reading this panel, so the last three already ran; the two Tailscale checks below are live.</p>
+${funnelMode ? `<p class="hint">One-time prerequisites. You're reading this panel, so the last three already ran; the two Tailscale checks below are live.</p>
 <ol class="steps">
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
   <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. ${copyEl('npm start')} enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
@@ -236,7 +237,9 @@ ${updateBanner}
 <div class="acts"><button data-act="tailscale">Recheck</button><span class="msg" id="msgTs"></span></div>
 <p class="hint">Connector keeps dropping with <em>"hostname doesn't resolve / isn't reachable"</em>? The Funnel edge desynced — a Tailscale-side issue, not this server. Re-sync it in a terminal (needs ${copyEl('sudo')}, so it can't be a button here), then reconnect the connector. Why: <span class="mono">docs/research/claude-ai-oauth-connector.md</span> round 9.</p>
 ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve reset && tailscale funnel --bg 9999')}
-<p class="hint">Funnel still unreliable in your region after re-syncing? Bypass Tailscale entirely: set <span class="mono">PUBLIC_ORIGIN</span> to your own stable public URL (e.g. a Cloudflare Tunnel that terminates TLS at its edge and forwards to this server) and it serves at that origin instead of the Funnel host. Setup: <span class="mono">docs/plan/cloudflare-tunnel-ingress.md</span>.</p>
+<p class="hint">Funnel still unreliable in your region after re-syncing? Bypass Tailscale entirely: set <span class="mono">PUBLIC_ORIGIN</span> to your own stable public URL, or run <span class="mono">npm start -- --tunnel &lt;cred.json&gt; --origin https://your-host</span> to let this server launch a Cloudflare tunnel for you. Setup: <span class="mono">docs/plan/cloudflare-tunnel-ingress.md</span>.</p>` : `<p class="hint">Custom ingress active — Tailscale Funnel is bypassed. The MCP URL below is served through your own public edge, so the Tailscale checks do not apply.</p>
+<div class="row"><label>Ingress</label><span class="mono">${ingress === 'cloudflared' ? 'Cloudflare tunnel — cloudflared launched by npm start' : 'PUBLIC_ORIGIN — your own edge'}</span></div>
+<div class="row"><label>Serving at</label>${copyEl(origin || '(origin not resolved)')}</div>`}
 </section>
 
 <section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini</h2>
@@ -735,7 +738,7 @@ document.querySelectorAll('.tab').forEach((tab) => (tab.onclick = () => {
 
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
-loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
+${funnelMode ? `loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));` : ''}
 </script>
 </body></html>`;
 }

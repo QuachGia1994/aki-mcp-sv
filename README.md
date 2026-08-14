@@ -1,13 +1,13 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS via Tailscale Funnel, gated by OAuth 2.1. No desktop app, no device install.
+Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. No desktop app, no device install.
 <img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-Version: **1.5.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.6.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing via Tailscale](#exposing-via-tailscale) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing to the internet](#exposing-to-the-internet) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -57,6 +57,8 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  control UI: allowed folders, shell allowlist, restart hub,
                  install akidevrule, generate the connector prompt
 ```
+
+The ingress layer is swappable: Tailscale Funnel is the zero-config default, but the same `/mcp` endpoint can instead be served through your own Cloudflare named tunnel or any stable public HTTPS edge you already run — see [Exposing to the internet](#exposing-to-the-internet). Everything below the ingress line (gatekeeper, OAuth, mcp-hub) is unchanged whichever edge you pick.
 
 `mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/done/init.md`).
 
@@ -143,7 +145,9 @@ Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where ak
 
 `npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
-## Exposing via Tailscale
+## Exposing to the internet
+
+Tailscale Funnel is the default, zero-config path and stays the recommended flow. If Funnel is unreliable for you, two alternative ingress options let you bring your own public edge instead — see [Alternative ingress](#alternative-ingress-if-funnel-is-unreliable) below.
 
 `npm start` enables Funnel automatically when needed (see above), no manual step. Funnel is state stored in `tailscaled` (survives reboots), independent of `npm start`'s own lifecycle; disable it entirely with `tailscale funnel 9999 off`.
 
@@ -161,6 +165,26 @@ curl --resolve <host>:443:<IP-from-above> https://<host>/.well-known/oauth-autho
 ```
 
 If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` saying "on", re-run `tailscale funnel --bg 9999` to force a config re-push (not a code bug). Full writeup: `docs/research/claude-ai-oauth-connector.md`, section "Debug round 5".
+
+### Alternative ingress (if Funnel is unreliable)
+
+The Funnel edge can intermittently drop individual requests in some regions. The drop-rate difference against Cloudflare is still unmeasured, so these are not a proven upgrade — reach for them only if Funnel is unreliable for you. Both replace the Tailscale edge entirely; the OAuth server and tool suite are unchanged. Precedence when more than one is set: `--tunnel` > `PUBLIC_ORIGIN` > Tailscale Funnel. Full rationale: `docs/plan/cloudflare-tunnel-ingress.md`.
+
+**Bring your own edge (`PUBLIC_ORIGIN`):** point an env var at a stable public HTTPS origin you run and terminate yourself, and `npm start` skips Tailscale entirely, serving at that origin:
+
+```bash
+PUBLIC_ORIGIN=https://your-host npm start
+```
+
+**Cloudflare named tunnel (`--tunnel`):** the server launches a Cloudflare named tunnel for you, reading `TunnelID` from a cloudflared credentials JSON and running `cloudflared tunnel run` forwarding to `127.0.0.1:9999`:
+
+```bash
+npm start -- --tunnel <cred.json> --origin https://your-host
+```
+
+`--origin` is **required** because a credentials JSON carries no hostname. This is JSON-credentials mode only — no `yml` config, no token. Before it works you need a Cloudflare account, a named tunnel already created (`cloudflared tunnel create`), its credentials JSON, and a DNS route pointing the hostname at that tunnel.
+
+When a custom ingress is active, the panel's section 0 skips the Tailscale checks and instead shows the active ingress and the serving origin — so the absent Tailscale UI is expected, not a fault.
 
 ## Connecting from Claude web
 
