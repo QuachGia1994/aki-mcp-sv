@@ -3,7 +3,7 @@
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. No desktop app, no device install.
 <img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-Version: **1.6.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.7.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
@@ -183,6 +183,14 @@ npm start -- --tunnel <cred.json> --origin https://your-host
 ```
 
 `--origin` is **required** because a credentials JSON carries no hostname. This is JSON-credentials mode only — no `yml` config, no token. Before it works you need a Cloudflare account, a named tunnel already created (`cloudflared tunnel create`), its credentials JSON, and a DNS route pointing the hostname at that tunnel.
+
+**Someone gave you a tunnel JSON:** if a host who owns the domain already created the tunnel and DNS route and sent you the credentials JSON, you need no Cloudflare account of your own — just install `cloudflared`, then run with the origin they assigned:
+
+```bash
+npm start -- --tunnel <the-json-they-sent> --origin https://the-subdomain-they-gave-you
+```
+
+To get a subdomain under a host's domain, arrange it with them directly; there is no self-serve signup.
 
 When a custom ingress is active, the panel's section 0 skips the Tailscale checks and instead shows the active ingress and the serving origin — so the absent Tailscale UI is expected, not a fault.
 

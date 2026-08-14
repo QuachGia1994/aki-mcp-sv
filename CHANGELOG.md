@@ -2,7 +2,7 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.7.0] — 2026-08-14
 
 ### Added
 - **macOS shell allowlist gains `open`, `sips`, `ffmpeg`** (`scripts/allowlist.js`): local media handling for a connected client — open a file/URL/app (`open`), resize or convert images (`sips`), transcode media (`ffmpeg`). macOS-only, added to the `MAC_EXTRA` per-OS data table (not the shared Unix set). Unlike the rest of the allowlist these are not read-only.
