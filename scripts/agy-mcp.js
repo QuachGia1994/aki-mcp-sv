@@ -45,7 +45,7 @@ export function register(server) {
       inputSchema: {
         prompt: z.string(),
         mode: z.string().optional().describe('agy --mode, defaults to "plan"'),
-        model: z.string().optional().describe(`agy --model, defaults to "${DEFAULT_MODEL}". Valid ids: gemini-3.6-flash-{low,medium,high}, gemini-3.5-flash-{low,medium,high}, gemini-3.1-pro-{low,high}, claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium`),
+        model: z.string().optional().describe(`agy --model, defaults to "${DEFAULT_MODEL}". Valid ids: gemini-3.7-flash-{low,medium,high}, gemini-3.6-flash-{low,medium,high}, gemini-3.5-flash-{low,medium,high}, gemini-3.1-pro-{low,high}, claude-sonnet-4-6, claude-opus-4-6-thinking, gpt-oss-120b-medium`),
         effort: z.enum(['low', 'medium', 'high']).optional().describe('agy --effort, thinking budget'),
         outputFormat: z.enum(['text', 'json']).optional().describe('agy --output-format, use "json" when a program parses the result'),
         cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
