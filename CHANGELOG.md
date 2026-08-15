@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [1.8.1] - 2026-08-15
+
+### Fixed
+- **Docs drift audit**: corrected `docs/ref/claude-connector.md`'s stale claim that DCR is off (`registration_endpoint` has been advertised since the ChatGPT connector work and is live); moved `docs/plan/consolidate-mcp-tool-processes.md` to `docs/plan/done/` with its status corrected from "runtime verification pending" to shipped and verified since 1.5.0; added the missing `docs.A4` anchor stamp to `docs/feat/tools.md`; added the three docs that existed but were missing from `docs/index.md` (`plan/panel-ux-improve.md` and two `research/` records) and removed a duplicate index entry.
+
 ## [1.8.0] — 2026-08-15
 
 ### Added
