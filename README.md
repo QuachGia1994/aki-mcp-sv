@@ -3,7 +3,7 @@
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. No desktop app, no device install.
 <img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-Version: **1.7.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.8.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
@@ -66,7 +66,7 @@ OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Clien
 
 ## Requirements
 
-- Node.js, on Windows, Linux, or macOS
+- Node.js, on Windows, Linux, or macOS. Don't have it? Skip straight to [the standalone package](#install) below, no install needed **(macOS Apple Silicon only in v1.8.0; Windows, Linux, and Intel Mac: use the Install steps below instead)**.
 - **Windows only:** [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH` — the shell/search tools shell out to Unix binaries (`ls cat pwd grep head tail wc file stat tree ps df du whoami uname`), and akidevrule's `install.sh` needs `bash`; Git for Windows' `usr/bin` ships the coreutils/findutils/grep/diffutils this needs. Same category of prerequisite as Tailscale below, not a code dependency.
 - Tailscale (one-time setup):
   1. [Install Tailscale](https://tailscale.com/download) and sign in (on macOS, the app or `brew install tailscale` both work as long as `tailscale` is on PATH)
@@ -125,9 +125,20 @@ cd aki-mcp-sv
 npm install
 ```
 
+### Don't have Node.js? Use the standalone package
+
+No Node/npm install needed. **v1.8.0 ships this for macOS Apple Silicon (`darwin-arm64`) only**: download it from the [latest release](https://github.com/lacvietanh/aki-mcp-sv/releases/latest), extract it, then run `./start.sh` from inside the extracted folder. Everything (a private Node runtime, dependencies, app code) is already inside; first run just launches the same panel/OAuth flow as `npm start`. On Intel Mac, Windows, or Linux, or if you already have Node.js, use `git clone && npm install && npm start` instead; standalone archives for those targets are planned for a later release.
+
+**First run may show "cannot be opened because the developer cannot be verified"**: the package isn't code-signed or notarized, so macOS Gatekeeper can flag it (not confirmed to happen on every Mac, just a known gap in an unsigned build). If it does: right-click the extracted folder (or `start.sh`) → Open once to bypass Gatekeeper, or run `xattr -d com.apple.quarantine <path-to-extracted-folder>` in Terminal first.
+
+**Windows still needs [Git for Windows](https://git-scm.com/download/win)** (or WSL) on `PATH` even when a future standalone build lands: see [Requirements](#requirements) above; a bundled Node runtime replaces the Node.js install, not that prerequisite.
+
+The package itself needs no network access to start: Node, npm, and npx are all bundled. One exception: the built-in filesystem tool resolves `@modelcontextprotocol/server-filesystem` via `npx` on its very first use and needs the npm registry that one time (pre-existing behavior, tracked separately, not something this package fixes).
+
 ## Run
 
 ```bash
+cp .env.example .env   # optional: only if you need PUBLIC_ORIGIN or another non-default var
 npm start
 ```
 
@@ -135,15 +146,19 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
 - Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
-- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (Tailscale), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
+- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
 
-The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
+The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
 
 Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
 
-`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. Remove the `${HOME}/.claude` line in panel section 5 if you don't want that; claude.ai then loses access to your `CLAUDE.md` too.
+`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. This row is locked in panel section 5, with no delete button by design so it can't be revoked by accident; the panel itself cannot remove it. If you don't want `~/.claude` granted at all, edit `~/.aki/mcpsv/mcp-hub.config.json` and remove the `${HOME}/.claude` entries from it before connecting, then restart the hub; claude.ai then loses access to your `CLAUDE.md` too.
 
 `npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
+
+## Configuration
+
+Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN`, `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_HUB_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
 
 ## Exposing to the internet
 
@@ -168,7 +183,7 @@ If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` sa
 
 ### Alternative ingress (if Funnel is unreliable)
 
-The Funnel edge can intermittently drop individual requests in some regions. The drop-rate difference against Cloudflare is still unmeasured, so these are not a proven upgrade — reach for them only if Funnel is unreliable for you. Both replace the Tailscale edge entirely; the OAuth server and tool suite are unchanged. Precedence when more than one is set: `--tunnel` > `PUBLIC_ORIGIN` > Tailscale Funnel. Full rationale: `docs/plan/cloudflare-tunnel-ingress.md`.
+The Funnel edge can intermittently drop individual requests in some regions. The drop-rate difference against Cloudflare is still unmeasured, so these are not a proven upgrade — reach for them only if Funnel is unreliable for you. Both replace the Tailscale edge entirely; the OAuth server and tool suite are unchanged. Precedence when more than one is set: `--tunnel` > `PUBLIC_ORIGIN` > saved panel config (section 0 → "Owned public origin") > Tailscale Funnel. Full rationale: `docs/plan/cloudflare-tunnel-ingress.md`.
 
 **Bring your own edge (`PUBLIC_ORIGIN`):** point an env var at a stable public HTTPS origin you run and terminate yourself, and `npm start` skips Tailscale entirely, serving at that origin:
 
@@ -191,6 +206,8 @@ npm start -- --tunnel <the-json-they-sent> --origin https://the-subdomain-they-g
 ```
 
 To get a subdomain under a host's domain, arrange it with them directly; there is no self-serve signup.
+
+**From the panel (no CLI flags):** open the control panel → section 0 → "Owned public origin" tab → upload your cloudflared credentials JSON and the hostname you routed it to → Save. Takes effect on the next `npm start` (restart required, not a live switch); a "Use Tailscale Funnel instead" button reverts it.
 
 When a custom ingress is active, the panel's section 0 skips the Tailscale checks and instead shows the active ingress and the serving origin — so the absent Tailscale UI is expected, not a fault.
 
@@ -251,7 +268,7 @@ Use `local__find_path`, not `filesystem__search_files`, to locate a file or dire
 
 Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
 
-- `$MCP_DATA_DIR` (default `$HOME`) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff, removable from the panel).
+- `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/mcp-hub.config.json` before connecting if you want it out).
 - The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js` — flag-rich binaries whose own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) are deliberately kept out of it (issue #2), so a default connector cannot write, delete, or exec through the shell tool; the `find_path`/`search_content` tools cover the read-only lookup they were used for. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
 - `gatekeeper.js` is the single public entry point; the real `mcp-hub` never listens on anything but loopback.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.

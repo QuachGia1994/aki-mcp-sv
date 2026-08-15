@@ -2,14 +2,14 @@
 // Loopback-only, never behind the Funnel: it writes config and runs commands. Token-gated so no other browser page can POST to it.
 import http from 'node:http';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel } from './config-page.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
 import { overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
-import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR } from './userdata.js';
+import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver } from './update-check.js';
 
@@ -96,6 +96,37 @@ function setTrustedDirs(dirs) {
   writeFileSync(SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
+// Mirrors the same TunnelID check start.js does at boot (spawnCloudflared), so a bad file is caught here instead of silently tearing down the stack on next `npm start`.
+function validateCloudflaredCred(credContent) {
+  let parsed;
+  try {
+    parsed = JSON.parse(credContent);
+  } catch {
+    throw new Error('not valid JSON — upload the cloudflared credentials file as-is');
+  }
+  if (!parsed.TunnelID) throw new Error('no TunnelID field — this does not look like a cloudflared credentials JSON');
+  return credContent;
+}
+
+function validateIngressOrigin(origin) {
+  const trimmed = (origin || '').trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/.+/.test(trimmed)) throw new Error('origin must be a full URL, e.g. https://your-host');
+  return trimmed;
+}
+
+// Browser file inputs cannot hand back an OS path, so the content is persisted here and referenced by path instead.
+function saveCloudflaredIngress(credContent, origin) {
+  writeFileSync(CLOUDFLARED_CRED_PATH, validateCloudflaredCred(credContent), { mode: 0o600 });
+  const saved = { mode: 'cloudflared', credPath: CLOUDFLARED_CRED_PATH, origin: validateIngressOrigin(origin) };
+  writeFileSync(INGRESS_CONFIG_PATH, `${JSON.stringify(saved, null, 2)}\n`);
+  return saved;
+}
+
+// Clears only the pointer, not the persisted cred file — a re-save can reuse it without a re-upload.
+function clearSavedIngress() {
+  if (existsSync(INGRESS_CONFIG_PATH)) unlinkSync(INGRESS_CONFIG_PATH);
+}
+
 function run(command, args, cwd) {
   return new Promise((resolve, reject) => {
     execFile(command, args, { cwd, timeout: 180_000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) =>
@@ -168,6 +199,7 @@ const ROUTES = {
     allowlist: loadAllowlist(),
     trustedDirs: trustedDirStatus(ctx.dataDir),
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
+    ingressConfig: readIngressConfig(),
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
   'POST /api/paths': async (body, ctx) => {
@@ -195,6 +227,15 @@ const ROUTES = {
   },
   // No refresh: a repo pull only lands on disk; the process keeps the old version until restart, so the banner stays as a restart reminder and clears on the next boot.
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
+  // Ingress is decided at start.js boot, not live-switchable — saving here never restarts anything, only records the pick for the next `npm start`.
+  'POST /api/ingress/cloudflared': async (body) => {
+    const saved = saveCloudflaredIngress(body.credContent, body.origin);
+    return { ok: true, message: 'saved — restart `npm start` to use this ingress', saved };
+  },
+  'POST /api/ingress/clear': async () => {
+    clearSavedIngress();
+    return { ok: true, message: 'cleared — restart `npm start` to go back to Tailscale Funnel', saved: null };
+  },
 };
 
 export function startPanel({ port, token, origin, ingress, client, passphrase, dataDir, restartHub, updateInfo }) {
@@ -208,7 +249,7 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, d
         return res.end('wrong token — open the URL that `npm start` printed');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderPanel({ origin, ingress, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, hasGit: existsSync(path.join(REPO_ROOT, '.git')) }));
+      return res.end(renderPanel({ origin, ingress, client, passphrase, token, repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, hasGit: existsSync(path.join(REPO_ROOT, '.git')), savedIngress: readIngressConfig() }));
     }
 
     if (req.method === 'GET' && await serveStatic(res, urlPath)) return;

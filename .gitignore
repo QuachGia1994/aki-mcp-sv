@@ -4,6 +4,14 @@ dev/
 .akidevsync/
 .DS_Store
 
+# standalone-packaging build output (scripts/build/package.js) — regenerated per release, never committed
+dist/
+
+# local env overrides — .env.example is the only tracked template
+.env
+.env.*
+!.env.example
+
 # macOS custom folder icon resource
 Icon?
 

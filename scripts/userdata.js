@@ -12,8 +12,20 @@ export const CLIENT_PATH = path.join(USER_DIR, 'oauth-client.json');
 export const DCR_CLIENTS_PATH = path.join(USER_DIR, 'oauth-dcr-clients.json');
 export const PASSPHRASE_PATH = path.join(USER_DIR, 'passphrase.txt');
 export const TOKENS_PATH = path.join(USER_DIR, 'tokens.json');
+export const INGRESS_CONFIG_PATH = path.join(USER_DIR, 'ingress.json');
+export const CLOUDFLARED_CRED_PATH = path.join(USER_DIR, 'cloudflared-cred.json');
 
 mkdirSync(USER_DIR, { recursive: true, mode: 0o700 });
+
+// Single reader for the panel-picked ingress (panel.js writes it, start.js reads it as the default when no --tunnel flag/PUBLIC_ORIGIN is set) — one shape, read the same way by both.
+export function readIngressConfig() {
+  if (!existsSync(INGRESS_CONFIG_PATH)) return null;
+  try {
+    return JSON.parse(readFileSync(INGRESS_CONFIG_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
 // The tracked mcp-hub.config.json is the shipped default with placeholders; the copy here is the live one the panel edits. First run seeds it verbatim.
 // Later runs reconcile the live copy against the template's server set — add what the template gained, prune what it dropped — while leaving the folders and commands the panel edited untouched.

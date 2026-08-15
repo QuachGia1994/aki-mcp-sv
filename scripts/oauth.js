@@ -4,6 +4,7 @@
 // ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import {
   CLIENT_PATH as CLIENT_FILE,
   DCR_CLIENTS_PATH as DCR_FILE,
@@ -28,6 +29,8 @@ const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const PASSPHRASE_LENGTH = 10; // 32^10 = 2^50 — brute-force still infeasible over network
+// Display-only, to avoid leaking the OS username on a page reachable pre-passphrase; the file read below still uses PASSPHRASE_FILE.
+const PASSPHRASE_DISPLAY_PATH = PASSPHRASE_FILE.replace(os.homedir(), '~');
 
 const authCodes = new Map();
 const accessTokens = new Map();
@@ -186,6 +189,32 @@ export async function handleRegister(req, res) {
   return json(res, 201, resp);
 }
 
+// Shared by the confirm page (.card is the <form>) and both error pages (.card is a <div>) — one style block, one look.
+const PAGE_STYLE = `
+:root { color-scheme: light dark; --bg:#faf9f7; --card:#fff; --line:#e5e2dc; --fg:#1a1a1a; --muted:#6b6b6b; --accent:#ff4800; }
+@media (prefers-color-scheme: dark) { :root { --bg:#1a1817; --card:#232120; --line:#38352f; --fg:#ececec; --muted:#9a948c; } }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: 100%; max-width: 360px; }
+h1 { font-size: 16px; margin: 0 0 4px; }
+p { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+input { width: 100%; padding: 9px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); font-size: 14px; }
+input:focus { outline: none; border-color: var(--accent); }
+button { width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; cursor: pointer; }
+button[disabled] { opacity: .6; cursor: progress; }
+`;
+
+function errorPage(title, message) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
+<style>${PAGE_STYLE}</style></head><body>
+<div class="card">
+<h1>${esc(title)}</h1>
+<p>${esc(message)}</p>
+<p>Go back and try again, or re-open the connector in your AI client.</p>
+</div>
+</body></html>`;
+}
+
 export async function handleAuthorize(req, res, passphrase, origin) {
   res.setHeader('Cache-Control', 'no-store');
   const url = new URL(req.url, 'http://internal');
@@ -202,30 +231,20 @@ export async function handleAuthorize(req, res, passphrase, origin) {
 
   if (!redirectOk || codeChallengeMethod !== 'S256' || !codeChallenge) {
     log(`[oauth] authorize REJECTED (${req.method}): client_ok=${!!client} redirect_ok=${redirectOk} method=${codeChallengeMethod} hasChallenge=${!!codeChallenge}`);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end('invalid authorize request');
+    res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(errorPage('Connection request invalid', 'This connection request is invalid or has expired.'));
     return;
   }
 
   if (req.method === 'GET') {
+    const clientLabel = client.clientName ? `An app called "${esc(client.clientName)}"` : 'An MCP client';
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Confirm MCP connection</title><link rel="icon" href="/favicon/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/favicon/icon-192.png"><link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png"><link rel="manifest" href="/favicon/manifest.json"><meta name="theme-color" content="#ff4800">
-<style>
-:root { color-scheme: light dark; --bg:#faf9f7; --card:#fff; --line:#e5e2dc; --fg:#1a1a1a; --muted:#6b6b6b; --accent:#ff4800; }
-@media (prefers-color-scheme: dark) { :root { --bg:#1a1817; --card:#232120; --line:#38352f; --fg:#ececec; --muted:#9a948c; } }
-* { box-sizing: border-box; }
-body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 24px; }
-form { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: 100%; max-width: 360px; }
-h1 { font-size: 16px; margin: 0 0 4px; }
-p { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
-input { width: 100%; padding: 9px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); font-size: 14px; }
-input:focus { outline: none; border-color: var(--accent); }
-button { width: 100%; margin-top: 10px; padding: 9px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; cursor: pointer; }
-button[disabled] { opacity: .6; cursor: progress; }
-</style></head><body>
-<form method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Confirming…'">
+<style>${PAGE_STYLE}</style></head><body>
+<form class="card" method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Confirming…'">
 <h1>Confirm MCP connection</h1>
-<p>Enter the passphrase from <code>${PASSPHRASE_FILE}</code> to grant access to the connector.</p>
+<p>${clientLabel} wants to connect.</p>
+<p>Enter the passphrase from <code>${PASSPHRASE_DISPLAY_PATH}</code> to grant access to the connector.</p>
 <input type="hidden" name="redirect_uri" value="${esc(redirectUri)}">
 <input type="hidden" name="client_id" value="${esc(clientId)}">
 <input type="hidden" name="code_challenge" value="${esc(codeChallenge)}">
@@ -240,8 +259,8 @@ button[disabled] { opacity: .6; cursor: progress; }
 
   if (!safeEqual(q.get('passphrase'), passphrase)) {
     log('[oauth] authorize POST: WRONG passphrase');
-    res.writeHead(401, { 'Content-Type': 'text/plain' });
-    res.end('wrong passphrase');
+    res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(errorPage('Wrong passphrase', "That passphrase didn't match."));
     return;
   }
   const code = randomBytes(24).toString('hex');

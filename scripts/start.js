@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 // Orchestrates mcp-hub + gatekeeper behind 1 `npm start`; foreground by design, manual stop/start only
+// process.loadEnvFile throws ENOENT when the file is missing — swallow it so a .env is optional.
+try { process.loadEnvFile?.(); } catch {}
+if (existsSync('.env')) console.log('[start] loaded environment from .env');
+
 import { spawn } from 'node:child_process';
 import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startGatekeeper } from './gatekeeper.js';
 import { startPanel } from './panel.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
-import { HUB_CONFIG_PATH, USER_DIR } from './userdata.js';
+import { HUB_CONFIG_PATH, USER_DIR, readIngressConfig } from './userdata.js';
 
 const dataDir = process.env.MCP_DATA_DIR || os.homedir();
 const hubPort = process.env.MCP_HUB_PORT || '19999';
@@ -29,12 +33,14 @@ console.log(`[start] config & keys: ${USER_DIR}`);
 const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();
 
-// Ingress precedence: --tunnel (spawn cloudflared) > PUBLIC_ORIGIN (bring your own edge) > Tailscale Funnel (default).
+// Ingress precedence: --tunnel (spawn cloudflared) > PUBLIC_ORIGIN (bring your own edge) > saved panel ingress config (picked in section 0) > Tailscale Funnel (default).
 // Everything downstream keys off the single `origin`, so each mode only has to resolve that value.
 const argOf = (flag) => { const i = process.argv.indexOf(flag); return i !== -1 ? process.argv[i + 1] : null; };
 const tunnelCred = argOf('--tunnel');
 const tunnelOrigin = argOf('--origin')?.replace(/\/+$/, '') || null;
 const publicOrigin = process.env.PUBLIC_ORIGIN?.replace(/\/+$/, '') || null;
+const savedIngress = !tunnelCred && !publicOrigin ? readIngressConfig() : null;
+const cloudflaredCredPath = tunnelCred || savedIngress?.credPath;
 
 let origin;
 let ingressMode;
@@ -50,6 +56,10 @@ if (tunnelCred) {
   origin = publicOrigin;
   ingressMode = 'public-origin';
   console.log(`[start] PUBLIC_ORIGIN set — skipping Tailscale, serving at ${origin}`);
+} else if (savedIngress?.mode === 'cloudflared' && savedIngress.credPath && savedIngress.origin) {
+  origin = savedIngress.origin;
+  ingressMode = 'cloudflared';
+  console.log(`[start] using ingress picked in the panel (section 0) — cloudflared will serve ${origin}`);
 } else {
   ingressMode = 'funnel';
   let tailscale = await funnelStatus(gatePort);
@@ -132,7 +142,7 @@ function spawnCloudflared(credPath) {
 }
 
 spawnHub();
-if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(tunnelCred);
+if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(cloudflaredCredPath);
 // Gatekeeper runs in-process (docs/plan/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so the hub is never left orphaned.
 let gateServer;
 try {
