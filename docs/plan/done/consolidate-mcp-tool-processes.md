@@ -1,7 +1,7 @@
 # Plan: Consolidate redundant MCP Node processes (Stage 1 — low risk)
 
 ## Status
-Code complete, statically verified (`node --check` on all edited files, module imports resolve, `register` exports confirmed). Runtime verification (`npm start` + live client) is user-triggered — pending. Stage 1 of the process-reduction effort; Stage 2 (single process) is deferred to `docs/plan/unify-mcp-tools-single-process.md`.
+Shipped 1.5.0 (`98e00d8`, 2026-08-11). Runtime-verified: `local__run_cmd`, `local__agy_run`, `local__kiro_read`, `local__find_path`, `local__search_content` have been in continuous live use across 3 subsequent releases. Stage 1 of the process-reduction effort; Stage 2 (single process) is deferred to `docs/plan/unify-mcp-tools-single-process.md`.
 
 ## Goal
 Cut redundant Node.js V8 runtimes from **8 processes to 4** without touching any runtime-risky boundary — no change to OAuth, the Streamable HTTP bridge, the claude.ai session lifecycle, or the filesystem tool. Every change here is on our own code, in-process, so it carries no protocol/session risk.
