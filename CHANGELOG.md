@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **3-tab ingress picker in Setup Step 0** — Tailscale+Funnel / Owned public origin / Hosted domain.
+- **Hosted-domain tab: domain-purchase-request UI** — 4-TLD dropdown with pricing (akitao.com / akinet.me / aiobox.app / akimcp.cfd), free-text subdomain input, submit opens a prefilled Messenger contact request.
+- **Standalone packaging build script** — bundles a portable Node runtime + app into a per-OS archive for Node-less client machines. Windows/Linux archives not yet built/tested; macOS path only.
+- **Native `.env` file support for local config** — `.env.example`, `.gitignore` rule, fail-silent when the file is absent.
+
+### Changed
+- Footer links now carry `utm_source=aki-mcp-sv-footer` tracking; eco-icon box styling removed.
+- **Project guidance (`CLAUDE.md`) optimized & compacted** — trimmed narrative fluff and duplicate global release rules (~40% byte reduction), parameterized Tailscale diagnostic probe, and structured Chesterton's fences as high-density invariants.
+
+### Fixed
+- **Step 0's "done" badge now reflects live Tailscale/origin state** instead of always showing done.
+
 ## [1.7.0] — 2026-08-14
 
 ### Added
