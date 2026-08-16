@@ -104,6 +104,18 @@ async function main() {
   console.log('[smoke-test] building payload + launcher against a local server (not the real GitHub Release)');
   const { tarPath, zipPath, archiveBaseName } = buildPayload(REPO_ROOT, version, buildDir);
   const server = await serveDir(buildDir);
+  try {
+    await runChecks({ server, buildDir, fakeHome, version, archiveBaseName, tarPath, zipPath });
+  } finally {
+    // A listening server is an open handle that keeps the event loop alive forever — process.exitCode
+    // (not process.exit) relies on the loop actually draining, so this must run on the failure path too.
+    server.close();
+    rmSync(workDir, { recursive: true, force: true });
+  }
+  console.log('[smoke-test] ALL CHECKS PASSED');
+}
+
+async function runChecks({ server, buildDir, fakeHome, version, archiveBaseName, tarPath, zipPath }) {
   const assetBaseUrl = `http://127.0.0.1:${server.address().port}`;
 
   const launchers = await buildLaunchers({
@@ -124,7 +136,9 @@ async function main() {
 
   console.log(`[smoke-test] running ${launcherPath} (first run — expect real downloads)`);
   // start.js never exits on its own — a timeout kill is the expected end, not a clean exit.
-  const first = await runLauncher(launcherPath, scrubbedPath, fakeHome, 45_000);
+  // Windows' Invoke-WebRequest/Expand-Archive are markedly slower than curl/tar, so its budget is longer.
+  const firstRunTimeoutMs = { win32: 150_000 }[process.platform] ?? 45_000;
+  const first = await runLauncher(launcherPath, scrubbedPath, fakeHome, firstRunTimeoutMs);
   console.log(`[smoke-test] first run ended (${first.timedOut ? 'killed at timeout, expected — start.js stays up' : `exited on its own, status ${first.status}`})`);
   console.log(first.stdout || '');
   console.error(first.stderr || '');
@@ -159,10 +173,6 @@ async function main() {
     throw new Error('FAIL: second run re-downloaded — installed versions were not reused');
   }
   console.log('[smoke-test] PASS: second run reused the installed runtime/app, no re-download');
-
-  server.close();
-  rmSync(workDir, { recursive: true, force: true });
-  console.log('[smoke-test] ALL CHECKS PASSED');
 }
 
 // Exactly one child dir exists under runtime/<version>/ after a single-target smoke-test install.
