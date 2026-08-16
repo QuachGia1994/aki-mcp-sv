@@ -136,8 +136,8 @@ async function runChecks({ server, buildDir, fakeHome, version, archiveBaseName,
 
   console.log(`[smoke-test] running ${launcherPath} (first run — expect real downloads)`);
   // start.js never exits on its own — a timeout kill is the expected end, not a clean exit.
-  // Windows' Invoke-WebRequest/Expand-Archive are markedly slower than curl/tar, so its budget is longer.
-  const firstRunTimeoutMs = { win32: 150_000 }[process.platform] ?? 45_000;
+  // Windows' Expand-Archive is markedly slower than tar for two many-small-file installs; 150s measured short.
+  const firstRunTimeoutMs = { win32: 300_000 }[process.platform] ?? 45_000;
   const first = await runLauncher(launcherPath, scrubbedPath, fakeHome, firstRunTimeoutMs);
   console.log(`[smoke-test] first run ended (${first.timedOut ? 'killed at timeout, expected — start.js stays up' : `exited on its own, status ${first.status}`})`);
   console.log(first.stdout || '');
