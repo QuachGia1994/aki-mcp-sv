@@ -67,8 +67,19 @@ function buildTarGz(stageParentDir, files, outPath) {
   rmSync(listPath);
 }
 
-function buildZip(stageParentDir, files, outPath) {
+// Info-Zip's `zip` isn't on windows-latest runners; Compress-Archive on a directory keeps it as the archive's top-level entry, matching `zip`'s shape from the explicit file list.
+function buildZip(stageParentDir, archiveBaseName, files, outPath) {
   rmSync(outPath, { force: true });
+  if (process.platform === 'win32') {
+    const sourceDir = path.join(stageParentDir, archiveBaseName);
+    execFileSync('powershell', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `Compress-Archive -Path '${sourceDir}' -DestinationPath '${outPath}' -CompressionLevel Optimal`,
+    ]);
+    return;
+  }
   execFileSync('zip', ['-X', '-q', outPath, ...files], { cwd: stageParentDir });
 }
 
@@ -95,7 +106,7 @@ export function buildPayload(repoRoot, version, buildDir) {
   const tarPath = path.join(buildDir, `${archiveBaseName}.tar.gz`);
   const zipPath = path.join(buildDir, `${archiveBaseName}.zip`);
   buildTarGz(stageParentDir, archiveFiles, tarPath);
-  buildZip(stageParentDir, archiveFiles, zipPath);
+  buildZip(stageParentDir, archiveBaseName, archiveFiles, zipPath);
 
   console.log(`[payload] built ${tarPath}`);
   console.log(`[payload] built ${zipPath}`);
