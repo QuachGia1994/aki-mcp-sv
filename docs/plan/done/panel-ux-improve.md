@@ -1,7 +1,14 @@
 # Plan: Control-panel UX improvements (sections 5 & 6, plus a scroll-spy TOC)
 
 ## Status
-Feature 4 (scroll-to-top + spy-TOC rail) is SHIPPED (2026-08-12). Features 1–3 are SHIPPED (2026-08-16) — implemented and static/code-flow-verified; the actual browser/runtime behavior (keystroke filtering, and the live-vs-restart split between the shell tools and the file-tools child) is **unverified at runtime** — see "Runtime verification still needed" below. Not moved to `done/` until that runtime pass happens.
+DONE (2026-08-16). All 4 features shipped and runtime-verified against a real `npm start` (Chrome + a direct MCP client against the hub, bypassing OAuth to isolate Feature 3's own logic):
+- Feature 1 (filter bar) — confirmed: typing narrows chips/rows live, clears fully on empty input.
+- Feature 2 (auto-sort) — confirmed: folder list sorts alphabetically (case-insensitive) after Save + reload.
+- Feature 3 (folder live-reach, no restart) — confirmed: same MCP session, `local__find_path` sees a newly-saved folder on the very next call, no restart.
+- Feature 4 (scroll-to-top + spy-TOC) — shipped 2026-08-12, unchanged.
+
+**Regression found and fixed during this runtime pass.** "Apply to file tools" broke the filesystem MCP server entirely on any pre-existing install (fresh installs were unaffected). Root cause: `standalone-release-delivery` Step 1 changed the template's `filesystem` entry from `npx -y <package>` to a direct `node <script>` invocation, but `scripts/userdata.js`'s live-config reconciliation only ever *added* servers missing from live or *pruned* servers removed from the template — it never migrated an existing entry's shape. Combined with `scripts/panel.js`'s `setFilesystemPaths()` naively treating `args[0]` as the entry script, pressing "Apply to file tools" on a stale live config rebuilt `args` as `["-y", ...dirs]`, dropping the package name and producing `npx -y /Users/aki ...` — `ENOENT`, filesystem server fails to start.
+Fix (same session): added `splitLaunchArgs()` in `scripts/userdata.js` (args = `[prefix..., ...absoluteDirs]`, split on the first absolute-path token) shared by both the reconciliation loop and `panel.js`'s `filesystemPaths`/`setFilesystemPaths`. Reconciliation now migrates an existing entry's `command`/entry-script when the template's shape changed, recovering the user's real directories from the live args (by absolute-path detection, robust to the already-corrupted `["-y", ...]` shape) instead of trusting a fixed arg index. Verified: reset the live config to the exact broken shape captured during testing, reran the reconciliation standalone, confirmed it self-healed to the correct `node <script> <dirs...>` shape with all 4 directories preserved.
 
 **Feature 1 — filter bar (section 6).** Shipped. `<input id="cmdFilter">` added above `#cmdChips` (`scripts/config-page.js`); `filterCommands()` toggles `.style.display` on `.chip`/`.cmdrow` by `dataset.bin` substring match, wired in `loadState()` (`public/panel-client.js`). Does not touch `collectAllowlist()`.
 

@@ -9,7 +9,7 @@ import { renderPanel } from './config-page.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
 import { getRoots, overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
-import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
+import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig, splitLaunchArgs } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver } from './update-check.js';
 
@@ -31,16 +31,18 @@ const expandPath = (p, dataDir) =>
     .replace(/\$\{pathSeparator\}/g, path.sep)
     .replace(/\$\{\/\}/g, path.sep);
 
-// filesystem.args = [entryScript, ...dirs] — a 1-element prefix (the resolved server-filesystem entry point, no more npx flag/package pair).
+// filesystem.args = [prefix..., ...dirs] — split via the same rule userdata.js's reconciliation
+// uses, so an old-shape live entry (still mid-migration) is read the same way it's written.
 function filesystemPaths(dataDir) {
-  return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(1).map((p) => expandPath(p, dataDir));
+  const { dirs } = splitLaunchArgs(readJson(HUB_CONFIG, {}).mcpServers.filesystem.args);
+  return dirs.map((p) => expandPath(p, dataDir));
 }
 
 // The npx-successor filesystem child takes its allowed dirs as spawn args, re-reads nothing at runtime — so this only takes effect on the next restart of that child (see the "apply to file tools" panel action). Our own tools (shell/find_path/search_content/agy/kiro) no longer read this file at all; they read setting.json's `folders` fresh per call via roots.js:getRoots().
 function setFilesystemPaths(paths) {
   const config = readJson(HUB_CONFIG, {});
-  const [entryScript] = config.mcpServers.filesystem.args;
-  config.mcpServers.filesystem.args = [entryScript, ...paths];
+  const { prefix } = splitLaunchArgs(config.mcpServers.filesystem.args);
+  config.mcpServers.filesystem.args = [...prefix, ...paths];
   writeFileSync(HUB_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
 }
 
