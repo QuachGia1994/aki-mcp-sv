@@ -8,6 +8,8 @@ Steps 1, 2, 3, 4, and 6 of the "Required implementation sequence" are implemente
 
 This plan supersedes the distribution-status claim in `docs/plan/done/standalone-packaging.md`: the builder existed, but no standalone asset was attached to releases 1.8.0 or 1.8.1. That completed-plan record remains immutable; this plan is the source of truth for the release path until step 5 closes.
 
+**Step 1's "network-free at runtime" claim had a gap, now fixed.** It only held for fresh installs: `scripts/userdata.js`'s live-config reconciliation never migrated an existing `filesystem` server entry's launch shape, so any pre-existing (upgrade) install kept the old `npx -y` invocation, and pressing "Apply to file tools" on it produced a broken hybrid command that killed the filesystem MCP server. Found and fixed during `panel-ux-improve`'s runtime verification (2026-08-16) — reconciliation now self-heals the launch shape via `splitLaunchArgs()`, shared with `scripts/panel.js`. No action needed here; noted so step 5's copy doesn't repeat the unqualified claim.
+
 ## Goal
 
 The next patch release provides a visible, per-OS bootstrap package on its GitHub Release. A person without Node.js downloads one file for macOS, Windows, or Linux, opens/runs it, and the app starts without cloning a repository, installing Node/npm, or running `npm install`.

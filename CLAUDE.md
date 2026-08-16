@@ -43,7 +43,7 @@ Signature: `npm start` is healthy, funnel status says "on", but client reports "
 1. `start.js`: Orchestrator + in-process gatekeeper (OAuth + `/mcp`) + panel. Fatal listen error calls `shutdown()` and kills the hub.
 2. `scripts/local-tools-mcp.js`: Single `McpServer` mounting `shell`, `agy`, `kiro`, `search` as `register(server)` modules. Spawned by hub as `local` (tool namespace: `local__*`: `local__run_cmd`, `local__agy_run`, `local__kiro_read`, `local__find_path`, `local__search_content`).
 3. `mcp-hub`: Process manager for MCP backends.
-4. `npx @modelcontextprotocol/server-filesystem`: Child process for filesystem operations.
+4. `@modelcontextprotocol/server-filesystem` (direct `node` invocation, network-free): Child process for filesystem operations. Folder scope only updates on this child via the panel's "Apply to file tools" restart — `scripts/userdata.js`'s config reconciliation self-heals its launch shape across upgrades (see `splitLaunchArgs`).
 - *Stage 2* (dropping `mcp-hub` / native filesystem) is deferred; do not collapse processes prematurely.
 
 ## Release process

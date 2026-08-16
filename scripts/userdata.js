@@ -27,10 +27,7 @@ export function readIngressConfig() {
   }
 }
 
-// A launch-arg list is [prefix..., ...absoluteDirs] — the boundary is the first absolute-path
-// token. Shared by the reconciliation below and panel.js's filesystem-folder editing so both
-// agree on where the entry prefix ends, regardless of how many tokens that prefix has (an old
-// `npx -y <package>` pair vs a bare `node <script>`).
+// A launch-arg list is [prefix..., ...absoluteDirs], split on the first absolute-path token — shared by the reconciliation below and panel.js's filesystem-folder editing so both agree on where the entry prefix ends, whatever its token count (an old `npx -y <package>` pair vs a bare `node <script>`).
 export function splitLaunchArgs(args) {
   const idx = args.findIndex((a) => path.isAbsolute(a));
   return idx === -1 ? { prefix: args, dirs: [] } : { prefix: args.slice(0, idx), dirs: args.slice(idx) };
@@ -56,10 +53,7 @@ if (!existsSync(HUB_CONFIG_PATH)) {
       changed = true;
       continue;
     }
-    // Entry exists but its launch shape may be stale (e.g. Step 1's npx→node switch for
-    // `filesystem`): a naive "already present, skip" here is exactly what let a broken hybrid
-    // command/args pair through. Recover the user's real directories (any absolute-path arg,
-    // however the old shape scattered them) and rebuild them onto the template's current prefix.
+    // A naive "already present, skip" here is what let a stale launch shape (e.g. Step 1's npx→node switch) through as a broken hybrid; recover the real directories by absolute-path detection and rebuild onto the template's current prefix.
     if (Array.isArray(liveEntry.args) && (liveEntry.command !== entry.command || liveEntry.args[0] !== entry.args[0])) {
       const { dirs: liveDirs } = splitLaunchArgs(liveEntry.args);
       const templatePrefix = entry.args.filter((a) => !a.startsWith('${'));

@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Control panel: filter bar for section 6 (allowed shell commands)**: text input above the chip list narrows chips/rows live by substring match, pure client-side, no re-render; Save still submits the full set.
+- **Control panel: folders auto-sort alphabetically on save** (case-insensitive), matching section 6's already-sorted chip list.
+- **Folder scope is now runtime-live for shell/find/search**: `setting.json` gains a `folders` key as the authoritative source, read fresh per call via `roots.js`'s `getRoots()` — a folder add/remove takes effect on the very next call, no restart, matching how the command allowlist already worked. The external filesystem child (`read_file`/`write_file`/`edit_file`) is still spawn-arg-bound; a new "Apply to file tools (restarts hub)" button explicitly opts into pushing the folder list to it and restarting.
+- **Standalone release delivery**: tag-triggered GitHub Actions release workflow (build, smoke-test matrix, draft release, required-6-asset gate, publish), `scripts/build/release-gate.js` (verifies all 6 assets exist and per-OS launcher checksums match the release's own SHA256SUMS), a payload+launcher builder replacing the single-archive builder, and `scripts/build/smoke-test.js` (boots the real per-OS launcher against a throwaway local server with Node stripped from PATH).
+
+### Changed
+- **filesystem MCP server invocation is now network-free at runtime**: `mcp-hub.config.json`'s `npx -y @modelcontextprotocol/server-filesystem` became a direct `node` invocation of the resolved package entry point; removes the npm-registry dependency and the npx/npm-on-PATH requirement from the client runtime path.
+
+### Fixed
+- **"Apply to file tools" broke the filesystem MCP server on any pre-existing (upgrade) install**: the npx-to-node invocation change above left `scripts/userdata.js`'s live-config reconciliation stale — it only ever added or pruned server entries, never migrated an existing one's launch shape — so `scripts/panel.js`'s arg-rewrite produced a broken hybrid `npx -y <folder>` command. Reconciliation now migrates an entry's launch shape when the template's changed, recovering the user's real directories by absolute-path detection; fresh installs were never affected.
+- **Bootstrap launcher never put the bundled Node runtime on PATH before exec'ing into `start.js`**, so mcp-hub's `node`-spawned children (`local`, `filesystem`) failed with ENOENT; caught by the new smoke test.
+
 ## [1.8.1] - 2026-08-15
 
 ### Fixed

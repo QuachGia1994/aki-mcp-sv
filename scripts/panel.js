@@ -31,8 +31,7 @@ const expandPath = (p, dataDir) =>
     .replace(/\$\{pathSeparator\}/g, path.sep)
     .replace(/\$\{\/\}/g, path.sep);
 
-// filesystem.args = [prefix..., ...dirs] — split via the same rule userdata.js's reconciliation
-// uses, so an old-shape live entry (still mid-migration) is read the same way it's written.
+// filesystem.args = [prefix..., ...dirs] — split via the same rule userdata.js's reconciliation uses, so an old-shape live entry (still mid-migration) is read the same way it's written.
 function filesystemPaths(dataDir) {
   const { dirs } = splitLaunchArgs(readJson(HUB_CONFIG, {}).mcpServers.filesystem.args);
   return dirs.map((p) => expandPath(p, dataDir));

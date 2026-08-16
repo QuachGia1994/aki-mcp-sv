@@ -133,7 +133,7 @@ No Node/npm install needed. **v1.8.0 ships this for macOS Apple Silicon (`darwin
 
 **Windows still needs [Git for Windows](https://git-scm.com/download/win)** (or WSL) on `PATH` even when a future standalone build lands: see [Requirements](#requirements) above; a bundled Node runtime replaces the Node.js install, not that prerequisite.
 
-The package itself needs no network access to start: Node, npm, and npx are all bundled. One exception: the built-in filesystem tool resolves `@modelcontextprotocol/server-filesystem` via `npx` on its very first use and needs the npm registry that one time (pre-existing behavior, tracked separately, not something this package fixes).
+The package itself needs no network access to start: Node, npm, and npx are all bundled, and the built-in filesystem tool (`@modelcontextprotocol/server-filesystem`) is a direct dependency invoked with a plain `node` call — no `npx`/npm-registry resolution at any point, first run included.
 
 ## Run
 
@@ -148,7 +148,7 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
 - Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
 
-The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`); saving restarts the hub automatically. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
+The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for the shell, find, and search tools, no restart; the file read/write/edit tools run in a separate child process that only picks up the change after pressing "Apply to file tools" (or a full restart). To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
 
 Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
 
