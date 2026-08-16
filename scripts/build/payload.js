@@ -107,6 +107,8 @@ export function buildPayload(repoRoot, version, buildDir) {
   const zipPath = path.join(buildDir, `${archiveBaseName}.zip`);
   buildTarGz(stageParentDir, archiveFiles, tarPath);
   buildZip(stageParentDir, archiveBaseName, archiveFiles, zipPath);
+  // Staging is scratch, not a release asset — left behind it breaks `dist/*` globs (e.g. `gh release create`) by including a directory.
+  rmSync(stageParentDir, { recursive: true, force: true });
 
   console.log(`[payload] built ${tarPath}`);
   console.log(`[payload] built ${zipPath}`);

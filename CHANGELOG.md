@@ -20,7 +20,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Bootstrap launcher never put the bundled Node runtime on PATH before exec'ing into `start.js`**, so mcp-hub's `node`-spawned children (`local`, `filesystem`) failed with ENOENT; caught by the new smoke test.
 - **Payload builder's `npm ci` never resolved on Windows**: `execFileSync('npm', ...)` bypasses the shell, so it couldn't find Windows' `npm.cmd` shim; caught by the release workflow's own Windows smoke-test job on the first real tag run.
 - **Payload builder's zip step failed on Windows**: the `zip` binary isn't on `windows-latest` runners; now uses PowerShell's `Compress-Archive` on that platform.
-- **Windows bootstrap smoke test hung indefinitely on timeout**: Windows has no exec-replace, so the launcher's `cmd.exe -> powershell.exe -> node.exe` stay three separate processes; killing only the `cmd.exe` PID orphaned `node.exe` holding stdio open forever. Now tree-kills via `taskkill /T /F` on win32.
+- **Windows bootstrap smoke test hung indefinitely on timeout**: Windows has no exec-replace, so the launcher's `cmd.exe -> powershell.exe -> node.exe` stay three separate processes; killing only the `cmd.exe` PID orphaned `node.exe` holding stdio open forever. Now tree-kills via `taskkill /T /F` on win32, spawned detached so the kill can't reach outside its own tree; a leaked open server handle after the switch to `process.exitCode` was fixed with `try/finally` cleanup, and the Windows first-run timeout was widened to 300s once logs showed `Expand-Archive` was still mid-extraction at 150s.
+- **Release job failed on every tag**: the payload builder's `npm ci` staging directory (`dist/stage-payload/`) was never cleaned up, so `gh release create ... dist/*` tried to upload a directory as an asset and errored. Staging is now removed once the archives are built.
 
 ## [1.8.1] - 2026-08-15
 
