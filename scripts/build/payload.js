@@ -33,12 +33,15 @@ function normalizeTimestamps(root) {
   for (const f of walk(root)) utimesSync(f, DETERMINISTIC_MTIME, DETERMINISTIC_MTIME);
 }
 
+// execFileSync bypasses the shell, so it can't resolve Windows' npm.cmd shim the way a shell PATH lookup would — the actual binary name differs per OS, same shape as open-browser.js's LAUNCHER table.
+const NPM_BIN = { win32: 'npm.cmd' };
+
 // Isolated staging copy — npm ci runs here, never at REPO_ROOT, so the dev tree's node_modules is never touched.
 function installProdDeps(repoRoot, stageDir) {
   cpSync(path.join(repoRoot, 'package.json'), path.join(stageDir, 'package.json'));
   cpSync(path.join(repoRoot, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
   console.log('[payload] npm ci --omit=dev (build-time only, never runs on the client)');
-  execFileSync('npm', ['ci', '--omit=dev'], { cwd: stageDir, stdio: 'inherit' });
+  execFileSync(NPM_BIN[process.platform] ?? 'npm', ['ci', '--omit=dev'], { cwd: stageDir, stdio: 'inherit' });
 }
 
 function copyAppEntries(repoRoot, stageDir) {
