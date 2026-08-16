@@ -264,10 +264,12 @@ ${field('Widen command', WIDEN_SNIPPET)}
 <section id="s5"><h2>5 · Folders the connector may reach</h2>
 <p class="helptext">These folders scope file tools and the shell's working directory. Allowed shell commands run with your user permissions and may access files outside this list.</p>
 <p class="helptext">The default root is your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects.</p>
+<p class="helptext">Save takes effect immediately for the shell and search tools. The file read/write/edit tools run in a separate helper process that only picks up a change after "Apply to file tools" (or a full restart) — press that too if you need those tools to see it right away.</p>
 <div class="flist" id="paths"></div>
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>
-  <button data-act="savePaths">Save &amp; restart hub</button>
+  <button data-act="savePaths">Save</button>
+  <button data-act="applyFilesystem">Apply to file tools (restarts hub)</button>
   <button data-act="restart">Restart hub</button>
   <span class="msg" id="msgPaths"></span>
 </div>
@@ -275,6 +277,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 
 <section id="s6"><h2>6 · Allowed shell commands</h2>
 <p class="helptext">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access.</p>
+<input type="text" id="cmdFilter" placeholder="filter commands…">
 <div class="chips" id="cmdChips"></div>
 <div class="flist" id="cmdRows"></div>
 <div class="acts">

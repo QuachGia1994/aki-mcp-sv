@@ -262,6 +262,14 @@ function renderSavedIngress(saved) {
   box.append(p);
 }
 
+// Pure visibility toggle: hides non-matching chips/rows, never touches collectAllowlist()'s data. Position matters (above #cmdChips, below the add-input at the bottom): a filter box and an add box that looked identical would collide in the user's mental model.
+function filterCommands(q) {
+  const needle = q.trim().toLowerCase();
+  for (const el of document.querySelectorAll('#cmdChips .chip, #cmdRows .cmdrow')) {
+    el.style.display = el.dataset.bin.toLowerCase().includes(needle) ? '' : 'none';
+  }
+}
+
 async function loadState() {
   const s = await api('GET', '/api/state');
   renderAllowlist(s.allowlist);
@@ -271,6 +279,7 @@ async function loadState() {
   document.getElementById('ruleChecks').onchange = buildPrompt;
   document.getElementById('loadRules').onchange = buildPrompt;
   document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
+  document.getElementById('cmdFilter').oninput = (e) => filterCommands(e.target.value);
   buildPrompt();
 }
 
@@ -294,10 +303,13 @@ const ACTIONS = {
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
     if (!paths.length) throw new Error('an empty list cuts off all of Claude\'s file access; add at least one folder');
+    // Case-insensitive by full path, matching section 6's already-sorted chips — one sort rule shared by both list editors. Locked rows sort in place with the rest.
+    paths.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const { message } = await api('POST', '/api/paths', { paths });
     btn.classList.remove('primary');
     return message;
   }),
+  applyFilesystem: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/paths/apply-filesystem')).message),
   restart: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/restart')).message),
   addTrusted: () => { addTrustedDir('', null, true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
   saveTrusted: (btn) => act(btn, 'msgTrusted', async () => {
