@@ -3,7 +3,7 @@
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. No desktop app, no device install.
 <img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-Version: **1.9.0** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.9.1** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
@@ -47,11 +47,12 @@ gatekeeper.js  — public port 9999
       ▼
 mcp-hub        — internal only (loopback), port 19999, legacy HTTP+SSE transport
       │
-      ├─► MCP filesystem server   (read/write inside the allowed folders)
-      ├─► MCP search server       (search-mcp.js — find_path/search_content, whole-tree in one call)
-      ├─► MCP shell server        (shell-mcp.js — allowlisted commands, curated to read-only)
-      ├─► MCP agy server          (agy-mcp.js — Antigravity CLI, read-only plan mode)
-      └─► MCP kiro server         (kiro-mcp.js — Kiro arm: kiro_read (read-only), needs kiro-cli on PATH)
+      ├─► filesystem server    (@modelcontextprotocol/server-filesystem — read/write inside the allowed folders)
+      └─► local-tools-mcp.js   — one process hosting 4 in-house tools (local__*):
+                                  search-mcp.js  (find_path/search_content, whole-tree in one call)
+                                  shell-mcp.js   (allowlisted commands, curated to read-only)
+                                  agy-mcp.js     (Antigravity CLI, read-only plan mode)
+                                  kiro-mcp.js    (kiro_read, read-only, needs kiro-cli on PATH)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  control UI: allowed folders, shell allowlist, restart hub,
@@ -87,20 +88,23 @@ aki-mcp-sv/
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> mcp-hub's legacy SSE transport
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
+│   ├── local-tools-mcp.js        # one process hosting shell/agy/kiro/search as register(server) modules
 │   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
-│   ├── agy-mcp.js                # dedicated MCP server for the agy CLI
+│   ├── agy-mcp.js                # register() module for the agy CLI (mounted by local-tools-mcp.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call
 │   ├── roots.js                  # path containment shared by every filesystem-touching tool
 │   ├── tailscale.js              # reads Funnel status — shared by start.js and panel
+│   ├── update-check.js           # checks for newer aki-mcp-sv/akidevrule versions, shown in the panel
 │   ├── log.js                    # shared timestamped logger
 │   ├── panel.js                  # loopback-only control panel (:9998), token-gated
 │   ├── config-page.js            # renders the panel page
 │   ├── html.js                   # HTML escaper (esc) — shared by oauth confirm page and panel
-│   └── userdata.js               # user data location (~/.aki/mcpsv) — single source of truth
-└── public/                       # favicon + images, served publicly by gatekeeper
+│   ├── userdata.js               # user data location (~/.aki/mcpsv) — single source of truth
+│   └── build/                    # standalone release builder: payload/launchers/checksums, smoke-test, release-gate
+└── public/                       # panel CSS/JS, favicon + images, served publicly by gatekeeper
 ```
 
 Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs like `~/.aws` or `~/.docker` use):
@@ -143,6 +147,8 @@ The package itself needs no network access to start: Node, npm, and npx are all 
 
 ## Run
 
+**Standalone package:** the launcher already started it — nothing else to run here. Skip ahead to [Connecting from Claude web](#connecting-from-claude-web). The rest of this section is the git-clone path only.
+
 ```bash
 cp .env.example .env   # optional: only if you need PUBLIC_ORIGIN or another non-default var
 npm start
@@ -165,6 +171,11 @@ Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where ak
 ## Configuration
 
 Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN`, `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_HUB_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
+
+**Standalone package:** `.env.example` isn't part of the downloaded payload, so create `.env` by hand instead, in the same per-version app directory the launcher runs from (not the folder you downloaded the launcher into):
+- macOS: `~/Library/Application Support/aki-mcp-sv/app/<version>/.env`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/aki-mcp-sv/app/<version>/.env`
+- Windows: `%LOCALAPPDATA%\aki-mcp-sv\app\<version>\.env`
 
 ## Exposing to the internet
 

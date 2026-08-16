@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Release gate: every required asset must be present, checksummed from the real release URL.
-// docs/plan/standalone-release-delivery.md § Required implementation sequence, step 6.
+// Release gate: every required asset must be present, checksummed from the real release URL (docs/plan/standalone-release-delivery.md § Required implementation sequence, step 6).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,8 +12,8 @@ const pkg = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'
 const version = process.argv[2] || pkg.version;
 
 const REQUIRED_ASSETS = [
-  `aki-mcp-sv-${version}-app.tar.gz`,
-  `aki-mcp-sv-${version}-app.zip`,
+  `aki-mcp-sv-${version}-payload.tar.gz`,
+  `aki-mcp-sv-${version}-payload.zip`,
   `aki-mcp-sv-${version}-macos.command`,
   `aki-mcp-sv-${version}-windows.cmd`,
   `aki-mcp-sv-${version}-linux.run`,

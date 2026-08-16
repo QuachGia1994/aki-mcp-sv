@@ -90,7 +90,7 @@ function buildZip(stageParentDir, archiveBaseName, files, outPath) {
  * @returns {{ tarPath: string, zipPath: string, stageParentDir: string, archiveBaseName: string }}
  */
 export function buildPayload(repoRoot, version, buildDir) {
-  const archiveBaseName = `aki-mcp-sv-${version}-app`;
+  const archiveBaseName = `aki-mcp-sv-${version}-payload`;
   const stageParentDir = path.join(buildDir, 'stage-payload');
   const stageDir = path.join(stageParentDir, archiveBaseName);
   rmSync(stageParentDir, { recursive: true, force: true });

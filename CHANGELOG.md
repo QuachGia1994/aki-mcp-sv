@@ -4,6 +4,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-08-16
+
+### Changed
+- **Release assets renamed `-app.zip`/`-app.tar.gz` → `-payload.zip`/`-payload.tar.gz`**: the old name read as "the app to download," same as the OS launchers next to it on the GitHub Release page, so users picked the wrong (non-runnable) file. `payload` signals its role — an internal file the launcher fetches, never one a user opens directly. `release.yml` now also writes a short "pick your OS file" line at the top of the release notes instead of leaving them blank.
+
 ## [1.9.1] - 2026-08-16
 
 ### Fixed
