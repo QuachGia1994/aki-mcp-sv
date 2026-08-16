@@ -4,6 +4,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-16
+
 ### Added
 - **Control panel: filter bar for section 6 (allowed shell commands)**: text input above the chip list narrows chips/rows live by substring match, pure client-side, no re-render; Save still submits the full set.
 - **Control panel: folders auto-sort alphabetically on save** (case-insensitive), matching section 6's already-sorted chip list.
