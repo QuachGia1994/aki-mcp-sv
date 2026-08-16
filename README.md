@@ -1,13 +1,14 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. No desktop app, no device install.
-<img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
+Give Claude on the **web** (claude.ai), **ChatGPT**, and **Grok** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. *(Experimental support for Gemini — see [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini).)*
 
-Version: **1.9.2** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+No desktop app. No device lock-in. No install needed if you use the standalone launcher below.
 
-<img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
+<img width="1190" height="1062" alt="aki-mcp-sv control panel" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Architecture](#architecture) · [Requirements](#requirements) · [Directory layout](#directory-layout) · [Install](#install) · [Run](#run) · [Exposing to the internet](#exposing-to-the-internet) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Finding files](#finding-files) · [Security](#security)
+[![Version](https://img.shields.io/badge/version-1.9.3-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
+
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -15,7 +16,12 @@ Claude.ai's web/Pro quota is far cheaper than paying per token via the API for e
 
 The Claude Desktop app already does local file access, but ties usage to a device ID you don't control, and running multiple accounts means repeated login/logout. With this web-based approach, you get true multi-account flexibility instead: just switch browser profiles to pick up a different account (e.g. several Claude Pro subscriptions), all pointed at the same local machine, no device lock-in.
 
-This project routes around both problems: run an MCP server on your machine, expose it over HTTPS through Tailscale Funnel, and connect it to claude.ai as a custom connector. You get local file/shell access from the browser, on the web quota, with no app install and no account lock-in.
+**aki-mcp-sv** routes around both problems: run an MCP server on your machine, expose it over HTTPS through Tailscale Funnel, and connect it to claude.ai as a custom connector.
+
+**The payoff:**
+- **Use your web quota** for local file and shell access, straight from the browser.
+- **True multi-account flexibility:** switch browser profiles to instantly pick up a different account, all pointed at the same machine.
+- **Safe by default:** a strict command whitelist, not a leaky blocklist — see [Security](#security).
 
 ### When to use & Core Use-Cases
 
@@ -23,11 +29,114 @@ This project routes around both problems: run an MCP server on your machine, exp
 - **Away from your desk (mobile / web / a machine that isn't yours):** use `aki-mcp-sv` via Claude Web, ChatGPT Mobile, or Grok to check on a running job, read logs, clean up temp files, or pull the latest code on your home/office machine.
 - **On a schedule, with nobody watching:** pair Grok's scheduled prompts with `aki-mcp-sv` for cloud-triggered local execution — see [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp).
 
-### How this differs from Desktop Commander
+## Install
 
-[Desktop Commander](https://github.com/wonderwhy-er/DesktopCommanderMCP) is the most widely used MCP terminal server. It runs locally for **Claude Desktop** and guards shell access with a **blocklist** (`blockedCommands`, an explicit list of forbidden commands). A blocklist is inherently leaky: you can't enumerate every dangerous command and variant, and the default is *allow*: anything not on the list gets through.
+> [!NOTE]
+> **Is this safe to run?** The standalone launchers extract a private Node runtime and the app payload strictly into your OS's per-user app-data directory (`~/Library/Application Support/aki-mcp-sv` on macOS, `%LOCALAPPDATA%\aki-mcp-sv` on Windows, `${XDG_DATA_HOME:-~/.local/share}/aki-mcp-sv` on Linux); your own settings/tokens live separately at `~/.aki/mcpsv/`. Nothing is installed system-wide, no background service or daemon is created, and no `sudo`/administrator privileges are required. The shell tool is read-only by default (see [Security](#security)). Closing the terminal window stops the server completely.
 
-This project targets a different scenario: exposing local access to Claude **on the web**, across the open internet via Funnel. It makes the opposite default choice: a **whitelist**. Nothing runs unless it's explicitly allowed. See [Security](#security) for what that buys you.
+### Option 1: Standalone package (recommended — no Node.js needed)
+
+Download the launcher for your OS from the [latest release](https://github.com/lacvietanh/aki-mcp-sv/releases/latest) — **not** the green "Code" button's "Download ZIP" above, which is just the source and won't run:
+
+- **macOS**: double-click `aki-mcp-sv-<version>-macos.command` (or run it from Terminal)
+- **Linux**: `chmod +x aki-mcp-sv-<version>-linux.run && ./aki-mcp-sv-<version>-linux.run` (downloaded files aren't executable by default)
+- **Windows**: double-click `aki-mcp-sv-<version>-windows.cmd` — still needs [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH`, see [Requirements](#requirements)
+
+**Handling first-run OS security warnings** — expected on an uncode-signed launcher, not a sign anything's wrong:
+- **Browser download warning** (Chrome/Edge/Safari flagging `.command`/`.cmd`/`.run` as an uncommon file type): click "Keep"/"Download anyway".
+- **macOS Gatekeeper** ("cannot be opened because the developer cannot be verified"): right-click the `.command` file → Open once to bypass. If that option is missing (macOS 15+ dropped it), open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** — or run `xattr -d com.apple.quarantine <path-to-file>` in Terminal first, which works on every macOS version.
+- **Windows SmartScreen** ("Windows protected your PC"): click **More info**, then **Run anyway**.
+
+**Operational notes:**
+- **First run** downloads and checksum-verifies the Node runtime + app payload; later runs reuse what's already downloaded, so they start fast with no network access needed.
+- **To start it again later** (after a reboot or closing the terminal): run the exact same launcher file again — it's still in your Downloads folder.
+- **Keep the terminal/console window open** — it's the running server, not just a progress log. Closing it stops everything, including the control panel and any active connection.
+
+### Option 2: Install from source (needs Node.js)
+
+```bash
+git clone <repo-url> aki-mcp-sv
+cd aki-mcp-sv
+npm install
+```
+
+Then see [Run](#run) below.
+
+## Run
+
+**Standalone package:** the launcher already started the server for you — no command to type. Everything below (what gets printed, what the control panel shows, the default folder access) still applies to you, so skim it before jumping to [Connecting from Claude web](#connecting-from-claude-web).
+
+**Git-clone path:**
+
+```bash
+cp .env.example .env   # optional: only if you need PUBLIC_ORIGIN or another non-default var
+npm start
+```
+
+Nothing needs preparing beforehand; `npm start` handles it:
+- **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
+- **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
+- Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
+- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
+
+The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for the shell, find, and search tools, no restart; the file read/write/edit tools run in a separate child process that only picks up the change after pressing "Apply to file tools" (or a full restart). To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
+
+Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
+
+`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. This row is locked in panel section 5, with no delete button by design so it can't be revoked by accident; the panel itself cannot remove it. If you don't want `~/.claude` granted at all, edit `~/.aki/mcpsv/mcp-hub.config.json` and remove the `${HOME}/.claude` entries from it before connecting, then restart the hub; claude.ai then loses access to your `CLAUDE.md` too.
+
+`npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
+
+## Connecting from Claude web
+
+1. Go to **claude.ai → Settings → Connectors → Add custom connector**
+2. **Remote MCP server URL**: paste `https://your-machine.your-tailnet.ts.net/mcp` (printed by `npm start`)
+3. **Advanced settings → OAuth Client ID / OAuth Client Secret**: paste the two values `npm start` printed
+4. Click **Connect**: a local confirmation page opens; enter the **passphrase** shown in the control panel (section 1 · Connectors) to approve — or read it straight from `~/.aki/mcpsv/passphrase.txt`
+
+Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
+
+claude.ai connects and calls the tool suite: `filesystem__*` plus the in-house `local__*` tools (`local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`).
+
+**Note on the connector icon:** claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host: `https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32`. `<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
+
+## Connecting from ChatGPT
+
+Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for custom connectors.
+
+1. ChatGPT → Settings → Apps & Connectors (or Security) → enable **Developer mode**
+2. Create a custom connector / app → paste the same MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`)
+3. Auth: **OAuth** → **Advanced OAuth settings** → set **Registration URL** to `https://your-machine.your-tailnet.ts.net/register` (the panel prints the exact value to copy). This is the step that enables DCR: ChatGPT self-registers its own client from it. Skip it and ChatGPT can't register, so it falls back to a user-defined client — and pasting Claude's Client ID there fails, because that client only allows `claude.ai` redirects.
+4. Leave registration method on **DCR**, token endpoint auth method **none** — do **not** paste Claude's Client ID/Secret here.
+5. Enter the same **passphrase** on the confirmation page
+
+Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
+
+## Connecting from Grok and Gemini
+
+Both ride the same MCP URL and passphrase flow — no separate transport or auth. They differ in *how* the client authenticates, and the connector panel (section 1) prints the exact copy fields for each.
+
+**Grok — verified, production-ready:** **self-registers** via the `/register` DCR path like ChatGPT — paste only the MCP URL, no Client ID. Its real `redirect_uri` `https://grok.com/connectors-oauth-exchange-code/` was observed live 2026-08-09 and is allowlisted via `GROK_CALLBACK_PREFIX`. Verified working end to end (`authorize → token` 200). If a future Grok change moves that callback, a rejected registration logs `register REJECTED (redirect_uri not allowlisted): [...]` so the new value can be re-allowlisted.
+
+**Gemini — experimental, connection works but tool use doesn't (yet)** (paid tiers only — Pro / Business / Enterprise; the free tier may not expose custom apps): pastes a **confidential client**, exactly like Claude — set the custom app link to the MCP URL, then under Advanced Settings paste the same Client ID / Client secret. Gemini's redirect goes through Google's OAuth proxy `https://oauth-redirect.googleusercontent.com/r/...` (observed live 2026-08-09), allowlisted by `isAllowedRedirect` in `scripts/oauth.js`. **Caveat:** the OAuth handshake succeeds and Gemini accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — connection healthy, tool use unreliable. Claude and Grok are the dependable clients today.
+
+## Autonomous Cloud Automation (Grok + Local MCP)
+
+Grok's scheduled prompts turn your machine into a headless "personal remote AI node": no browser tab, no desktop app, just `npm start` running in the background.
+
+- **Cloud-triggered local execution:** set up a scheduled prompt in Grok (Automation) that fires at a fixed time.
+- **Headless:** Grok's cloud service sends the request to `/mcp` over your Tailscale Funnel URL, and `aki-mcp-sv` runs the task — health check, log sweep, `git pull`, cleanup — with nothing open on your end.
+- **Zero UI required:** as long as the process is running, no browser or app needs to be open for the scheduled task to execute.
+
+## Requirements
+
+- Node.js, on Windows, Linux, or macOS. Don't have it? Skip straight to [the standalone package](#install) below, no install needed — bootstrap launchers ship for Windows, Linux, and macOS.
+- **Windows only:** [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH` — the shell/search tools shell out to Unix binaries (`ls cat pwd grep head tail wc file stat tree ps df du whoami uname`), and akidevrule's `install.sh` needs `bash`; Git for Windows' `usr/bin` ships the coreutils/findutils/grep/diffutils this needs. Same category of prerequisite as Tailscale below, not a code dependency.
+- Tailscale (one-time setup):
+  1. [Install Tailscale](https://tailscale.com/download) and sign in (on macOS, the app or `brew install tailscale` both work as long as `tailscale` is on PATH)
+  2. Enable [Funnel](https://tailscale.com/docs/features/tailscale-funnel) for your tailnet: free on every plan, a one-time toggle via the `login.tailscale.com/f/funnel` link `npm start` prints if it isn't on yet
+
+After that, `npm start` enables Funnel on port 9999 automatically every run.
 
 ## Architecture
 
@@ -64,16 +173,6 @@ The ingress layer is swappable: Tailscale Funnel is the zero-config default, but
 `mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/done/init.md`).
 
 OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/research/claude-ai-oauth-connector.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
-
-## Requirements
-
-- Node.js, on Windows, Linux, or macOS. Don't have it? Skip straight to [the standalone package](#install) below, no install needed — bootstrap launchers ship for Windows, Linux, and macOS.
-- **Windows only:** [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH` — the shell/search tools shell out to Unix binaries (`ls cat pwd grep head tail wc file stat tree ps df du whoami uname`), and akidevrule's `install.sh` needs `bash`; Git for Windows' `usr/bin` ships the coreutils/findutils/grep/diffutils this needs. Same category of prerequisite as Tailscale below, not a code dependency.
-- Tailscale (one-time setup):
-  1. [Install Tailscale](https://tailscale.com/download) and sign in (on macOS, the app or `brew install tailscale` both work as long as `tailscale` is on PATH)
-  2. Enable [Funnel](https://tailscale.com/docs/features/tailscale-funnel) for your tailnet: free on every plan, a one-time toggle via the `login.tailscale.com/f/funnel` link `npm start` prints if it isn't on yet
-
-After that, `npm start` enables Funnel on port 9999 automatically every run.
 
 ## Directory layout
 
@@ -120,56 +219,6 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs l
 ```
 
 A clone stays exactly as checked out: editing folders/allowlist from the panel never produces a diff in the repo.
-
-## Install
-
-```bash
-git clone <repo-url> aki-mcp-sv
-cd aki-mcp-sv
-npm install
-```
-
-### Don't have Node.js? Use the standalone package
-
-No Node/npm install needed. Download the launcher for your OS from the [latest release](https://github.com/lacvietanh/aki-mcp-sv/releases/latest) and run it:
-
-- **macOS**: double-click `aki-mcp-sv-<version>-macos.command` (or run it from Terminal)
-- **Linux**: `chmod +x aki-mcp-sv-<version>-linux.run && ./aki-mcp-sv-<version>-linux.run` (downloaded files aren't executable by default)
-- **Windows**: double-click `aki-mcp-sv-<version>-windows.cmd`
-
-Each launcher downloads a private Node runtime + the app payload into your OS's per-user app-data directory on first run, then starts the same panel/OAuth flow as `npm start`. Nothing is installed system-wide, and later runs reuse what was already downloaded. **Downloading and first run are the two points every OS warns you about — expected, not a sign anything's wrong:**
-
-- **Browser download warning** (Chrome/Edge/Safari flagging `.command`/`.cmd`/`.run` as an uncommon file type): click "Keep"/"Download anyway".
-- **macOS Gatekeeper** ("cannot be opened because the developer cannot be verified" / "not from an identified developer"): the launcher isn't code-signed or notarized. Right-click the `.command` file → Open once to bypass it; if that option is missing (macOS 15+ dropped it), open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** — or run `xattr -d com.apple.quarantine <path-to-file>` in Terminal first, which works on every macOS version.
-- **Windows SmartScreen** ("Windows protected your PC"): click **More info**, then **Run anyway**.
-- **Keep the terminal/console window open** — it's the running server, not just a progress log. Closing it stops everything, including the control panel and any active connection.
-
-**Windows still needs [Git for Windows](https://git-scm.com/download/win)** (or WSL) on `PATH` even with the standalone launcher: see [Requirements](#requirements) above; a bundled Node runtime replaces the Node.js install, not that prerequisite.
-
-The package itself needs no network access to start: Node, npm, and npx are all bundled, and the built-in filesystem tool (`@modelcontextprotocol/server-filesystem`) is a direct dependency invoked with a plain `node` call — no `npx`/npm-registry resolution at any point, first run included.
-
-## Run
-
-**Standalone package:** the launcher already started it — nothing else to run here. Skip ahead to [Connecting from Claude web](#connecting-from-claude-web). The rest of this section is the git-clone path only.
-
-```bash
-cp .env.example .env   # optional: only if you need PUBLIC_ORIGIN or another non-default var
-npm start
-```
-
-Nothing needs preparing beforehand; `npm start` handles it:
-- **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
-- **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
-- Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
-- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
-
-The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for the shell, find, and search tools, no restart; the file read/write/edit tools run in a separate child process that only picks up the change after pressing "Apply to file tools" (or a full restart). To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
-
-Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
-
-`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. This row is locked in panel section 5, with no delete button by design so it can't be revoked by accident; the panel itself cannot remove it. If you don't want `~/.claude` granted at all, edit `~/.aki/mcpsv/mcp-hub.config.json` and remove the `${HOME}/.claude` entries from it before connecting, then restart the hub; claude.ai then loses access to your `CLAUDE.md` too.
-
-`npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
 ## Configuration
 
@@ -231,55 +280,6 @@ To get a subdomain under a host's domain, arrange it with them directly; there i
 
 When a custom ingress is active, the panel's section 0 skips the Tailscale checks and instead shows the active ingress and the serving origin — so the absent Tailscale UI is expected, not a fault.
 
-## Connecting from Claude web
-
-1. Go to **claude.ai → Settings → Connectors → Add custom connector**
-2. **Remote MCP server URL**: paste `https://your-machine.your-tailnet.ts.net/mcp` (printed by `npm start`)
-3. **Advanced settings → OAuth Client ID / OAuth Client Secret**: paste the two values `npm start` printed
-4. Click **Connect**: a local confirmation page opens; enter the **passphrase** (contents of `~/.aki/mcpsv/passphrase.txt`) to approve
-
-Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
-
-claude.ai connects and calls the tool suite: `filesystem__*` plus the in-house `local__*` tools (`local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`).
-
-## Connecting from ChatGPT
-
-Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for custom connectors.
-
-1. ChatGPT → Settings → Apps & Connectors (or Security) → enable **Developer mode**
-2. Create a custom connector / app → paste the same MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`)
-3. Auth: **OAuth** → **Advanced OAuth settings** → set **Registration URL** to `https://your-machine.your-tailnet.ts.net/register` (the panel prints the exact value to copy). This is the step that enables DCR: ChatGPT self-registers its own client from it. Skip it and ChatGPT can't register, so it falls back to a user-defined client — and pasting Claude's Client ID there fails, because that client only allows `claude.ai` redirects.
-4. Leave registration method on **DCR**, token endpoint auth method **none** — do **not** paste Claude's Client ID/Secret here.
-5. Enter the same **passphrase** on the confirmation page
-
-Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
-
-## Connecting from Gemini and Grok
-
-Both ride the same MCP URL and passphrase flow — no separate transport or auth. They differ in *how* the client authenticates, and the connector panel (section 1) prints the exact copy fields for each.
-
-**Gemini** (paid tiers — Pro / Business / Enterprise; the free tier may not expose custom apps): pastes a **confidential client**, exactly like Claude — set the custom app link to the MCP URL, then under Advanced Settings paste the same Client ID / Client secret. Gemini's redirect goes through Google's OAuth proxy `https://oauth-redirect.googleusercontent.com/r/...` (observed live 2026-08-09), allowlisted by `isAllowedRedirect` in `scripts/oauth.js`. **Caveat:** the OAuth handshake succeeds and Gemini accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — connection healthy, tool use unreliable. Claude and Grok are the dependable clients today.
-
-**Grok**: **self-registers** via the `/register` DCR path like ChatGPT — paste only the MCP URL, no Client ID. Its real `redirect_uri` `https://grok.com/connectors-oauth-exchange-code/` was observed live 2026-08-09 and is allowlisted via `GROK_CALLBACK_PREFIX`. Verified working end to end (`authorize → token` 200). If a future Grok change moves that callback, a rejected registration logs `register REJECTED (redirect_uri not allowlisted): [...]` so the new value can be re-allowlisted.
-
-## Autonomous Cloud Automation (Grok + Local MCP)
-
-Grok's scheduled prompts turn your machine into a headless "personal remote AI node": no browser tab, no desktop app, just `npm start` running in the background.
-
-- **Cloud-triggered local execution:** set up a scheduled prompt in Grok (Automation) that fires at a fixed time.
-- **Headless:** Grok's cloud service sends the request to `/mcp` over your Tailscale Funnel URL, and `aki-mcp-sv` runs the task — health check, log sweep, `git pull`, cleanup — with nothing open on your end.
-- **Zero UI required:** as long as the process is running, no browser or app needs to be open for the scheduled task to execute.
-
-### Connector icon
-
-claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host:
-
-```
-https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32
-```
-
-`<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
-
 ## Finding files
 
 Use `local__find_path`, not `filesystem__search_files`, to locate a file or directory. The built-in `search_files` doesn't return directories and tends to time out on large trees, so a remote session can appear to "not see" the very project it has access to. `find_path` scans the whole tree in one call (measured: ~0.2s across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
@@ -297,9 +297,14 @@ Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatG
 - Each ChatGPT connector instance self-registers one client into `~/.aki/mcpsv/oauth-dcr-clients.json` (mode 0600). Registration is open but not a way in on its own: only `claude.ai` and `chatgpt.com` redirect URIs are accepted, and a registered client still has to pass the passphrase consent screen and PKCE before it gets a token. Revoke those registrations by deleting that file and restarting.
 - Funnel stays enabled in the background for the whole project; `npm start` is the only thing you actively start/stop.
 
+### How this differs from Desktop Commander
+
+[Desktop Commander](https://github.com/wonderwhy-er/DesktopCommanderMCP) is the most widely used MCP terminal server. It runs locally for **Claude Desktop** and guards shell access with a **blocklist** (`blockedCommands`, an explicit list of forbidden commands). A blocklist is inherently leaky: you can't enumerate every dangerous command and variant, and the default is *allow*: anything not on the list gets through.
+
+This project targets a different scenario: exposing local access to Claude **on the web**, across the open internet via Funnel. It makes the opposite default choice: a **whitelist**. Nothing runs unless it's explicitly allowed.
+
 ### Why whitelist, not blocklist
 
-See [How this differs from Desktop Commander](#how-this-differs-from-desktop-commander) above for the comparison. For a server that exposes itself to the internet via Funnel, the whitelist choice is a real safety property, not a slogan:
 - **Fail-safe**: an unfamiliar or new command is blocked automatically, no guessing required.
 - **Minimal attack surface**: only the exact commands you've approved can run, nothing more.
 - **Granular down to the subcommand**: `git` is scoped to `status/log/diff/show`, something a blocklist can't express cleanly.
@@ -307,10 +312,7 @@ See [How this differs from Desktop Commander](#how-this-differs-from-desktop-com
 - **Read-only by construction**: the built-in set is read-only — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2); adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
 
 ## Screenshots
-<img width="941" height="1196" alt="image" src="https://github.com/user-attachments/assets/b800f5f1-4e9a-4a62-bccd-0f35923c07bc" />
 <img width="899" height="1035" alt="image" src="https://github.com/user-attachments/assets/c7504913-7ff0-4802-b607-b6a6220e82c2" />
 <img width="898" height="834" alt="image" src="https://github.com/user-attachments/assets/2b64541a-aea8-4bcf-b4dc-341254895a32" />
 <img width="892" height="1032" alt="image" src="https://github.com/user-attachments/assets/69413798-5445-4277-9797-a671da6657bd" />
 <img width="651" height="701" alt="gpt-aki-mcp-setting" src="https://github.com/user-attachments/assets/c067919c-1b7f-4f49-af81-82f1193f1f17" />
-
-

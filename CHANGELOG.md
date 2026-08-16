@@ -2,10 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.9.3] - 2026-08-16
+
+### Changed
+- **README restructured top-to-bottom**: Install now follows the value pitch directly instead of ~120 lines of architecture/requirements theory (`docs/plan/standalone-newbie-ux-followups.md` finding 13); Requirements/Architecture/Directory layout moved after the connector steps as reference material. Drafted through two independent `agy` passes (`gemini-3.1-pro-high` draft, `gemini-3.7-flash-high` adversarial fact-check against the live file) per the owner's explicit instruction, each claim re-verified against the actual repo before being applied — the pro draft's claim about the launcher's extraction path was wrong and the flash pass caught it. Gemini was also demoted out of the opening one-line pitch and labeled experimental, matching the tool-reliability caveat the README itself already documented; the `Run` section's "skip ahead" shortcut for standalone users (which skipped past required OAuth/folder-access context) was replaced with a pointer that keeps them reading instead of bypassing it. The `README.md` "Connecting from Claude web" step also had the same stale hidden-file-only passphrase wording as the OAuth confirm page below — fixed alongside it.
 
 ### Fixed
 - **README standalone-launcher steps didn't cover the OS security warnings every user hits on first run**: browser download warnings for `.command`/`.cmd`/`.run`, macOS Gatekeeper (including the System Settings → Open Anyway path for macOS 15+, where the old right-click bypass is gone), Windows SmartScreen, and the Linux `chmod +x` step (files download without the executable bit). Also added a "keep the terminal window open" note — closing it kills the running server, not just a log.
+- **A full newbie walkthrough (`docs/research/standalone-newbie-user-flow-audit-aug16.md`) found 3 more real gaps**: GitHub's own "Code → Download ZIP" button sits above the release link and produces an unrunnable source archive — README now steers around it; the OAuth confirm page told users to go find a hidden passphrase file instead of pointing at the value already shown in the control panel; standalone users had no way to know they can just rerun the same launcher file to start the server again later.
 
 ## [1.9.2] - 2026-08-16
 
