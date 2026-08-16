@@ -4,6 +4,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-08-16
+
+### Fixed
+- **Standalone launchers (`-app.zip`/`-app.tar.gz`) shipped with a blank, unstyled panel**: `scripts/http.js` serves the panel's CSS/JS/favicon from `${cwd}/public`, but `scripts/build/targets.js`'s `APP_ENTRIES` list — the files the payload builder actually packages — never included `public/`, so every 1.9.0 release asset was missing it entirely. `public` is now in `APP_ENTRIES`; the payload builder also now excludes `.DS_Store` when copying it in.
+
 ## [1.9.0] - 2026-08-16
 
 ### Added

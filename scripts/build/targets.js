@@ -20,6 +20,7 @@ export const LAUNCHERS = {
 };
 
 // App payload files, platform-neutral only while NATIVE_FILE_EXTS finds nothing (see payload.js).
-export const APP_ENTRIES = ['scripts', 'mcp-hub.config.json', 'package.json', 'LICENSE'];
+// `public` is required at runtime: scripts/http.js serves the panel's CSS/JS/favicon from `${cwd}/public`.
+export const APP_ENTRIES = ['scripts', 'public', 'mcp-hub.config.json', 'package.json', 'LICENSE'];
 
 export const NATIVE_FILE_EXTS = ['.node', '.dylib', '.so', '.dll'];

@@ -48,7 +48,7 @@ function copyAppEntries(repoRoot, stageDir) {
   for (const entry of APP_ENTRIES) {
     const src = path.join(repoRoot, entry);
     if (entry === 'package.json') continue; // already installed above with the lockfile
-    if (existsSync(src)) cpSync(src, path.join(stageDir, entry), { recursive: true });
+    if (existsSync(src)) cpSync(src, path.join(stageDir, entry), { recursive: true, filter: (f) => path.basename(f) !== '.DS_Store' });
   }
 }
 
