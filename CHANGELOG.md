@@ -19,6 +19,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **"Apply to file tools" broke the filesystem MCP server on any pre-existing (upgrade) install**: the npx-to-node invocation change above left `scripts/userdata.js`'s live-config reconciliation stale — it only ever added or pruned server entries, never migrated an existing one's launch shape — so `scripts/panel.js`'s arg-rewrite produced a broken hybrid `npx -y <folder>` command. Reconciliation now migrates an entry's launch shape when the template's changed, recovering the user's real directories by absolute-path detection; fresh installs were never affected.
 - **Bootstrap launcher never put the bundled Node runtime on PATH before exec'ing into `start.js`**, so mcp-hub's `node`-spawned children (`local`, `filesystem`) failed with ENOENT; caught by the new smoke test.
 - **Payload builder's `npm ci` never resolved on Windows**: `execFileSync('npm', ...)` bypasses the shell, so it couldn't find Windows' `npm.cmd` shim; caught by the release workflow's own Windows smoke-test job on the first real tag run.
+- **Payload builder's zip step failed on Windows**: the `zip` binary isn't on `windows-latest` runners; now uses PowerShell's `Compress-Archive` on that platform.
+- **Windows bootstrap smoke test hung indefinitely on timeout**: Windows has no exec-replace, so the launcher's `cmd.exe -> powershell.exe -> node.exe` stay three separate processes; killing only the `cmd.exe` PID orphaned `node.exe` holding stdio open forever. Now tree-kills via `taskkill /T /F` on win32.
 
 ## [1.8.1] - 2026-08-15
 
