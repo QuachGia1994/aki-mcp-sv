@@ -13,8 +13,9 @@
     "package": "node ./scripts/build/package.js"
   },
   "dependencies": {
-    "mcp-hub": "^4.2.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/server-filesystem": "^2026.7.10",
+    "mcp-hub": "^4.2.1",
     "zod": "^3.23.8"
   }
 }
