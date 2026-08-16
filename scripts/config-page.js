@@ -142,6 +142,7 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 <div class="tabpane${activeIngressTab === 'owned' ? ' active' : ''}" id="tab-owned">
 <p class="helptext">Replaces Tailscale entirely; OAuth and the tool suite stay the same.</p>
 <h3 class="subh">Have a Cloudflare tunnel credentials JSON?</h3>
+<p class="helptext">Use this only if you actually have the named tunnel's <span class="mono">cred.json</span>. A hostname by itself (for example <span class="mono">aki.oakgatekeeper.uk</span>) is not a credentials file; if that HTTPS edge already forwards to this server, keep using <span class="mono">PUBLIC_ORIGIN</span> below.</p>
 <div class="row"><label>cred.json</label><input type="file" id="tunnelCredFile" accept="application/json,.json"></div>
 <div class="row"><label>Origin</label><input type="text" id="tunnelOriginInput" placeholder="https://your-host"></div>
 <div class="acts"><button class="primary" data-act="saveTunnel">Save ingress</button><span class="msg" id="msgTunnel"></span></div>
@@ -276,7 +277,10 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
 <section id="s6"><h2>6 · Allowed shell commands</h2>
-<p class="helptext">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access.</p>
+<p class="helptext">Commands run as your user, so they can read and change anything your Windows account can. Chips allow any subcommand; click a chip to restrict it to specific subcommands.</p>
+<label style="display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0">
+  <input type="checkbox" id="allowAllCommands"> <strong>Allow all shell commands</strong> — bypass the executable-name allowlist. Direct chaining/redirection syntax is still rejected by <span class="mono">run_cmd</span>.
+</label>
 <input type="text" id="cmdFilter" placeholder="filter commands…">
 <div class="chips" id="cmdChips"></div>
 <div class="flist" id="cmdRows"></div>

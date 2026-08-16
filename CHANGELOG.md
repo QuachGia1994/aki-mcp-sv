@@ -4,6 +4,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- **Explicit unrestricted shell mode**: section 6 now has an `Allow all shell commands` switch backed by `shell.allowAll`; when enabled, `run_cmd` accepts any executable name while keeping its no-chaining/no-redirection parser boundary.
+- **Additional OAuth callback compatibility**: Gemini production/sandbox/test proxy prefixes, Grok DCR, and Mistral's integration callback are accepted by the redirect allowlist.
+
+### Changed
+- **`AKI_PUBLIC_ORIGIN` remains a backward-compatible alias for `PUBLIC_ORIGIN`**, preserving older launch setups while the documented variable stays `PUBLIC_ORIGIN`.
+
+### Fixed
+- **Windows AkiDevRule install/update button now runs the Python SSoT installer** (`py -3 install.py`) instead of invoking `bash.exe install.sh`, matching the repo's current Windows installation path.
+- **Owned-ingress copy now distinguishes a Cloudflare hostname from a tunnel credentials JSON**, so an existing `PUBLIC_ORIGIN` host is not mistaken for a file upload requirement.
+
 ## [1.9.0] - 2026-08-16
 
 ### Added

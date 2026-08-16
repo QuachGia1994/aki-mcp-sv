@@ -1,6 +1,6 @@
-# Security model — minimal OAuth 2.1 (Claude + ChatGPT)
+# Security model — minimal OAuth 2.1 (multi-client)
 
-Updated 2026-08-14 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
+Updated 2026-08-16 — Claude keeps a pre-issued confidential client; public/DCR clients share one strict redirect allowlist and PKCE flow.
 
 ## Current auth architecture
 
@@ -10,7 +10,7 @@ claude.ai / ChatGPT
    │      (/.well-known/openid-configuration is served as an alias of the latter, so ChatGPT can auto-discover registration_endpoint)
    │  ChatGPT (and optionally Claude): POST /register  (DCR)
    ▼
-gatekeeper.js  ── /register  → RFC 7591 (redirect URIs: Claude callback + chatgpt.com/connector/oauth/*)
+gatekeeper.js  ── /register  → RFC 7591 (strict allowlist: Claude, ChatGPT, Gemini proxy, Grok, Mistral callbacks)
                ── /authorize → confirmation page, requires passphrase (~/.aki/mcpsv/passphrase.txt)
                ── /token     → PKCE S256; confidential clients need client_secret, DCR public clients use none
                ── /mcp       → Bearer access token required, else 401 + WWW-Authenticate → mcp-hub
@@ -21,7 +21,7 @@ Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clie
 ## Client registration
 
 - **Claude (pre-registered)**: Client ID/Secret printed by `npm start`, pasted into Advanced settings. Redirect URI fixed to `https://claude.ai/api/mcp/auth_callback`. Auth method: `client_secret_post`.
-- **ChatGPT (DCR)**: ChatGPT calls `POST /register` with its `https://chatgpt.com/connector/oauth/{id}` redirect URI. Auth method: `none` (PKCE only). Only Claude/ChatGPT redirect URI patterns are accepted — arbitrary third-party redirects are rejected.
+- **DCR/public clients**: ChatGPT and Grok self-register through `POST /register`; the allowlist also accepts Google's Gemini OAuth proxy prefixes and Mistral's fixed integration callback. Auth method: `none` (PKCE only). Arbitrary third-party redirect URIs are rejected.
 
 ## The 2 layers that actually block unauthorized access
 
@@ -36,7 +36,7 @@ Ingress edge does not change the trust boundary. Public reachability can come fr
 
 - **No refresh token rotation** for the pre-registered confidential Claude client (spec rotation rule targets public clients).
 - **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible.
-- **DCR creates one stored client per ChatGPT connector instance** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations.
+- **DCR creates one stored client per connector instance** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations.
 
 ## Cross-references
 - `docs/research/claude-ai-oauth-connector.md` — research that drove the Claude pre-registered path

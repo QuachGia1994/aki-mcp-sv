@@ -164,7 +164,7 @@ Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where ak
 
 ## Configuration
 
-Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN`, `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_HUB_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
+Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN` (`AKI_PUBLIC_ORIGIN` is accepted as a backward-compatible alias), `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_HUB_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
 
 ## Exposing to the internet
 
@@ -238,7 +238,7 @@ Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for 
 4. Leave registration method on **DCR**, token endpoint auth method **none** — do **not** paste Claude's Client ID/Secret here.
 5. Enter the same **passphrase** on the confirmation page
 
-Same folder allowlist and shell allowlist as Claude. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
+Same folder scope and shell policy as Claude, including the optional `shell.allowAll` mode from panel section 6. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
 
 ## Connecting from Gemini and Grok
 
@@ -272,10 +272,10 @@ Use `local__find_path`, not `filesystem__search_files`, to locate a file or dire
 
 ## Security
 
-Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
+Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; DCR/public-client flows use PKCE and a strict redirect allowlist covering ChatGPT, Grok, Google's Gemini OAuth proxy, and Mistral's integration callback. Full writeup: `docs/ref/security-model.md`.
 
 - `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/mcp-hub.config.json` before connecting if you want it out).
-- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js` — flag-rich binaries whose own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) are deliberately kept out of it (issue #2), so a default connector cannot write, delete, or exec through the shell tool; the `find_path`/`search_content` tools cover the read-only lookup they were used for. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
+- The shell MCP is hand-written (`shell-mcp.js`) and uses `execFile`, never an implicit shell; direct chaining/redirection syntax such as `;`, `&`, `|`, and backticks is rejected before execution. The default mode enforces the read-only allowlist from `allowlist.js`, with panel edits stored at `~/.aki/mcpsv/setting.json` → `shell.allowlist`. Section 6 also exposes an explicit **Allow all shell commands** switch (`shell.allowAll=true`) for owners who intentionally want every executable name accepted; that disables the executable-name allowlist but does not remove the parser's no-chaining/no-redirection boundary. Enabling it gives the connected AI the same command-level reach as the local user account, so use it only when that is the intended trust model. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
 - `gatekeeper.js` is the single public entry point; the real `mcp-hub` never listens on anything but loopback.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.

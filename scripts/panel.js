@@ -89,9 +89,9 @@ function toStored(effective) {
   return { added, revoked };
 }
 
-function setShellAllowlist(allowlist) {
+function setShellAllowlist(allowlist, allowAll = false) {
   const settings = readSettings();
-  settings.shell = { ...settings.shell, allowlist: toStored(allowlist) };
+  settings.shell = { ...settings.shell, allowlist: toStored(allowlist), allowAll: Boolean(allowAll) };
   writeFileSync(SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
@@ -161,13 +161,14 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  const bash = IS_WIN ? 'bash.exe' : 'bash';
   try {
-    const log = await run(bash, [path.join(repo, 'install.sh')], repo);
+    const log = IS_WIN
+      ? await run('py', ['-3', path.join(repo, 'install.py')], repo)
+      : await run('bash', [path.join(repo, 'install.sh')], repo);
     return `${log.trim().split('\n').pop()} (source: ${repo})`;
   } catch (e) {
     if (IS_WIN && /ENOENT|not found|not recognized/i.test(e.message)) {
-      throw new Error('bash not found — install Git for Windows (includes bash) or run the install command from the panel manually');
+      throw new Error('Python launcher `py` not found — install Python 3 or run `py -3 install.py` from the akidevrule source repo');
     }
     throw e;
   }
@@ -209,6 +210,7 @@ const ROUTES = {
     // Same call shell/find_path/search_content enforce with (roots.js:getRoots()), so the list can never show a set that isn't the live one.
     paths: getRoots(),
     allowlist: loadAllowlist(),
+    allowAll: readSettings().shell?.allowAll === true,
     trustedDirs: trustedDirStatus(ctx.dataDir),
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
     ingressConfig: readIngressConfig(),
@@ -226,8 +228,8 @@ const ROUTES = {
     return { ok: true, message: 'restarted mcp-hub — file read/write/edit tools now use your saved folder list' };
   },
   'POST /api/allowlist': async (body) => {
-    setShellAllowlist(validateAllowlist(body.allowlist));
-    return { ok: true, message: `saved allowlist to ${SETTINGS_PATH}` };
+    setShellAllowlist(validateAllowlist(body.allowlist), body.allowAll);
+    return { ok: true, message: `saved shell permissions to ${SETTINGS_PATH}` };
   },
   // No hub restart: shell-mcp reads allowlistDirs fresh per command (checkPermission → preallowedByDir), so a save takes effect on the next run_cmd.
   'POST /api/trusted-dirs': async (body) => {

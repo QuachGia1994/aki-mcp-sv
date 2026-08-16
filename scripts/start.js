@@ -38,7 +38,7 @@ const passphrase = loadOrCreatePassphrase();
 const argOf = (flag) => { const i = process.argv.indexOf(flag); return i !== -1 ? process.argv[i + 1] : null; };
 const tunnelCred = argOf('--tunnel');
 const tunnelOrigin = argOf('--origin')?.replace(/\/+$/, '') || null;
-const publicOrigin = process.env.PUBLIC_ORIGIN?.replace(/\/+$/, '') || null;
+const publicOrigin = (process.env.PUBLIC_ORIGIN || process.env.AKI_PUBLIC_ORIGIN)?.replace(/\/+$/, '') || null;
 const savedIngress = !tunnelCred && !publicOrigin ? readIngressConfig() : null;
 const cloudflaredCredPath = tunnelCred || savedIngress?.credPath;
 

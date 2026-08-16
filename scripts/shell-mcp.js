@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { loadAllowlist, loadAllowlistDirs } from './allowlist.js';
+import { loadAllowlist, loadAllowlistDirs, readSettings } from './allowlist.js';
 import { getRoots, resolveUnderRoot, containedIn, overlaps } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
@@ -97,6 +97,7 @@ class Shell {
   }
 
   checkPermission(bin, args) {
+    if (readSettings().shell?.allowAll === true) return;
     const allowlist = loadAllowlist();
     if (bin in allowlist) {
       const allowedSubcommands = allowlist[bin];
@@ -139,7 +140,7 @@ export function register(server) {
     'run_cmd',
     {
       title: 'Run Command',
-      description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Use the search tools (find_path/search_content) for file/text lookup — find is not in the set because its own flags escape read-only. Pass cwd (absolute path under one of ${roots.join(', ')}, or relative to ${roots[0]}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
+      description: `Run one shell command. Default policy is the panel-managed read-only allowlist; owners may explicitly enable shell.allowAll to accept any executable name. Use the search tools (find_path/search_content) for file/text lookup. Pass cwd (absolute path under one of ${roots.join(', ')}, or relative to ${roots[0]}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
       inputSchema: { command: z.string(), cwd: z.string().optional() },
     },
     ({ command, cwd }) => shell.execute(command, cwd),

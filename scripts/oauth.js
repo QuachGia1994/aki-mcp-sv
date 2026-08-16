@@ -2,6 +2,7 @@
 // Minimal OAuth 2.1 authorization server.
 // Claude: pre-registered confidential client (paste Client ID/Secret), or DCR if it self-registers.
 // ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
+// Gemini/Grok: also RFC 7591 DCR; their redirect hosts are added to the whitelist below.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -18,12 +19,15 @@ import { esc } from './html.js';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
 const CHATGPT_CALLBACK_PREFIX = 'https://chatgpt.com/connector/oauth/';
-// Gemini custom connected apps redirect through Google's OAuth proxy, not a gemini.google.com path — observed live 2026-08-09:
-// redirect_uri=https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-<numeric>-<host-with-underscores>
-const GEMINI_CALLBACK_PREFIX = 'https://oauth-redirect.googleusercontent.com/r/';
-// Grok self-registers (DCR) with this callback — observed live 2026-08-09 from the register-REJECTED log:
-// redirect_uris=["https://grok.com/connectors-oauth-exchange-code/"]. Note: NOT a /connector/oauth/ path.
+// Gemini custom connected apps redirect through Google's OAuth proxy.
+const GEMINI_CALLBACK_PREFIXES = [
+  'https://oauth-redirect.googleusercontent.com/',
+  'https://oauth-redirect-sandbox.googleusercontent.com/',
+  'https://oauth-redirect-test.googleusercontent.com/',
+];
+// Grok self-registers (DCR) with this callback.
 const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
+const MISTRAL_CALLBACK = 'https://callback.mistral.ai/v1/integrations_auth/oauth2_callback';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
@@ -39,9 +43,10 @@ const refreshTokens = new Map();
 function isAllowedRedirect(uri) {
   if (typeof uri !== 'string' || !uri) return false;
   if (uri === CLAUDE_CALLBACK || uri === CHATGPT_LEGACY_CALLBACK) return true;
+  if (uri === MISTRAL_CALLBACK) return true;
   return uri.startsWith(CHATGPT_CALLBACK_PREFIX)
     || uri.startsWith(GROK_CALLBACK_PREFIX)
-    || uri.startsWith(GEMINI_CALLBACK_PREFIX);
+    || GEMINI_CALLBACK_PREFIXES.some((prefix) => uri.startsWith(prefix));
 }
 
 // Tokens survive restarts: the connector is a long-lived file-access grant, and losing it on every
@@ -145,7 +150,7 @@ export function metadataHandlers(origin) {
   };
 }
 
-// RFC 7591 — ChatGPT calls this once per connector instance. Only Claude/ChatGPT redirect URIs are accepted.
+// RFC 7591 — each client calls this once per connector instance. Only whitelisted redirect URIs are accepted.
 export async function handleRegister(req, res) {
   let body;
   try {
@@ -155,7 +160,7 @@ export async function handleRegister(req, res) {
   }
   const redirectUris = body.redirect_uris;
   if (!Array.isArray(redirectUris) || !redirectUris.length || !redirectUris.every(isAllowedRedirect)) {
-    // Log the rejected value so an unknown client's real redirect_uri (e.g. Grok) can be read off and allowlisted.
+    // Log the rejected value so an unknown client's real redirect_uri can be read off and allowlisted.
     log(`[oauth] register REJECTED (redirect_uri not allowlisted): ${JSON.stringify(redirectUris)}`);
     return json(res, 400, { error: 'invalid_redirect_uri' });
   }

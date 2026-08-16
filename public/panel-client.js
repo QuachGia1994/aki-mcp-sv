@@ -273,6 +273,9 @@ function filterCommands(q) {
 async function loadState() {
   const s = await api('GET', '/api/state');
   renderAllowlist(s.allowlist);
+  const allowAll = document.getElementById('allowAllCommands');
+  allowAll.checked = s.allowAll === true;
+  allowAll.onchange = markAllowDirty;
   renderTrustedDirs(s.trustedDirs || []);
   s.paths.forEach((p) => addPath(p));
   renderRuleChecks(s.ruleFiles);
@@ -328,9 +331,10 @@ const ACTIONS = {
   },
   saveAllowlist: (btn) => act(btn, 'msgAllow', async () => {
     const allowlist = collectAllowlist();
-    const { message } = await api('POST', '/api/allowlist', { allowlist });
+    const allowAll = document.getElementById('allowAllCommands').checked;
+    const { message } = await api('POST', '/api/allowlist', { allowlist, allowAll });
     btn.classList.remove('primary');
-    return message;
+    return allowAll ? message + ' — all executable names allowed' : message;
   }),
   installRules: (btn) => act(btn, 'msgRules', async () => {
     const { message } = await api('POST', '/api/install-rules');
