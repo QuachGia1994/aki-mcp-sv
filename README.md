@@ -3,7 +3,7 @@
 Give Claude on the **web** (claude.ai) and **ChatGPT** read/edit access to files and a whitelisted shell on your local machine, over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. No desktop app, no device install.
 <img width="1190" height="1062" alt="image" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-Version: **1.9.1** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
+Version: **1.9.2** ([CHANGELOG.md](CHANGELOG.md)) · License: MIT · Windows, Linux, macOS.
 
 <img width="1024" height="1296" alt="image" src="https://github.com/user-attachments/assets/4eac7831-4b0f-49cb-a62f-aadd0af54494" />
 
@@ -134,12 +134,15 @@ npm install
 No Node/npm install needed. Download the launcher for your OS from the [latest release](https://github.com/lacvietanh/aki-mcp-sv/releases/latest) and run it:
 
 - **macOS**: double-click `aki-mcp-sv-<version>-macos.command` (or run it from Terminal)
-- **Linux**: `./aki-mcp-sv-<version>-linux.run`
+- **Linux**: `chmod +x aki-mcp-sv-<version>-linux.run && ./aki-mcp-sv-<version>-linux.run` (downloaded files aren't executable by default)
 - **Windows**: double-click `aki-mcp-sv-<version>-windows.cmd`
 
-Each launcher downloads a private Node runtime + the app payload into your OS's per-user app-data directory on first run, then starts the same panel/OAuth flow as `npm start`. Nothing is installed system-wide, and later runs reuse what was already downloaded.
+Each launcher downloads a private Node runtime + the app payload into your OS's per-user app-data directory on first run, then starts the same panel/OAuth flow as `npm start`. Nothing is installed system-wide, and later runs reuse what was already downloaded. **Downloading and first run are the two points every OS warns you about — expected, not a sign anything's wrong:**
 
-**macOS first run may show "cannot be opened because the developer cannot be verified"**: the launcher isn't code-signed or notarized, so macOS Gatekeeper can flag it (not confirmed to happen on every Mac, just a known gap in an unsigned build). If it does: right-click the `.command` file → Open once to bypass Gatekeeper, or run `xattr -d com.apple.quarantine <path-to-file>` in Terminal first.
+- **Browser download warning** (Chrome/Edge/Safari flagging `.command`/`.cmd`/`.run` as an uncommon file type): click "Keep"/"Download anyway".
+- **macOS Gatekeeper** ("cannot be opened because the developer cannot be verified" / "not from an identified developer"): the launcher isn't code-signed or notarized. Right-click the `.command` file → Open once to bypass it; if that option is missing (macOS 15+ dropped it), open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** — or run `xattr -d com.apple.quarantine <path-to-file>` in Terminal first, which works on every macOS version.
+- **Windows SmartScreen** ("Windows protected your PC"): click **More info**, then **Run anyway**.
+- **Keep the terminal/console window open** — it's the running server, not just a progress log. Closing it stops everything, including the control panel and any active connection.
 
 **Windows still needs [Git for Windows](https://git-scm.com/download/win)** (or WSL) on `PATH` even with the standalone launcher: see [Requirements](#requirements) above; a bundled Node runtime replaces the Node.js install, not that prerequisite.
 

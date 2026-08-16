@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Fixed
+- **README standalone-launcher steps didn't cover the OS security warnings every user hits on first run**: browser download warnings for `.command`/`.cmd`/`.run`, macOS Gatekeeper (including the System Settings → Open Anyway path for macOS 15+, where the old right-click bypass is gone), Windows SmartScreen, and the Linux `chmod +x` step (files download without the executable bit). Also added a "keep the terminal window open" note — closing it kills the running server, not just a log.
+
 ## [1.9.2] - 2026-08-16
 
 ### Changed
