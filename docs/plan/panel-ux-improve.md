@@ -1,7 +1,29 @@
 # Plan: Control-panel UX improvements (sections 5 & 6, plus a scroll-spy TOC)
 
 ## Status
-Feature 4 (scroll-to-top + spy-TOC rail) is SHIPPED (2026-08-12). Features 1–3 are design only. Feature 3 is the load-bearing one still outstanding.
+Feature 4 (scroll-to-top + spy-TOC rail) is SHIPPED (2026-08-12). Features 1–3 are SHIPPED (2026-08-16) — implemented and static/code-flow-verified; the actual browser/runtime behavior (keystroke filtering, and the live-vs-restart split between the shell tools and the file-tools child) is **unverified at runtime** — see "Runtime verification still needed" below. Not moved to `done/` until that runtime pass happens.
+
+**Feature 1 — filter bar (section 6).** Shipped. `<input id="cmdFilter">` added above `#cmdChips` (`scripts/config-page.js`); `filterCommands()` toggles `.style.display` on `.chip`/`.cmdrow` by `dataset.bin` substring match, wired in `loadState()` (`public/panel-client.js`). Does not touch `collectAllowlist()`.
+
+**Feature 2 — auto-sort folders on save.** Shipped. `savePaths` sorts the collected list with `a.localeCompare(b, undefined, { sensitivity: 'base' })` before POST (`public/panel-client.js`). Locked rows sort in place with the rest — no pin-to-top special case (default choice, no strong reason found to deviate).
+
+**Feature 3 — runtime folder rebuild (KEY ITEM).** Shipped, with one structural decision beyond the plan's literal wording:
+- `setting.json` gained a `folders` key as the folder SSoT, read via a new `loadFolders()` (`scripts/allowlist.js`), mirroring `loadAllowlist()` — filters non-strings, `path.resolve`, dedupes; returns `[]` (not a default) when unset.
+- `scripts/roots.js`: `ROOTS`/`ROOT` module-level consts are gone, replaced by `getRoots()` — a per-call read of `loadFolders()`, falling back to `envDefaultRoots()` (MCP_DATA_DIR env, or home dir, **plus `~/.aki` and `~/.claude` always appended**) only when `folders` is unset. `resolveUnderRoot` now calls `getRoots()` internally. `containedIn`/`overlaps` are unchanged (already took an explicit root param).
+- Deviation from the plan's literal fallback: the plan's stated fallback was "keep `roots.js`'s explicit home-dir fallback" (a single dir). A pure home-dir-only fallback would have silently dropped `~/.aki`/`~/.claude` from the default folder set on any fresh install or pre-upgrade settings.json — breaking the rule-file access the panel's own prompt-builder tells the AI to rely on. `envDefaultRoots()` reconstructs the full 3-entry default (home-or-MCP_DATA_DIR-override + `~/.aki` + `~/.claude`) instead, to preserve exact pre-change behavior. This is a bug caught during implementation, not a scope change — flagging per `agent.B1` since it wasn't literally what the plan said.
+- `scripts/shell-mcp.js` / `scripts/search-mcp.js`: all direct `ROOT`/`ROOTS` usage (enforcement in `activeTrustedDirs()`, and tool-description strings) now go through `getRoots()`.
+- `POST /api/paths` no longer calls `restartHub()` — it writes `setting.json.folders` **atomically** (temp file + rename, `writeJsonAtomic` in `scripts/panel.js`) and returns. `GET /api/state`'s `paths` now comes from `getRoots()` instead of parsing the live `mcp-hub.config.json`.
+- Interim split for the external filesystem child (still boot-arg-bound, Stage 2 unaffected): a new `POST /api/paths/apply-filesystem` route + a labeled "Apply to file tools (restarts hub)" button pushes `getRoots()` into `mcp-hub.config.json`'s `filesystem.args` and restarts mcp-hub; the default Save path never does. `filesystemPaths()`/`setFilesystemPaths()` were adjusted for the filesystem entry's new 1-element-arg-prefix shape (`[entryScript, ...dirs]`), landed concurrently in the same session by `standalone-release-implementer`'s `docs/plan/standalone-release-delivery.md` work (commit `9a07fb4`) — coordinated live, no concurrent-write conflict (see below).
+- Must-fix latent bug: confirmed already resolved pre-existing, not re-touched.
+- `trustedDirStatus()` in `panel.js` intentionally still reads the filesystem child's frozen `filesystemPaths(dataDir)`, not live `getRoots()` — the RCE conflict check is about the child's actual write boundary, which only moves on explicit apply/restart.
+
+**mcp-hub.config.json coordination.** No edits made to it from this task — the design turned out not to need any (Feature 3 only touches the LIVE per-user copy at `~/.aki/mcpsv/mcp-hub.config.json`, written at runtime by `setFilesystemPaths`/`setFolders`, never the tracked template). Coordinated with `standalone-release-implementer` over `SendMessage` before reading its new `filesystem` entry shape: confirmed via reply I wasn't editing the template, they landed their npx→direct-node-invocation change (commit `9a07fb4`), and I adapted `scripts/panel.js`'s arg-slicing to the new 1-element prefix afterward.
+
+**Runtime verification still needed (browser + a running `npm start`).** Not run by this implementation pass per `coding.B3` (app runs are user-triggered). Manual steps:
+1. Section 6: type into the new filter box, confirm chips/rows narrow live and clear on empty input; Save still submits the full untouched set.
+2. Section 5: add/remove a folder, Save (no restart should occur), then confirm `local__find_path`/`local__search_content`/`run_cmd` reach the new folder on the very next call with no restart.
+3. Confirm `filesystem__read_file` does **not** see the new folder until "Apply to file tools" (or "Restart hub") is pressed — the intended lag, worded on the button/helptext.
+4. Confirm folder order in the UI is alphabetical (case-insensitive) after a Save + page reload.
 
 ## Update note (2026-08-12, after the update-check batch)
 - **Line anchors are pre-1.5.0.** Every `file:line` below was captured against the working tree *before* the Stage-1 consolidation (1.5.0) and the update-check batch, both of which inserted/moved lines in `config-page.js` and `panel.js`. Treat the numbers as approximate — **re-verify each anchor when this plan is actually built**, don't trust the exact line. The prose descriptions still hold; only the line numbers drifted.
