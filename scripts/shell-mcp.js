@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { loadAllowlist, loadAllowlistDirs } from './allowlist.js';
-import { ROOT, ROOTS, resolveUnderRoot, containedIn, overlaps } from './roots.js';
+import { getRoots, resolveUnderRoot, containedIn, overlaps } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
 // Interpreters run a script file passed as an argument, so trust must follow the script's path, not the interpreter binary (which lives on PATH, outside the trusted zones). Shells (sh/bash/zsh) are excluded on purpose — their argument is arbitrary code, not a file to locate under a zone.
@@ -14,7 +14,7 @@ const warnedDirs = new Set();
 // A trusted dir inside a writable filesystem root would let write_file + run_cmd become arbitrary code execution with no allowlist review in between. Drop it, fail-safe, and say why once.
 function activeTrustedDirs() {
   return loadAllowlistDirs().filter((dir) => {
-    const clash = ROOTS.find((root) => overlaps(dir, root));
+    const clash = getRoots().find((root) => overlaps(dir, root));
     if (clash && !warnedDirs.has(dir)) {
       warnedDirs.add(dir);
       process.stderr.write(`[shell] trusted dir ignored — overlaps writable root ${clash} (write+exec = RCE): ${dir}\n`);
@@ -134,11 +134,12 @@ class Shell {
 const shell = new Shell();
 
 export function register(server) {
+  const roots = getRoots();
   server.registerTool(
     'run_cmd',
     {
       title: 'Run Command',
-      description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Use the search tools (find_path/search_content) for file/text lookup — find is not in the set because its own flags escape read-only. Pass cwd (absolute path under one of ${ROOTS.join(', ')}, or relative to ${ROOT}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
+      description: `Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Use the search tools (find_path/search_content) for file/text lookup — find is not in the set because its own flags escape read-only. Pass cwd (absolute path under one of ${roots.join(', ')}, or relative to ${roots[0]}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
       inputSchema: { command: z.string(), cwd: z.string().optional() },
     },
     ({ command, cwd }) => shell.execute(command, cwd),

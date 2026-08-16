@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { opendirSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ROOT, resolveUnderRoot } from './roots.js';
+import { getRoots, resolveUnderRoot } from './roots.js';
 import { ok, fail } from './mcp-tool.js';
 
 const SKIP_DIRS = new Set([
@@ -78,11 +78,12 @@ function searchContent(query, from, glob, limit) {
 }
 
 export function register(server) {
+  const root = getRoots()[0];
   server.registerTool(
     'find_path',
     {
       title: 'Find Path',
-      description: `Find files AND directories anywhere under ${ROOT} in one call — use this first when locating a project, repo, or file by name, instead of walking directories one level at a time. query is a case-insensitive substring by default ("mcp" finds aki-mcp-sv), or a glob when it contains * or ? ("*.config.js", "src/**/*.ts"). Globs without a slash match the basename. Skips node_modules/.git/build output automatically. Directories come back with a trailing slash.`,
+      description: `Find files AND directories anywhere under ${root} in one call — use this first when locating a project, repo, or file by name, instead of walking directories one level at a time. query is a case-insensitive substring by default ("mcp" finds aki-mcp-sv), or a glob when it contains * or ? ("*.config.js", "src/**/*.ts"). Globs without a slash match the basename. Skips node_modules/.git/build output automatically. Directories come back with a trailing slash.`,
       inputSchema: {
         query: z.string(),
         path: z.string().optional().describe('subdirectory to search under, absolute or relative to the root'),
@@ -102,7 +103,7 @@ export function register(server) {
     'search_content',
     {
       title: 'Search Content',
-      description: `Search file contents recursively under ${ROOT} and return file:line:text. Case-insensitive extended regex (grep -iE): put every alias in one query with | — "funnel|ingress|thay.*funnel" hits EN+VI+synonym in one call, no need for separate calls per term. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
+      description: `Search file contents recursively under ${root} and return file:line:text. Case-insensitive extended regex (grep -iE): put every alias in one query with | — "funnel|ingress|thay.*funnel" hits EN+VI+synonym in one call, no need for separate calls per term. Use after find_path when you need where a string actually appears. glob narrows by filename (e.g. "*.json"). Skips binaries and build/vendor directories.`,
       inputSchema: {
         query: z.string(),
         path: z.string().optional(),

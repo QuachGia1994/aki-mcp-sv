@@ -59,6 +59,15 @@ export function loadAllowlist() {
   return merged;
 }
 
+// The folder SSoT twin of loadAllowlist(): setting.json is authoritative, read fresh on every call (roots.js:getRoots()) so a folder add/remove is live on the next tool call, the same way an allowlist edit already is.
+// An empty return (no `folders` key yet, e.g. a fresh install) is not "no restriction" — it signals the caller to fall back to its own safe default; roots.js owns that fallback, not this function.
+export function loadFolders() {
+  const stored = readSettings().folders;
+  if (!Array.isArray(stored)) return [];
+  const resolved = stored.filter((p) => typeof p === 'string' && p.trim()).map((p) => path.resolve(p));
+  return [...new Set(resolved)];
+}
+
 // Second, directory-scoped trust mechanism alongside the name allowlist: any executable/script under these zones may run without a per-file entry, so new Aki skills/scripts don't need a settings edit each time. Zones Aki owns end-to-end; whitelisting individual files inside them is the wrong grain (docs/plan/shell-allowlist.md).
 const DEFAULT_ALLOWLIST_DIRS = ['~/.aki', '~/.claude'];
 const expandTilde = (p) => (p === '~' ? os.homedir() : /^~[/\\]/.test(p) ? path.join(os.homedir(), p.slice(2)) : p);

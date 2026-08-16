@@ -2,12 +2,12 @@
 // Loopback-only, never behind the Funnel: it writes config and runs commands. Token-gated so no other browser page can POST to it.
 import http from 'node:http';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel } from './config-page.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
-import { overlaps } from './roots.js';
+import { getRoots, overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
@@ -31,20 +31,30 @@ const expandPath = (p, dataDir) =>
     .replace(/\$\{pathSeparator\}/g, path.sep)
     .replace(/\$\{\/\}/g, path.sep);
 
+// filesystem.args = [entryScript, ...dirs] — a 1-element prefix (the resolved server-filesystem entry point, no more npx flag/package pair).
 function filesystemPaths(dataDir) {
-  return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(2).map((p) => expandPath(p, dataDir));
+  return readJson(HUB_CONFIG, {}).mcpServers.filesystem.args.slice(1).map((p) => expandPath(p, dataDir));
 }
 
-// The tool arms enforce path containment via this same list, so it never drifts from what the panel shows as "allowed". Update every server scoped by MCP_DATA_DIR, whichever exist, so it holds across both the pre- and post-consolidation config shape.
+// The npx-successor filesystem child takes its allowed dirs as spawn args, re-reads nothing at runtime — so this only takes effect on the next restart of that child (see the "apply to file tools" panel action). Our own tools (shell/find_path/search_content/agy/kiro) no longer read this file at all; they read setting.json's `folders` fresh per call via roots.js:getRoots().
 function setFilesystemPaths(paths) {
   const config = readJson(HUB_CONFIG, {});
-  const [flag, pkg] = config.mcpServers.filesystem.args;
-  config.mcpServers.filesystem.args = [flag, pkg, ...paths];
-  const rootsEnv = paths.join(',');
-  for (const srv of Object.values(config.mcpServers)) {
-    if (srv.env && 'MCP_DATA_DIR' in srv.env) srv.env.MCP_DATA_DIR = rootsEnv;
-  }
+  const [entryScript] = config.mcpServers.filesystem.args;
+  config.mcpServers.filesystem.args = [entryScript, ...paths];
   writeFileSync(HUB_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+function writeJsonAtomic(file, data) {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
+  renameSync(tmp, file);
+}
+
+// Folders are a containment boundary (coding.C4): written atomically so a partial write can never transiently widen it. Mirrors setShellAllowlist below, but folders are security-load-bearing enough to warrant the extra step.
+function setFolders(paths) {
+  const settings = readSettings();
+  settings.folders = paths;
+  writeJsonAtomic(SETTINGS_PATH, settings);
 }
 
 // Whatever lands here becomes the gate shell-mcp checks, and a wrong type reads as "no restriction", not as an error.
@@ -61,6 +71,7 @@ function validatePaths(paths) {
   if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string' && path.isAbsolute(p))) {
     throw new Error('folder list must be absolute paths');
   }
+  if (!paths.length) throw new Error('an empty list cuts off all of Claude\'s file access; add at least one folder');
   return paths.map((p) => path.normalize(p));
 }
 
@@ -194,18 +205,24 @@ function refreshLocalVersions(updateInfo) {
 
 const ROUTES = {
   'GET /api/state': async (body, ctx) => ({
-    paths: filesystemPaths(ctx.dataDir),
-    // The same call the MCP server enforces with, so the textarea can never show a set that isn't the live one.
+    // Same call shell/find_path/search_content enforce with (roots.js:getRoots()), so the list can never show a set that isn't the live one.
+    paths: getRoots(),
     allowlist: loadAllowlist(),
     trustedDirs: trustedDirStatus(ctx.dataDir),
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
     ingressConfig: readIngressConfig(),
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
-  'POST /api/paths': async (body, ctx) => {
-    setFilesystemPaths(validatePaths(body.paths));
+  // No hub restart: setFolders writes setting.json, and roots.js reads it fresh per call — a save takes effect on the next shell/find_path/search_content call, same as the allowlist.
+  'POST /api/paths': async (body) => {
+    setFolders(validatePaths(body.paths));
+    return { ok: true, message: 'saved — shell, find, and search pick this up on their next call' };
+  },
+  // The filesystem child (read_file/write_file/edit_file) takes its allowed dirs as spawn args and re-reads nothing — this is the explicit, labeled opt-in that pushes the saved folder list to it and bounces mcp-hub to apply it.
+  'POST /api/paths/apply-filesystem': async (body, ctx) => {
+    setFilesystemPaths(getRoots());
     ctx.restartHub();
-    return { ok: true, message: 'saved folders and restarted mcp-hub' };
+    return { ok: true, message: 'restarted mcp-hub — file read/write/edit tools now use your saved folder list' };
   },
   'POST /api/allowlist': async (body) => {
     setShellAllowlist(validateAllowlist(body.allowlist));
