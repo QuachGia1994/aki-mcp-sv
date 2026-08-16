@@ -16,14 +16,7 @@ const SHA256_HELPER = `sha256_of() {
   fi
 }`;
 
-// install_verified URL SHA256 DEST_DIR EXTRACTED_TOP_NAME
-// No-op if DEST_DIR already exists (subsequent runs do not re-download). Extracts to a sibling
-// temp dir under DEST_DIR's own parent, verifies the checksum before extraction touches anything
-// permanent, then atomically renames into place — a failed download/extract never disturbs an
-// existing DEST_DIR, and DEST_DIR is never overwritten in place.
-// A trap (not scattered manual "rm -rf" calls) covers every failure exit inside this function —
-// download, checksum mismatch, extract, or mv — so a stray .tmp-* directory never survives a
-// failed attempt, however it failed. It self-clears on the success path's own final line.
+// install_verified URL SHA256 DEST_DIR EXTRACTED_TOP_NAME — no-op if DEST_DIR exists, else checksum-verifies in a sibling temp dir and atomically renames in; EXIT trap cleans up any failure.
 const INSTALL_HELPER = `install_verified() {
   url="$1"; expected_sha="$2"; dest_dir="$3"; extracted_name="$4"
   if [ -d "$dest_dir" ]; then

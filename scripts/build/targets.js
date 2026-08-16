@@ -12,16 +12,14 @@ export const NODE_TARGETS = {
   'win32-x64': { dist: 'win-x64', ext: 'zip', mainBin: 'node.exe' },
 };
 
-// One row per shipped launcher asset. `nodeTargets` lists every Node target that launcher must
-// be able to install (macOS ships one launcher covering both Apple Silicon and Intel — it picks
-// between its two Node targets at first-run time via `uname -m`, never via a second asset).
+// One row per shipped launcher asset — macOS covers both Apple Silicon and Intel via `uname -m` at first run, not a second asset.
 export const LAUNCHERS = {
   macos: { assetSuffix: 'macos.command', nodeTargets: ['darwin-arm64', 'darwin-x64'], appArchiveExt: 'tar.gz' },
   windows: { assetSuffix: 'windows.cmd', nodeTargets: ['win32-x64'], appArchiveExt: 'zip' },
   linux: { assetSuffix: 'linux.run', nodeTargets: ['linux-x64'], appArchiveExt: 'tar.gz' },
 };
 
-// App payload files, platform-neutral only while NATIVE_FILE_GLOBS finds nothing (see payload.js).
+// App payload files, platform-neutral only while NATIVE_FILE_EXTS finds nothing (see payload.js).
 export const APP_ENTRIES = ['scripts', 'mcp-hub.config.json', 'package.json', 'LICENSE'];
 
 export const NATIVE_FILE_EXTS = ['.node', '.dylib', '.so', '.dll'];

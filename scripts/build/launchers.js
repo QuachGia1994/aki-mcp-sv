@@ -1,9 +1,6 @@
-// Renders the three release launcher scripts. Every value inside them is resolved and pinned
-// here, at build time — Node download URL/hash (fetched from nodejs.org's own published manifest)
-// and the app payload's GitHub Release asset URL/hash (predictable from repo+tag+filename; the
-// upload does not need to have happened yet for the URL to be correct once it does).
-// docs/plan/standalone-release-delivery.md § Installation layout: "no unpinned `latest` fetch at
-// launcher runtime."
+// Renders the three release launchers with every URL/hash resolved and pinned at build time —
+// Node's from nodejs.org's manifest, the app payload's from repo+tag+filename (valid before upload).
+// docs/plan/standalone-release-delivery.md § Installation layout.
 import { mkdirSync, writeFileSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 import { NODE_TARGETS, LAUNCHERS } from './targets.js';
@@ -12,9 +9,7 @@ import { renderPosixLauncher } from './launcher-templates/posix.js';
 import { renderWindowsLauncher } from './launcher-templates/windows.js';
 import { REPO_MCP } from '../update-check.js';
 
-// `assetBaseUrl` override exists only for scripts/build/smoke-test.js, which serves the just-built
-// payload over a throwaway local HTTP server instead of the real (not-yet-uploaded) GitHub Release
-// — same launcher templates, same install mechanism, no dependency on a release actually existing.
+// `assetBaseUrl` override is for smoke-test.js, which serves the payload from a local scratch server.
 function releaseAssetUrl(version, assetName, assetBaseUrl) {
   const base = assetBaseUrl ?? `https://github.com/${REPO_MCP}/releases/download/${version}`;
   return `${base}/${assetName}`;

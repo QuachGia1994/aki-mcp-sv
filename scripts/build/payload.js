@@ -1,15 +1,11 @@
-// Builds the platform-neutral app payload: scripts/ + mcp-hub.config.json + package.json + LICENSE
-// preinstalled with `npm ci --omit=dev` (build-time only, never on the client), archived
-// deterministically as .tar.gz + .zip. One payload serves every OS launcher — see NATIVE_FILE_EXTS
-// scan below, which is the assumption's own enforcement (docs/plan/standalone-release-delivery.md
-// § Release assets).
+// Builds the platform-neutral app payload (npm ci --omit=dev, build-time only) as deterministic .tar.gz + .zip.
+// docs/plan/standalone-release-delivery.md § Release assets.
 import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { APP_ENTRIES, NATIVE_FILE_EXTS } from './targets.js';
 
-// Fixed timestamp applied to every staged file so byte-identical inputs always produce a
-// byte-identical archive (build reproducibility, not a functional requirement).
+// Fixed timestamp on every staged file so byte-identical inputs produce a byte-identical archive.
 const DETERMINISTIC_MTIME = new Date('2026-01-01T00:00:00Z');
 
 function walk(dir) {
@@ -37,8 +33,7 @@ function normalizeTimestamps(root) {
   for (const f of walk(root)) utimesSync(f, DETERMINISTIC_MTIME, DETERMINISTIC_MTIME);
 }
 
-// Isolated staging copy — npm ci runs here, never at REPO_ROOT, so the shared dev tree's
-// node_modules is never touched.
+// Isolated staging copy — npm ci runs here, never at REPO_ROOT, so the dev tree's node_modules is never touched.
 function installProdDeps(repoRoot, stageDir) {
   cpSync(path.join(repoRoot, 'package.json'), path.join(stageDir, 'package.json'));
   cpSync(path.join(repoRoot, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
@@ -54,16 +49,14 @@ function copyAppEntries(repoRoot, stageDir) {
   }
 }
 
-// Explicit sorted file list, not `tar -C dir .` / `zip -r`, so archive member order — and
-// therefore the resulting bytes — does not depend on filesystem enumeration order.
+// Explicit sorted file list, not `tar -C dir .` / `zip -r`, so archive bytes don't depend on filesystem enumeration order.
 function sortedRelativeFiles(root) {
   return walk(root)
     .map((f) => path.relative(root, f))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-// Both archives contain one top-level directory (archiveBaseName), matching what the launcher
-// templates' install_verified() expects to find after extraction and rename into place.
+// Both archives contain one top-level directory (archiveBaseName) — what install_verified() expects after extraction.
 function buildTarGz(stageParentDir, files, outPath) {
   const listPath = `${outPath}.filelist`;
   writeFileSync(listPath, files.join('\n'));

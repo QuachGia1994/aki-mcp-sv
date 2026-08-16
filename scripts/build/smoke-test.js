@@ -1,19 +1,6 @@
 #!/usr/bin/env node
-// Bootstrap smoke test — one OS launcher, run for real, into a scratch user-data root.
+// Bootstrap smoke test: builds a payload+launcher against a local scratch server, runs it with Node stripped from PATH, asserts the private runtime + app payload land.
 // docs/plan/standalone-release-delivery.md § Required implementation sequence, step 4.
-//
-// Builds a fresh payload and a launcher pointed at a throwaway local HTTP server instead of the
-// real GitHub Release (which may not have this version's assets uploaded yet — the whole reason
-// this step exists is that 1.8.0/1.8.1 never got that far). The launcher subprocess is spawned
-// with Node's own directory stripped from PATH, so it genuinely cannot fall back to a
-// preinstalled Node — proving it provisions its own private runtime, the same claim a real
-// Node-absent machine needs to be true. Node's own download still hits the real nodejs.org
-// (that part is never faked: the checksum-verify path being exercised is the one shipped).
-//
-// This driver script itself needs Node to build/serve/orchestrate — that's this CI job's own
-// runtime, analogous to a maintainer's machine building a release. Only the launcher-under-test's
-// PATH is scrubbed. Full OAuth/Tailscale/browser startup stays explicitly out of scope (plan
-// step 4: "Tailscale/OAuth/browser flow remains runtime verification, not a CI claim").
 import { createServer } from 'node:http';
 import { readFileSync, readdirSync, mkdtempSync, rmSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,11 +31,7 @@ function serveDir(dir) {
   });
 }
 
-// PATH stripped of every directory that resolves a `node`/`node.exe` — not just the currently
-// running interpreter's own directory, since a real dev/CI machine can carry several Node
-// installs (nvm, homebrew, a system package) on PATH at once. What remains must still carry
-// curl/tar/unzip/sh (POSIX) or the platform's built-in PowerShell (Windows) — the runtime
-// prerequisites the plan documents.
+// Strips every PATH dir that resolves a `node`/`node.exe`, not just the running interpreter's own dir.
 function pathWithoutNode() {
   const sep = process.platform === 'win32' ? ';' : ':';
   const nodeBinName = process.platform === 'win32' ? 'node.exe' : 'node';
@@ -71,19 +54,10 @@ function launcherKeyForPlatform() {
   throw new Error(`unsupported smoke-test platform: ${process.platform}`);
 }
 
-// Deliberately async (child_process.spawn), not spawnSync: this driver's in-process local HTTP
-// server (serveDir) needs the event loop free to actually answer the launcher's download
-// request. spawnSync blocks the whole event loop for its duration, which starves that server —
-// the launcher's curl/Invoke-WebRequest call would hang until the timeout fired with no response
-// ever sent, which looks identical to a real network failure but isn't one.
-// Ports are pinned away from start.js's defaults (9998/9999/19999) so a stray already-running
-// dev instance on the host machine can't collide with this scratch run. PUBLIC_ORIGIN (start.js's
-// own existing ingress-precedence knob) and MCP_SKIP_BROWSER_OPEN keep this scratch run from
-// touching the real machine at all — no Tailscale Funnel mutation, no browser window (coding.B3:
-// running the app is user-triggered; a verification script does not get to have side effects on
-// the host it runs on).
+// Async spawn: spawnSync would block the event loop and starve serveDir's HTTP server.
+// PUBLIC_ORIGIN + MCP_SKIP_BROWSER_OPEN stop this run from touching the real machine (coding.B3).
 function runLauncher(launcherPath, scrubbedPath, fakeHome, timeoutMs) {
-  const portEnv = { MCP_HUB_PORT: '29999', GATEKEEPER_PORT: '28999', PANEL_PORT: '28998' };
+  const portEnv = { MCP_HUB_PORT: '29999', GATEKEEPER_PORT: '28999', PANEL_PORT: '28998' }; // off start.js's defaults, avoids colliding with a real running instance
   const safetyEnv = { PUBLIC_ORIGIN: 'http://127.0.0.1:28998', MCP_SKIP_BROWSER_OPEN: '1' };
   const isWin = process.platform === 'win32';
   const [cmd, args, env] = isWin
@@ -142,9 +116,7 @@ async function main() {
   console.log(`[smoke-test] PATH scrubbed of Node — confirmed no "node" resolvable before running the launcher`);
 
   console.log(`[smoke-test] running ${launcherPath} (first run — expect real downloads)`);
-  // start.js never returns on its own (it stays up serving the panel/gatekeeper); the launcher
-  // execs into it, so the install step completing and Node actually booting is what a bounded
-  // timeout + non-zero-from-timeout result proves, not a clean exit.
+  // start.js never exits on its own — a timeout kill is the expected end, not a clean exit.
   const first = await runLauncher(launcherPath, scrubbedPath, fakeHome, 45_000);
   console.log(`[smoke-test] first run ended (${first.timedOut ? 'killed at timeout, expected — start.js stays up' : `exited on its own, status ${first.status}`})`);
   console.log(first.stdout || '');
@@ -186,8 +158,7 @@ async function main() {
   console.log('[smoke-test] ALL CHECKS PASSED');
 }
 
-// Node dist dir names differ per target ("darwin-arm64" etc) but there is exactly one child dir
-// under runtime/<version>/ after a single-target smoke-test install.
+// Exactly one child dir exists under runtime/<version>/ after a single-target smoke-test install.
 function oneDirNameUnder(dir) {
   const entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
   if (entries.length !== 1) throw new Error(`expected exactly one target directory under ${dir}, found: ${entries.map((e) => e.name).join(', ')}`);
