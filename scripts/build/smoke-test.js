@@ -69,7 +69,8 @@ function runLauncher(launcherPath, scrubbedPath, fakeHome, timeoutMs) {
     : ['sh', [launcherPath], { PATH: scrubbedPath, ...portEnv, ...safetyEnv, HOME: fakeHome }];
 
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { env });
+    // detached on win32: its own process group, so taskkill /T targets only this tree, never the smoke-test process itself.
+    const child = spawn(cmd, args, { env, ...(isWin ? { detached: true } : {}) });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -78,8 +79,12 @@ function runLauncher(launcherPath, scrubbedPath, fakeHome, timeoutMs) {
     // Windows has no exec-replace: cmd.exe->powershell.exe->node.exe stay separate, so killing cmd.exe alone orphans node.exe holding stdio open forever; taskkill /T kills the whole tree.
     const timer = setTimeout(() => {
       timedOut = true;
-      if (isWin) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
-      else child.kill('SIGTERM');
+      if (isWin) {
+        const r = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { encoding: 'utf8' });
+        console.log(`[smoke-test] taskkill pid=${child.pid} status=${r.status} stdout=${(r.stdout || '').trim()} stderr=${(r.stderr || '').trim()} spawnError=${r.error}`);
+      } else {
+        child.kill('SIGTERM');
+      }
     }, timeoutMs);
     child.on('close', (status) => {
       clearTimeout(timer);
@@ -169,5 +174,6 @@ function oneDirNameUnder(dir) {
 
 main().catch((err) => {
   console.error('[smoke-test] FAILED:', err.message);
-  process.exit(1);
+  // exitCode, not process.exit(): the latter can truncate not-yet-flushed stdio on Windows.
+  process.exitCode = 1;
 });
