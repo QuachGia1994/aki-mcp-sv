@@ -66,7 +66,7 @@ OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Clien
 
 ## Requirements
 
-- Node.js, on Windows, Linux, or macOS. Don't have it? Skip straight to [the standalone package](#install) below, no install needed **(macOS Apple Silicon only in v1.8.0; Windows, Linux, and Intel Mac: use the Install steps below instead)**.
+- Node.js, on Windows, Linux, or macOS. Don't have it? Skip straight to [the standalone package](#install) below, no install needed — bootstrap launchers ship for Windows, Linux, and macOS.
 - **Windows only:** [Git for Windows](https://git-scm.com/download/win) (or WSL) on `PATH` — the shell/search tools shell out to Unix binaries (`ls cat pwd grep head tail wc file stat tree ps df du whoami uname`), and akidevrule's `install.sh` needs `bash`; Git for Windows' `usr/bin` ships the coreutils/findutils/grep/diffutils this needs. Same category of prerequisite as Tailscale below, not a code dependency.
 - Tailscale (one-time setup):
   1. [Install Tailscale](https://tailscale.com/download) and sign in (on macOS, the app or `brew install tailscale` both work as long as `tailscale` is on PATH)
@@ -127,11 +127,17 @@ npm install
 
 ### Don't have Node.js? Use the standalone package
 
-No Node/npm install needed. **v1.8.0 ships this for macOS Apple Silicon (`darwin-arm64`) only**: download it from the [latest release](https://github.com/lacvietanh/aki-mcp-sv/releases/latest), extract it, then run `./start.sh` from inside the extracted folder. Everything (a private Node runtime, dependencies, app code) is already inside; first run just launches the same panel/OAuth flow as `npm start`. On Intel Mac, Windows, or Linux, or if you already have Node.js, use `git clone && npm install && npm start` instead; standalone archives for those targets are planned for a later release.
+No Node/npm install needed. Download the launcher for your OS from the [latest release](https://github.com/lacvietanh/aki-mcp-sv/releases/latest) and run it:
 
-**First run may show "cannot be opened because the developer cannot be verified"**: the package isn't code-signed or notarized, so macOS Gatekeeper can flag it (not confirmed to happen on every Mac, just a known gap in an unsigned build). If it does: right-click the extracted folder (or `start.sh`) → Open once to bypass Gatekeeper, or run `xattr -d com.apple.quarantine <path-to-extracted-folder>` in Terminal first.
+- **macOS**: double-click `aki-mcp-sv-<version>-macos.command` (or run it from Terminal)
+- **Linux**: `./aki-mcp-sv-<version>-linux.run`
+- **Windows**: double-click `aki-mcp-sv-<version>-windows.cmd`
 
-**Windows still needs [Git for Windows](https://git-scm.com/download/win)** (or WSL) on `PATH` even when a future standalone build lands: see [Requirements](#requirements) above; a bundled Node runtime replaces the Node.js install, not that prerequisite.
+Each launcher downloads a private Node runtime + the app payload into your OS's per-user app-data directory on first run, then starts the same panel/OAuth flow as `npm start`. Nothing is installed system-wide, and later runs reuse what was already downloaded.
+
+**macOS first run may show "cannot be opened because the developer cannot be verified"**: the launcher isn't code-signed or notarized, so macOS Gatekeeper can flag it (not confirmed to happen on every Mac, just a known gap in an unsigned build). If it does: right-click the `.command` file → Open once to bypass Gatekeeper, or run `xattr -d com.apple.quarantine <path-to-file>` in Terminal first.
+
+**Windows still needs [Git for Windows](https://git-scm.com/download/win)** (or WSL) on `PATH` even with the standalone launcher: see [Requirements](#requirements) above; a bundled Node runtime replaces the Node.js install, not that prerequisite.
 
 The package itself needs no network access to start: Node, npm, and npx are all bundled, and the built-in filesystem tool (`@modelcontextprotocol/server-filesystem`) is a direct dependency invoked with a plain `node` call — no `npx`/npm-registry resolution at any point, first run included.
 

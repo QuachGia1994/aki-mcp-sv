@@ -1,10 +1,10 @@
 # Standalone release delivery for Node-absent users
 
-## Status
+## Status — shipped and verified (2026-08-16)
 
-Steps 1, 2, 3, 4, and 6 of the "Required implementation sequence" are implemented (commits `9a07fb4`, `b39e0e7`, `209ebf8`): network-free filesystem-server invocation, the payload+launcher builder, the tag-triggered release workflow, the multi-OS bootstrap smoke test, and the release-gate script that checksum-verifies assets against the real uploaded release before publish.
+All 6 steps of the "Required implementation sequence" are implemented and verified against a real tagged release, `1.9.0` (commit `b42452d`): network-free filesystem-server invocation, the payload+launcher builder, the tag-triggered release workflow, the multi-OS bootstrap smoke test, the release-gate script, and README/CHANGELOG public copy.
 
-**Step 5 (README/CHANGELOG public copy) is still blocked, by design.** It requires an actual tagged release to run through the new workflow and land real assets on GitHub — that is an external, hard-to-reverse action (pushing a release tag) outside a subagent's authority, not something left undone by oversight. Next action to close this plan: cut a real release tag, let the workflow run end to end, confirm via `gh release view <version> --json assets` that all 6 assets are present and checksums match, then write the README/CHANGELOG copy against that confirmed reality. Do not move this plan to `done/` until that's done.
+`gh release view 1.9.0 --json isDraft,assets` confirmed `isDraft: false` and all 6 required assets present (`-app.tar.gz`, `-app.zip`, `-macos.command`, `-windows.cmd`, `-linux.run`, `SHA256SUMS`). The first two tag attempts surfaced real bugs along the way, each fixed and re-verified before the tag that finally shipped: Windows `npm ci`/`zip` invocation, an orphaned-process hang in the Windows smoke test (`taskkill /T /F`), a leaked HTTP-server handle after switching to `process.exitCode` (`try/finally` cleanup), an under-provisioned Windows first-run timeout (45s → 300s), and — the one that actually blocked the last release run — the payload builder's `npm ci` staging directory being left behind under `dist/`, which broke `gh release create dist/*` by including a directory as an asset. See `CHANGELOG.md`'s `[1.9.0]` entry for the user-facing summary.
 
 This plan supersedes the distribution-status claim in `docs/plan/done/standalone-packaging.md`: the builder existed, but no standalone asset was attached to releases 1.8.0 or 1.8.1. That completed-plan record remains immutable; this plan is the source of truth for the release path until step 5 closes.
 
