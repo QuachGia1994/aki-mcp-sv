@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Bootstrap smoke test: builds a payload+launcher against a local scratch server, runs it with Node stripped from PATH, asserts the private runtime + app payload land.
-// docs/plan/standalone-release-delivery.md § Required implementation sequence, step 4.
+// See docs/plan/standalone-release-delivery.md § Required implementation sequence, step 4.
 import { createServer } from 'node:http';
 import { readFileSync, readdirSync, mkdtempSync, rmSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -75,9 +75,11 @@ function runLauncher(launcherPath, scrubbedPath, fakeHome, timeoutMs) {
     let timedOut = false;
     child.stdout.on('data', (d) => (stdout += d));
     child.stderr.on('data', (d) => (stderr += d));
+    // Windows has no exec-replace: cmd.exe->powershell.exe->node.exe stay separate, so killing cmd.exe alone orphans node.exe holding stdio open forever; taskkill /T kills the whole tree.
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGTERM');
+      if (isWin) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      else child.kill('SIGTERM');
     }, timeoutMs);
     child.on('close', (status) => {
       clearTimeout(timer);
