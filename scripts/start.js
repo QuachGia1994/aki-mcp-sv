@@ -154,10 +154,15 @@ try {
 
 panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, dataDir, restartHub, updateInfo });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
-try {
-  await openBrowser(panelUrl);
-} catch (e) {
-  console.error(`[start] could not auto-open the panel (open manually: ${panelUrl}): ${e.message}`);
+// Escape hatch for automated runs (bootstrap smoke tests) that must not pop a browser window — off by default, normal `npm start` is unaffected.
+if (process.env.MCP_SKIP_BROWSER_OPEN) {
+  console.log(`[start] MCP_SKIP_BROWSER_OPEN set — not opening a browser (panel: ${panelUrl})`);
+} else {
+  try {
+    await openBrowser(panelUrl);
+  } catch (e) {
+    console.error(`[start] could not auto-open the panel (open manually: ${panelUrl}): ${e.message}`);
+  }
 }
 
 function shutdown() {
