@@ -19,8 +19,19 @@ export const LAUNCHERS = {
   linux: { assetSuffix: 'linux.run', nodeTargets: ['linux-x64'], appArchiveExt: 'tar.gz' },
 };
 
-// App payload files, platform-neutral only while NATIVE_FILE_EXTS finds nothing (see payload.js).
-// `public` is required at runtime: scripts/http.js serves the panel's CSS/JS/favicon from `${cwd}/public`.
-export const APP_ENTRIES = ['scripts', 'public', 'mcp-hub.config.json', 'package.json', 'LICENSE'];
+// App payload files (platform-neutral while NATIVE_FILE_EXTS finds nothing, see payload.js). public/* is curated to what http.js serves at runtime, not the whole dir (CHANGELOG 1.9.1).
+export const APP_ENTRIES = [
+  'scripts',
+  'public/panel.css',
+  'public/panel-client.js',
+  'public/favicon',
+  'public/extension-claude-usage.png',
+  'public/extension-grok-usage.png',
+  'public/QR-AkiTao-PayPal.png',
+  'public/QR-Aki.MOMO.jpg',
+  'mcp-hub.config.json',
+  'package.json',
+  'LICENSE',
+];
 
 export const NATIVE_FILE_EXTS = ['.node', '.dylib', '.so', '.dll'];
