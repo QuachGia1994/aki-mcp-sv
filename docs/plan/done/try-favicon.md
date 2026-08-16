@@ -1,5 +1,9 @@
 # Try MCP-provided icon
 
+## Status
+
+Done — closed by a different fix, not by this experiment. A custom subdomain ingress shipped (`docs/plan/cloudflare-tunnel-ingress.md`), and Claude fetches the favicon from that top-level domain directly. The `serverInfo.icons` path below was never tested.
+
 ## Goal
 
 Find out whether Claude's connector UI can use the MCP server's declared icon, avoiding the current `*.ts.net` favicon limitation without changing the zero-config Tailscale Funnel architecture.
