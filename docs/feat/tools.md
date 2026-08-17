@@ -12,8 +12,10 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `search` | `find_path`, `search_content` | Fast index-backed path + content lookup (no per-call `find`/`grep` spawn) | The remote model, directly |
 > The upstream `filesystem` server also exposes `search_files`, but `find_path` supersedes it (files+dirs, ~0.2s). It is **prompt-banned**, not removed: the pasteable instruction tells the model `never … search_files`. This is a soft/UX boundary — the tool is still listed. A hard removal would need a stdio filter proxy, which was rejected because it would break the args-position allowlist parsers in `scripts/panel.js` (`docs/plan/improve-instructions-1.3.1.md` §2).
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
-| `agy` | `agy` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.6-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
+| `agy` | `agy` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-high` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
+
+On Windows, both arms resolve their native per-user executables instead of relying only on the parent process PATH. `agy` plan mode also auto-approves CLI confirmation prompts because `--mode plan` remains the read-only enforcement boundary; non-plan modes do not receive that bypass. Kiro CLI 2.x is natively supported on Windows and the standard MSI installs per-user under `%LOCALAPPDATA%\\Kiro-Cli`.
 
 ## Web transports without custom MCP
 

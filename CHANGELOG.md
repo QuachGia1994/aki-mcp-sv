@@ -14,6 +14,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ### Fixed
 - **Timed-out task creation is now retry-safe with `Idempotency-Key`.** `POST /v1/tasks` requires one 16-128 character key per logical task, stores it under a unique D1 index, returns the original task ID when the same key/payload is retried, and returns HTTP 409 if a key is reused for different tool/arguments. Existing D1 mailboxes are migrated automatically with the nullable column plus unique index, so the API can keep the task-list endpoint closed.
+- **Windows read-only workers no longer depend on stale PATH/interactive permission prompts.** `kiro-mcp.js` resolves the native per-user Windows MSI install at `%LOCALAPPDATA%\\Kiro-Cli\\kiro-cli.exe` (with `KIRO_CLI_PATH` override and PATH fallback), fixing `spawn kiro-cli ENOENT`. `agy-mcp.js` resolves the native `%LOCALAPPDATA%\\agy\\bin\\agy.exe`, automatically approves confirmations only for `--mode plan` so headless `ReadFile` is not soft-denied, updates the discovery default to `gemini-3.7-flash-high`, and avoids passing a conflicting `--effort` flag when the model id already encodes `low`/`medium`/`high`.
 
 ## [1.9.3] - 2026-08-16
 

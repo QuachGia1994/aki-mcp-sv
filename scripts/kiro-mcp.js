@@ -1,5 +1,7 @@
 // Dedicated MCP tool for the `kiro-cli` "arm": passes the prompt as a separate execFile arg so no shell-tokenizing step can mis-split a multi-word prompt (same reason agy-mcp.js exists). Read-only — kiro_write was removed 2026-08-10 (docs/plan/done/remove-kiro-write.md): the filesystem MCP arm's write_file/edit_file already covers the same capability.
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { win32 } from 'node:path';
 import { z } from 'zod';
 import { resolveOrFail } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
@@ -7,6 +9,24 @@ import { ok, err, fail } from './mcp-tool.js';
 // Owner requirement ("khóa cứng"): the model is not a tool parameter, so a prompt cannot escalate to a pricier or different tier.
 // Verified 2026-08-09 against `kiro-cli chat --list-models` (kiro-cli 2.16.2): claude-sonnet-4.5 is a real id (1.30x credits). See docs/ref/harness-fact.md § Kiro.
 const MODEL = 'claude-sonnet-4.5';
+const ANSI_CSI_RE = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+
+export function stripAnsi(text = '') {
+  return text.replace(ANSI_CSI_RE, '');
+}
+
+export function resolveKiroExecutable({ platform = process.platform, env = process.env, exists = existsSync } = {}) {
+  if (env.KIRO_CLI_PATH) return env.KIRO_CLI_PATH;
+  if (platform === 'win32') {
+    const candidates = [
+      env.LOCALAPPDATA ? win32.join(env.LOCALAPPDATA, 'Kiro-Cli', 'kiro-cli.exe') : null,
+      env.ProgramFiles ? win32.join(env.ProgramFiles, 'Kiro-Cli', 'kiro-cli.exe') : null,
+    ].filter(Boolean);
+    const found = candidates.find((candidate) => exists(candidate));
+    if (found) return found;
+  }
+  return 'kiro-cli';
+}
 
 function run(trustTools, { prompt, effort, cwd }) {
   const r = resolveOrFail(cwd);
@@ -16,14 +36,16 @@ function run(trustTools, { prompt, effort, cwd }) {
   if (effort) args.push('--effort', effort);
   args.push(prompt);
   return new Promise((resolve) => {
-    execFile('kiro-cli', args, { cwd: dir, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(resolveKiroExecutable(), args, { cwd: dir, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const cleanStdout = stripAnsi(stdout);
+      const cleanStderr = stripAnsi(stderr);
       if (error) {
-        return resolve(err(stdout || stderr || error.message));
+        return resolve(err(cleanStdout || cleanStderr || error.message));
       }
-      if (!stdout || !stdout.trim()) {
+      if (!cleanStdout || !cleanStdout.trim()) {
         return resolve(err('kiro-cli returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.'));
       }
-      resolve(ok(stdout));
+      resolve(ok(cleanStdout));
     });
   });
 }
