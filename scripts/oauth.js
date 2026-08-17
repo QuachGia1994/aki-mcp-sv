@@ -249,7 +249,7 @@ export async function handleAuthorize(req, res, passphrase, origin) {
 <form class="card" method="POST" onsubmit="this.btn.disabled=true;this.btn.textContent='Confirming…'">
 <h1>Confirm MCP connection</h1>
 <p>${clientLabel} wants to connect.</p>
-<p>Enter the passphrase from <code>${PASSPHRASE_DISPLAY_PATH}</code> to grant access to the connector.</p>
+<p>Enter the passphrase shown in the control panel (section 1 · Connectors) to grant access — or read it from <code>${PASSPHRASE_DISPLAY_PATH}</code>.</p>
 <input type="hidden" name="redirect_uri" value="${esc(redirectUri)}">
 <input type="hidden" name="client_id" value="${esc(clientId)}">
 <input type="hidden" name="code_challenge" value="${esc(codeChallenge)}">

@@ -95,6 +95,13 @@ jobs:
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" dist/* --draft --title "$TAG" --generate-notes
+            cat > /tmp/os-picker.md <<EOF
+          Pick the file for your OS: \`*-macos.command\`, \`*-windows.cmd\`, or \`*-linux.run\`. Just run it.
+
+          ---
+          EOF
+            gh release view "$TAG" --json body -q .body >> /tmp/os-picker.md
+            gh release edit "$TAG" --notes-file /tmp/os-picker.md
           fi
 
       - name: Required-asset gate — verify against the real uploaded release, not the local build

@@ -48,7 +48,7 @@ function copyAppEntries(repoRoot, stageDir) {
   for (const entry of APP_ENTRIES) {
     const src = path.join(repoRoot, entry);
     if (entry === 'package.json') continue; // already installed above with the lockfile
-    if (existsSync(src)) cpSync(src, path.join(stageDir, entry), { recursive: true });
+    if (existsSync(src)) cpSync(src, path.join(stageDir, entry), { recursive: true, filter: (f) => path.basename(f) !== '.DS_Store' });
   }
 }
 
@@ -90,7 +90,7 @@ function buildZip(stageParentDir, archiveBaseName, files, outPath) {
  * @returns {{ tarPath: string, zipPath: string, stageParentDir: string, archiveBaseName: string }}
  */
 export function buildPayload(repoRoot, version, buildDir) {
-  const archiveBaseName = `aki-mcp-sv-${version}-app`;
+  const archiveBaseName = `aki-mcp-sv-${version}-payload`;
   const stageParentDir = path.join(buildDir, 'stage-payload');
   const stageDir = path.join(stageParentDir, archiveBaseName);
   rmSync(stageParentDir, { recursive: true, force: true });
