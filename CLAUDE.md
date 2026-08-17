@@ -1,6 +1,6 @@
 # aki-mcp-sv — project guidance
 
-Local MCP server (filesystem, search, shell, agy) for claude.ai & ChatGPT over Tailscale Funnel + OAuth 2.1. Entry: `npm start` → `scripts/start.js` (foreground, manual stop/start). Rule loader: `akirule` skill.
+Local MCP server (filesystem, search, shell, agy) for Claude/ChatGPT/Grok/Gemini over HTTPS + OAuth 2.1, plus opt-in Kimi Web K3 and Qwen Coder Web transports through a shared Cloudflare Worker + D1 mailbox. Kimi reaches the Worker through `aki-bridge.oakgatekeeper.uk`; Qwen Coder uses the same `cloudflare/qwen-bridge-worker`. Client secrets are separate, and task creation is retry-safe through required `Idempotency-Key`. Entry: `npm start` → `scripts/start.js` (foreground, manual stop/start). Rule loader: `akirule` skill.
 
 ## RECURRING #1 — "Couldn't connect" / no `POST /token`: Tailscale Funnel desync, NOT the code
 
@@ -40,7 +40,7 @@ Signature: `npm start` is healthy, funnel status says "on", but client reports "
 ## Process topology (Stage 1 consolidation)
 
 4 Node processes:
-1. `start.js`: Orchestrator + in-process gatekeeper (OAuth + `/mcp`) + panel. Fatal listen error calls `shutdown()` and kills the hub.
+1. `start.js`: Orchestrator + in-process gatekeeper (OAuth + `/mcp`) + panel + optional `d1-bridge.js` poller. The D1 bridge reuses the same shared hub session and does not add a process. Fatal listen error calls `shutdown()` and kills the hub.
 2. `scripts/local-tools-mcp.js`: Single `McpServer` mounting `shell`, `agy`, `kiro`, `search` as `register(server)` modules. Spawned by hub as `local` (tool namespace: `local__*`: `local__run_cmd`, `local__agy_run`, `local__kiro_read`, `local__find_path`, `local__search_content`).
 3. `mcp-hub`: Process manager for MCP backends.
 4. `@modelcontextprotocol/server-filesystem` (direct `node` invocation, network-free): Child process for filesystem operations. Folder scope only updates on this child via the panel's "Apply to file tools" restart — `scripts/userdata.js`'s config reconciliation self-heals its launch shape across upgrades (see `splitLaunchArgs`).

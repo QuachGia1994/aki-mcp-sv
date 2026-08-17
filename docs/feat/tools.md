@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-08-15 · v1.8.0
+> updated 2026-08-17 · v1.9.3
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -14,6 +14,12 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy` | `agy` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.6-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
+
+## Web transports without custom MCP
+
+Kimi Web and Qwen Coder Web can reach the same capability suite through the optional Cloudflare D1 mailbox. D1 is only asynchronous transport: each row names an existing MCP tool and JSON arguments, `scripts/d1-bridge.js` verifies the name against live `tools/list`, then calls it through the shared `mcp-hub` session. It does not add a second shell/file policy or bypass the existing one.
+
+Kimi Web K3 and Qwen Coder Web (`coder.qwen.ai`) are both live-verified through the narrow `cloudflare/qwen-bridge-worker` ingress and shared D1 mailbox. Kimi uses the custom domain `aki-bridge.oakgatekeeper.uk` plus its own `AKI_KIMI_SECRET` because its sandbox timed out on `*.workers.dev`; Qwen Coder retains `AKI_BRIDGE_SECRET`. Both completed `filesystem__read_text_file` and `local__run_cmd` end to end. Qwen Chat (`chat.qwen.ai`) is not equivalent: its Python sandbox returned `[Errno 101] Network is unreachable`, and its web extractor could only GET the Worker, not POST tasks. Setup: `docs/ref/kimi-web-d1-bridge.md` and `docs/ref/qwen-web-worker-bridge.md`.
 
 ## Two classes — and why the second is not redundant
 

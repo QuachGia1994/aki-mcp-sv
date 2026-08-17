@@ -14,6 +14,7 @@ import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startGatekeeper } from './gatekeeper.js';
 import { startPanel } from './panel.js';
+import { startD1Bridge } from './d1-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { HUB_CONFIG_PATH, USER_DIR, readIngressConfig } from './userdata.js';
 
@@ -97,6 +98,7 @@ if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.
 
 let hub;
 let panel;
+let d1Bridge = null;
 let cloudflared = null;
 let shuttingDown = false;
 
@@ -142,6 +144,7 @@ function spawnCloudflared(credPath) {
 }
 
 spawnHub();
+d1Bridge = startD1Bridge();
 if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(cloudflaredCredPath);
 // Gatekeeper runs in-process (docs/plan/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so the hub is never left orphaned.
 let gateServer;
@@ -168,6 +171,7 @@ if (process.env.MCP_SKIP_BROWSER_OPEN) {
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  d1Bridge?.close();
   hub?.kill();
   cloudflared?.kill();
   gateServer?.close();

@@ -1,0 +1,16 @@
+{
+  "name": "aki-qwen-bridge",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-17",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aki-bridge",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+  "secrets": {
+    "required": ["AKI_BRIDGE_SECRET"],
+    "optional": ["AKI_KIMI_SECRET"]
+  }
+}

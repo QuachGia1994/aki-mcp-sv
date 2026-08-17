@@ -3,6 +3,7 @@
 // One shared hub session for the whole process — rationale in docs/plan/bridge-session-churn.md (Option B) and CLAUDE.md § Session lifecycle.
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { DEFAULT_NEGOTIATED_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
 import { log } from './log.js';
 import { readBody, json as jsonResponse } from './http.js';
 
@@ -16,6 +17,11 @@ let shared = null;
 let sharedBoot = null; // in-flight boot promise — collapses concurrent first-initializes onto one hub session
 let nextUpstreamId = 1; // globally-unique id per forwarded request; the remap that lets clients share one session
 const externalIds = new Set(); // minted external session ids, for protocol-correct 404-on-stale (re-init is now cheap)
+const INTERNAL_INIT_PARAMS = {
+  protocolVersion: DEFAULT_NEGOTIATED_PROTOCOL_VERSION,
+  capabilities: {},
+  clientInfo: { name: 'aki-internal-bridge', version: '1.0.0' },
+};
 
 function parseSseChunk(session, chunk) {
   session.buffer += chunk;
@@ -137,6 +143,19 @@ function ensureShared(initParams) {
   return sharedBoot.finally(() => {
     sharedBoot = null;
   });
+}
+
+async function requestShared(method, params = {}) {
+  const s = await ensureShared(INTERNAL_INIT_PARAMS);
+  const response = await requestUpstream(s.session, { jsonrpc: '2.0', id: nextUpstreamId++, method, params });
+  if (response.error) throw new Error(response.error.message ?? `upstream ${method} failed`);
+  return response.result;
+}
+
+export async function callSharedHubTool(name, args = {}) {
+  const listed = await requestShared('tools/list');
+  if (!listed?.tools?.some((tool) => tool.name === name)) throw new Error(`tool "${name}" is not exposed by mcp-hub`);
+  return requestShared('tools/call', { name, arguments: args });
 }
 
 export async function handleStreamableMcp(req, res) {

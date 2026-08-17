@@ -8,7 +8,7 @@ No desktop app. No device lock-in. No install needed if you use the standalone l
 
 [![Version](https://img.shields.io/badge/version-1.9.3-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Kimi Web K3 via Cloudflare D1](#kimi-web-k3-via-cloudflare-d1) · [Qwen Coder Web via Worker + D1](#qwen-coder-web-via-worker--d1) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -120,6 +120,18 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 
 **Gemini — experimental, connection works but tool use doesn't (yet)** (paid tiers only — Pro / Business / Enterprise; the free tier may not expose custom apps): pastes a **confidential client**, exactly like Claude — set the custom app link to the MCP URL, then under Advanced Settings paste the same Client ID / Client secret. Gemini's redirect goes through Google's OAuth proxy `https://oauth-redirect.googleusercontent.com/r/...` (observed live 2026-08-09), allowlisted by `isAllowedRedirect` in `scripts/oauth.js`. **Caveat:** the OAuth handshake succeeds and Gemini accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — connection healthy, tool use unreliable. Claude and Grok are the dependable clients today.
 
+## Kimi Web K3 via Cloudflare D1
+
+Kimi Web K3 is live-verified end to end through the same narrow Worker + D1 mailbox used by Qwen Coder, but on the custom domain `aki-bridge.oakgatekeeper.uk`. Kimi's IPython sandbox could reach that hostname by POST while `*.workers.dev` timed out at the TCP layer. Kimi uses its own `AKI_KIMI_SECRET`, so its credential can be rotated or revoked independently from Qwen Coder. Each logical task also carries an `Idempotency-Key`, allowing a timed-out POST to be retried without creating a duplicate. Local Aki still claims the D1 task, calls the named MCP tool through `mcp-hub`, and writes the normal MCP result envelope back into the same row.
+
+The Cloudflare-plugin direct-D1 route remains an alternative, but the observed plugin credential could list the database while `/query` returned Cloudflare error 7500. Setup, task states, the custom-domain route, and the security boundary are in [`docs/ref/kimi-web-d1-bridge.md`](docs/ref/kimi-web-d1-bridge.md).
+
+## Qwen Coder Web via Worker + D1
+
+Qwen Coder Web (`coder.qwen.ai`) is live-verified end to end: its code environment can POST JSON with a custom Authorization header to `cloudflare/qwen-bridge-worker`, which writes to D1; local Aki claims the task through the shared `mcp-hub` session and returns the MCP result through the same mailbox. Verified read-only calls include `filesystem__read_text_file` and `local__run_cmd`. Qwen Chat (`chat.qwen.ai`) is a separate environment and is currently blocked for this transport: its Python sandbox returned `[Errno 101] Network is unreachable`, while its web extractor could GET the Worker but could not POST. Do not give either product a Cloudflare Management API token.
+
+Qwen receives only the Worker URL and a dedicated revocable `AKI_BRIDGE_SECRET`. The Worker has no raw-SQL endpoint, task listing, arbitrary fetch proxy, or Cloudflare account/database credential. `POST /v1/tasks` requires an `Idempotency-Key`, so retrying a timed-out create with the same key/payload recovers the original task ID instead of duplicating work. Local Aki still validates the tool against live `tools/list` and executes through the existing `mcp-hub` policy. Setup and the one-call Python helper are in [`docs/ref/qwen-web-worker-bridge.md`](docs/ref/qwen-web-worker-bridge.md).
+
 ## Autonomous Cloud Automation (Grok + Local MCP)
 
 Grok's scheduled prompts turn your machine into a headless "personal remote AI node": no browser tab, no desktop app, just `npm start` running in the background.
@@ -170,6 +182,8 @@ panel.js       — 127.0.0.1:9998, never exposed via Funnel
 
 The ingress layer is swappable: Tailscale Funnel is the zero-config default, but the same `/mcp` endpoint can instead be served through your own Cloudflare named tunnel or any stable public HTTPS edge you already run — see [Exposing to the internet](#exposing-to-the-internet). Everything below the ingress line (gatekeeper, OAuth, mcp-hub) is unchanged whichever edge you pick.
 
+Kimi Web K3 and Qwen Coder Web share the same optional Worker + D1 transport because neither product exposes the same custom-MCP connection flow as Claude/ChatGPT. `scripts/d1-bridge.js` polls the D1 mailbox from inside `start.js` and routes each task through the same shared `mcp-hub` session and existing tool policy. Qwen Coder can use the Worker host directly; Kimi uses the custom domain `aki-bridge.oakgatekeeper.uk` because its sandbox timed out on `*.workers.dev`. Each client has a separate bearer secret. Qwen Chat is currently not supported by this path because its Python sandbox cannot reach the Worker. D1 is transport only; it does not create a second filesystem or shell implementation.
+
 `mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/done/init.md`).
 
 OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/research/claude-ai-oauth-connector.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
@@ -180,12 +194,15 @@ OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Clien
 aki-mcp-sv/
 ├── package.json
 ├── mcp-hub.config.json         # shipped default, uses ${MCP_DATA_DIR}/${HOME} placeholders
+├── cloudflare/
+│   └── qwen-bridge-worker/      # narrow HTTPS ingress: Qwen Coder Web -> Worker -> D1 mailbox
 ├── scripts/
 │   ├── start.js                 # orchestrates mcp-hub + gatekeeper
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> mcp-hub's legacy SSE transport
+│   ├── d1-bridge.js              # optional Kimi/Qwen D1 mailbox bridge, disabled unless configured
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
 │   ├── local-tools-mcp.js        # one process hosting shell/agy/kiro/search as register(server) modules
 │   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
@@ -222,7 +239,7 @@ A clone stays exactly as checked out: editing folders/allowlist from the panel n
 
 ## Configuration
 
-Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN` (`AKI_PUBLIC_ORIGIN` is accepted as a backward-compatible alias), `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_HUB_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
+Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN` (`AKI_PUBLIC_ORIGIN` is accepted as a backward-compatible alias), `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_HUB_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`, plus the optional shared Kimi/Qwen D1 mailbox set `AKI_D1_ACCOUNT_ID`, `AKI_D1_DATABASE_ID`, `AKI_D1_API_TOKEN`, `AKI_D1_POLL_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
 
 **Standalone package:** `.env.example` isn't part of the downloaded payload, so create `.env` by hand instead, in the same per-version app directory the launcher runs from (not the folder you downloaded the launcher into):
 - macOS: `~/Library/Application Support/aki-mcp-sv/app/<version>/.env`

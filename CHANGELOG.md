@@ -2,6 +2,19 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Qwen bridge support is now scoped to Qwen Coder Web (`coder.qwen.ai`) instead of generic “Qwen Web”.** Live testing completed real `filesystem__read_text_file` and `local__run_cmd` round-trips through Worker -> D1 -> local Aki. Qwen Chat (`chat.qwen.ai`) uses a different execution environment and did not complete the same transport test, so docs now state that distinction explicitly.
+- **Kimi K3 is now end-to-end verified through `aki-bridge.oakgatekeeper.uk` -> Worker -> D1 -> local Aki.** Live `filesystem__read_text_file` and `local__run_cmd` tasks both completed successfully. Kimi's Cloudflare plugin could list the D1 database but received error 7500 from `/query`, while `*.workers.dev` timed out at the TCP layer, so the custom-domain Worker route is the supported path.
+
+### Security
+- **Rotated the dedicated Qwen Worker bearer secret after the first live test value appeared in shared chat text**, and removed the embedded value from the local live-test recipe. The Worker secret remains separate from the Cloudflare D1 API token.
+- **Added optional `AKI_KIMI_SECRET` as a separately revocable Kimi credential** while retaining `AKI_BRIDGE_SECRET` for Qwen Coder; either valid secret authenticates the same narrow task/readiness API without exposing Cloudflare account or D1 credentials.
+
+### Fixed
+- **Timed-out task creation is now retry-safe with `Idempotency-Key`.** `POST /v1/tasks` requires one 16-128 character key per logical task, stores it under a unique D1 index, returns the original task ID when the same key/payload is retried, and returns HTTP 409 if a key is reused for different tool/arguments. Existing D1 mailboxes are migrated automatically with the nullable column plus unique index, so the API can keep the task-list endpoint closed.
+
 ## [1.9.3] - 2026-08-16
 
 ### Changed
@@ -22,6 +35,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Standalone launchers (`-app.zip`/`-app.tar.gz`) shipped with a blank, unstyled panel**: `scripts/http.js` serves the panel's CSS/JS/favicon from `${cwd}/public`, but `scripts/build/targets.js`'s `APP_ENTRIES` list — the files the payload builder actually packages — never included `public/`, so every 1.9.0 release asset was missing it entirely. `APP_ENTRIES` now lists the exact `public/` files the server serves at runtime (`panel.css`, `panel-client.js`, `favicon/`, and the QR/extension images referenced by `config-page.js`/`panel-client.js`) rather than the whole directory, which also held multi-MB README-only screenshots that bloated the archive past the Windows smoke-test's extraction timeout. The payload builder also now excludes `.DS_Store` when copying it in.
 
 ### Added
+- **Kimi Web K3 bridge through Cloudflare D1**: optional `scripts/d1-bridge.js` polls a D1 task mailbox inside the existing `start.js` process, routes each claimed task through the live `mcp-hub` `tools/list`/`tools/call` path so existing filesystem/shell policy still applies, writes the MCP result back to D1, and deliberately never auto-replays a `running` task after a crash. Configure with `AKI_D1_ACCOUNT_ID`, `AKI_D1_DATABASE_ID`, and `AKI_D1_API_TOKEN`; setup/reference: `docs/ref/kimi-web-d1-bridge.md`.
+- **Qwen Web bridge through a narrow Cloudflare Worker + the same D1 mailbox**: `cloudflare/qwen-bridge-worker` exposes only health/readiness, authenticated task enqueue, and authenticated result-by-ID endpoints backed by a D1 binding. Qwen's live-probed `code_interpreter` can call the Worker with outbound HTTPS POST + custom headers, so it can use web quota without exposing the Cloudflare Management API token. The Worker enforces a dedicated >=32-character bearer secret, 32 KiB body limit, bounded tool-name shape, and a 25-active-task queue cap; setup/reference: `docs/ref/qwen-web-worker-bridge.md`.
 - **Explicit unrestricted shell mode**: section 6 now has an `Allow all shell commands` switch backed by `shell.allowAll`; when enabled, `run_cmd` accepts any executable name while keeping its no-chaining/no-redirection parser boundary.
 - **Additional OAuth callback compatibility**: Gemini production/sandbox/test proxy prefixes, Grok DCR, and Mistral's integration callback are accepted by the redirect allowlist.
 

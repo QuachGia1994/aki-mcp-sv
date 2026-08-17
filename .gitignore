@@ -12,6 +12,11 @@ dist/
 .env.*
 !.env.example
 
+# Cloudflare Worker local/deployment state — keep only the committed example config
+.wrangler/
+cloudflare/qwen-bridge-worker/wrangler.jsonc
+cloudflare/qwen-bridge-worker/.dev.vars
+
 # macOS custom folder icon resource
 Icon?
 
