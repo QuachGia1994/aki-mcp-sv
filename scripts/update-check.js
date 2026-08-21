@@ -6,12 +6,14 @@ import path from 'node:path';
 import https from 'node:https';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { USER_DIR } from './userdata.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const AKI_DIR = path.join(os.homedir(), '.aki');
-const RULE_CHANGELOG = path.join(AKI_DIR, 'akidevrule', 'CHANGELOG.md');
+const RULE_CHANGELOG = path.join(os.homedir(), '.aki', 'akidevrule', 'CHANGELOG.md');
 
-export const STATUS_PATH = path.join(AKI_DIR, 'aki-mcp-status.json');
+// Lives under this app's own USER_DIR (pattern.A1 SSoT), not the shared ~/.aki root —
+// akidevrule's CHANGELOG above is a different product's data and stays under ~/.aki directly.
+export const STATUS_PATH = path.join(USER_DIR, 'aki-mcp-status.json');
 export const REPO_MCP = 'lacvietanh/aki-mcp-sv';
 export const BRANCH_MCP = 'main';
 export const REPO_RULE = 'lacvietanh/akidevrule';

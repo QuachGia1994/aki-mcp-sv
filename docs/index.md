@@ -1,6 +1,7 @@
 # Docs index
 
 - [feat/tools.md](feat/tools.md) — the local capability suite and each tool's anchored purpose; why `agy`/`kiro` are agent-arms ("hands"), not redundant primitives, and are not to be removed by a subtraction audit
+- [ref/mcp-intro.md](ref/mcp-intro.md) — first-session onboarding content (live-plan pattern, cross-account continuity), read once and gated by `~/.aki/mcpsv/intro.json`; shipped as a one-line pointer in the pasted instruction prompt, not the full text, since the ChatGPT 1500-char cap has no room for it
 - [plan/done/init.md](plan/done/init.md) — architecture decisions (mcp-hub + gatekeeper + funnel) and repo bootstrap checklist
 - [plan/done/instruction-prompt-improve.md](plan/done/instruction-prompt-improve.md) — compact the paste-in instruction prompt under ChatGPT's 1500-char cap (hoist the rules-dir prefix) and add the mandatory survey + `working.md` per-task workflow; shipped 1.2.0
 - [plan/done/instruction-prompt-minimal-override.md](plan/done/instruction-prompt-minimal-override.md) — rewrite prompt to residual-only (DON'T YAPPING + force-load + scope + tools + sandbox); shipped 2026-08-10 at 959 chars default (down from ~1309)
