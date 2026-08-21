@@ -3,6 +3,7 @@
 // "current known, latest unknown" — it never throws and never blocks startup (coding.C1).
 import os from 'node:os';
 import path from 'node:path';
+import https from 'node:https';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -52,17 +53,28 @@ export function cmpSemver(a, b) {
   return 0;
 }
 
-async function fetchText(url, timeoutMs) {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: ac.signal });
-    return res.ok ? await res.text() : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+// node:https over global fetch() avoids undici's lazy-init RSS cost — see CHANGELOG.md [Unreleased].
+function fetchText(url, timeoutMs, redirectsLeft = 3) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => { if (!settled) { settled = true; resolve(value); } };
+    const req = https.get(url, { timeout: timeoutMs, headers: { 'User-Agent': 'aki-mcp-sv' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+        res.resume();
+        return done(fetchText(new URL(res.headers.location, url).toString(), timeoutMs, redirectsLeft - 1));
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return done(null);
+      }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
+      res.on('error', () => done(null));
+    });
+    req.on('timeout', () => { req.destroy(); done(null); });
+    req.on('error', () => done(null));
+  });
 }
 
 // { mcp:{current,latest,updateAvailable}, rule:{...} }. current is local (always attempted);
