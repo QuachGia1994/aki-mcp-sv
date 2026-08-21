@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "local": {
-      "command": "node",
-      "args": ["./scripts/local-tools-mcp.js"],
-      "env": { "MCP_DATA_DIR": "${MCP_DATA_DIR},${HOME}/.aki,${HOME}/.claude" }
-    }
-  }
-}
