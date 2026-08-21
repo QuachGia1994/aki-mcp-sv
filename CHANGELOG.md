@@ -4,6 +4,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-08-21
+
 ### Added
 - **Provider icons in the control panel**: real Claude/Grok/ChatGPT/Gemini logos (`public/img/providers/`) now sit next to each connector tab and each section-3 settings link, replacing plain text labels.
 - **Widened default read-only git allowlist**: `git ls-remote`, `describe`, `shortlog`, `merge-base` are now pre-allowed alongside the existing read-only subcommands, cutting permission-prompt friction on common lookups (`docs/plan/2.0.0-improve.md` checklist item 8). `git fetch` stays excluded since it writes local refs. `ls-remote` is only pre-allowed with zero extra arguments — git's `ext::` transport helper can turn a repository/URL argument into arbitrary process execution, so a bare `git ls-remote` is safe but one with `ext::` args is not, and the allowlist match alone can't tell them apart.
