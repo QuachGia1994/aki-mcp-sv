@@ -7,6 +7,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ### Added
 - **Provider icons in the control panel**: real Claude/Grok/ChatGPT/Gemini logos (`public/img/providers/`) now sit next to each connector tab and each section-3 settings link, replacing plain text labels.
 
+### Fixed
+- **`.jpg`/`.jpeg` served with the wrong `Content-Type`**: `scripts/http.js`'s static-file `MIME` map had no JPEG entry, so `public/QR-Aki.MOMO.jpg` (and any future `.jpg`) was served as `application/octet-stream`. Browsers were rendering it anyway via content sniffing, but anything relying on the actual header (CORS, `fetch` content-type checks, downloads) would have gotten it wrong.
+
 ### Changed
 - **Donate QR made responsive**: `public/panel.css`'s `.donate .qr` grew from a fixed 118px box to a responsive one capped at 250px (`width:100%; max-width:250px; aspect-ratio:1/1`), and `config-page.js`'s PayPal QR `<img>` width/height attributes now match.
 - **Collapsed from 4 Node processes to 1**: `mcp-hub` and the third-party `@modelcontextprotocol/server-filesystem` child are gone. `streamable-bridge.js` now talks to a single in-process `McpServer` (`scripts/tools-server.js`) directly over the SDK's `InMemoryTransport` — no more SSE handshake to a separately spawned process. The claude.ai session-multiplexing fix (`docs/plan/done/bridge-session-churn.md`) is unchanged: one shared internal session, `initialize` answered from cache, JSON-RPC id remapping. Baseline RAM is expected to drop toward the ~40MB single-process target; not yet measured against a live run (`docs/plan/2.0.0-improve.md` §7).
