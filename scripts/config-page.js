@@ -270,7 +270,6 @@ ${field('Widen command', WIDEN_SNIPPET)}
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>
   <button data-act="savePaths">Save</button>
-  <button data-act="restart">Restart hub</button>
   <span class="msg" id="msgPaths"></span>
 </div>
 </section>

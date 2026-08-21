@@ -204,10 +204,6 @@ const ROUTES = {
     setTrustedDirs(validateTrustedDirs(body.dirs));
     return { ok: true, message: `saved trusted directories to ${SETTINGS_PATH}` };
   },
-  'POST /api/restart': async (body, ctx) => {
-    ctx.restartHub();
-    return { ok: true, message: 'restarted mcp-hub' };
-  },
   'POST /api/install-rules': async (body, ctx) => {
     const message = await installRules();
     refreshLocalVersions(ctx.updateInfo);
@@ -226,7 +222,7 @@ const ROUTES = {
   },
 };
 
-export function startPanel({ port, token, origin, ingress, client, passphrase, restartHub, updateInfo }) {
+export function startPanel({ port, token, origin, ingress, client, passphrase, updateInfo }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
     const route = `${req.method} ${urlPath}`;
@@ -247,7 +243,7 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, r
     if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
 
     try {
-      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { restartHub, updateInfo }));
+      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { updateInfo }));
     } catch (e) {
       json(res, 400, { error: e.message });
     }
