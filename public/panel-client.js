@@ -309,7 +309,6 @@ const ACTIONS = {
     btn.classList.remove('primary');
     return message;
   }),
-  applyFilesystem: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/paths/apply-filesystem')).message),
   restart: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/restart')).message),
   addTrusted: () => { addTrustedDir('', null, true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
   saveTrusted: (btn) => act(btn, 'msgTrusted', async () => {

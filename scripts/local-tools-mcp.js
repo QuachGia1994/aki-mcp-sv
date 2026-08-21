@@ -6,9 +6,10 @@ import { register as registerShell } from './shell-mcp.js';
 import { register as registerAgy } from './agy-mcp.js';
 import { register as registerKiro } from './kiro-mcp.js';
 import { register as registerSearch } from './search-mcp.js';
+import { register as registerFilesystem } from './filesystem-mcp.js';
 
 const server = new McpServer({ name: 'local', version: '1.0.0', title: 'Local Tools' });
 
-for (const register of [registerShell, registerAgy, registerKiro, registerSearch]) register(server);
+for (const register of [registerShell, registerAgy, registerKiro, registerSearch, registerFilesystem]) register(server);
 
 await server.connect(new StdioServerTransport());

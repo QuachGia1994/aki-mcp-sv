@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "node",
-      "args": ["./node_modules/@modelcontextprotocol/server-filesystem/dist/index.js", "${MCP_DATA_DIR}", "${HOME}/.aki", "${HOME}/.claude"]
-    },
     "local": {
       "command": "node",
       "args": ["./scripts/local-tools-mcp.js"],
