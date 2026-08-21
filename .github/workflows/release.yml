@@ -82,6 +82,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full tag history for the PREV_TAG compare-link lookup below
 
       - uses: actions/download-artifact@v4
         with:
@@ -94,14 +96,31 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" dist/* --draft --title "$TAG" --generate-notes
-            cat > /tmp/os-picker.md <<EOF
-          Pick the file for your OS: \`*-macos.command\`, \`*-windows.cmd\`, or \`*-linux.run\`. Just run it.
-
-          ---
-          EOF
-            gh release view "$TAG" --json body -q .body >> /tmp/os-picker.md
-            gh release edit "$TAG" --notes-file /tmp/os-picker.md
+            # release.B4: body must carry the tagged CHANGELOG section, not a bare
+            # --generate-notes (near-empty on this repo — commits go straight to trunk,
+            # no PR history for it to derive from) plus a compare-link footer.
+            awk -v tag="$TAG" '
+              $0 ~ "^## \\[" tag "\\]" { flag=1; next }
+              flag && /^## \[/ { flag=0 }
+              flag
+            ' CHANGELOG.md > /tmp/changelog-section.md
+            # Bare-semver tags only (release.yml's own trigger pattern) -- legacy v1.x.x tags
+            # (CLAUDE.md: "immutable history") sort ahead of them lexically and would pick
+            # the wrong "previous" release otherwise.
+            PREV_TAG=$(git tag --list '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v "^${TAG}$" | head -1)
+            {
+              echo "Pick the file for your OS: \`*-macos.command\`, \`*-windows.cmd\`, or \`*-linux.run\`. Just run it."
+              echo
+              echo "---"
+              echo
+              cat /tmp/changelog-section.md
+              if [ -n "$PREV_TAG" ]; then
+                echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG}"
+              else
+                echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/commits/${TAG}"
+              fi
+            } > /tmp/release-notes.md
+            gh release create "$TAG" dist/* --draft --title "$TAG" --notes-file /tmp/release-notes.md
           fi
 
       - name: Required-asset gate — verify against the real uploaded release, not the local build
