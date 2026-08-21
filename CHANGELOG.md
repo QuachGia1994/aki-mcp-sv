@@ -4,6 +4,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- **First-session MCP onboarding**: `docs/ref/mcp-intro.md` (live-plan pattern, cross-account continuity) is read once, gated by `~/.aki/mcpsv/intro.json`, via a single pointer line in the pasted instruction prompt — not the full text, since the ChatGPT 1500-char cap has no room for it (measured: 1141/1500 chars before this change, 1292/1500 after, `docs/plan/2.0.0-improve.md` checklist item 6).
+
+### Fixed
+- **`~/.aki/aki-mcp-status.json` lived outside this app's own `USER_DIR`**: `scripts/update-check.js`'s `STATUS_PATH` now joins from `USER_DIR` (`scripts/userdata.js`) instead of computing its own `~/.aki` root, matching every other piece of this app's userData (`docs/plan/2.0.0-improve.md` checklist item 1). The pasted-instruction text in `public/panel-client.js` reads the same `USER_DIR` (now injected as a client global by `scripts/config-page.js`, alongside the existing `AKI_DIR`). The old path is not kept as a compat shim — single-user tool, self-heals on next instruction re-paste.
+- **GitHub Release notes were near-empty**: `.github/workflows/release.yml` used a bare `gh release create --generate-notes`, which derives content from merged PRs only — this repo commits straight to trunk, so the body was footer-only. Now extracts the tagged version's `CHANGELOG.md` section into the release notes plus a `**Full Changelog**` compare-link footer against the previous bare-semver tag.
+
+### Decided
+- **`.env` config stays** (`docs/plan/2.0.0-improve.md` item 4, previously "consider removing"): closed as keep, not removed — non-dev packaging stays the priority, dev-facing `.env` is secondary and already fully served by the panel UI for the one thing anyone actually touches (the tunnel/ingress JSON).
+
 ## [1.10.0] - 2026-08-21
 
 ### Added
