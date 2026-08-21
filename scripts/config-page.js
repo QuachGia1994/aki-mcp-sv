@@ -160,7 +160,8 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 <option value="akitao.com" data-price="24">akitao.com</option>
 <option value="akinet.me" data-price="19">akinet.me</option>
 <option value="aiobox.app" data-price="12">aiobox.app</option>
-<option value="akimcp.cfd" data-price="5" selected>akimcp.cfd</option>
+<option value="akimcp.top" data-price="2" selected>akimcp.top</option>
+<option value="akimcp.cfd" data-price="1" data-note="EXPIRED AUG 13 2027">akimcp.cfd</option>
 </select>
 <span class="helptext" id="domainPrice" style="margin:0;flex:0 0 auto;white-space:nowrap"></span>
 </div></div>

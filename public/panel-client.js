@@ -391,7 +391,8 @@ document.querySelectorAll('.tabs').forEach((nav) => {
 
 function updateDomainPrice() {
   const opt = document.getElementById('tldSelect').selectedOptions[0];
-  document.getElementById('domainPrice').textContent = '$' + opt.dataset.price + '/yr';
+  const note = opt.dataset.note ? ' — ' + opt.dataset.note : '';
+  document.getElementById('domainPrice').textContent = '$' + opt.dataset.price + '/yr' + note;
 }
 document.getElementById('tldSelect').onchange = updateDomainPrice;
 updateDomainPrice();
