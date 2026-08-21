@@ -1,7 +1,7 @@
 # Aki MCP control center — multi-profile, self-hosted usage tracking (Electron vs Tauri open)
 
 ## Status
-Not started. Written as a note for a future session — see owner's request in chat, 2026-08-10. Research-then-plan, no code yet.
+Superseded & Deferred. Dự án nền tảng đám mây tập trung `aiobox.app` (quản lý định tuyến subdomain Cloudflare, multi-tenant & tunnel) đã chính thức được khởi động. Do đó, kế hoạch xây dựng ứng dụng desktop control center cục bộ (Electron/Tauri) này không còn cần thiết và được lưu trữ vào `done/`.
 
 ## Goal
 One app the owner fully controls, modeled on the multi-profile game-automation apps (Telegram auto-game) the owner already builds: a control center that sees every claude.ai "profile" at once (status, account, usage/limit), drives the usage bar and context-size readout without depending on a third-party extension, auto-runs setup JS (widen pane, etc.) on every new window, creates/edits/deletes profiles the way Chrome profiles work, opens new windows from a given profile, and gives those windows a custom, minimal, own-titlebar chrome.

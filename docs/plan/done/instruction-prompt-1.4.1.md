@@ -2,7 +2,7 @@
 
 **Start:** 2026-08-11
 **Shipped:** 2026-08-11
-**Repo:** /Volumes/DEV/Nodejs/aki-mcp-sv
+**Repo:** /Volumes/DEV/pj/aki-mcp-sv
 **Generator:** `scripts/config-page.js` → `buildPrompt()`
 **Cap:** ≤1500 chars (ChatGPT)
 **Basis:** `docs/research/instruction-prompt-first-principles.md`, `docs/plan/done/instruction-prompt-minimal-override.md`, `docs/plan/done/improve-instructions-1.3.1.md`

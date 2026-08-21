@@ -1,6 +1,8 @@
 # Cloudflare Tunnel as an alternative ingress
 
-Status: two ingress escape hatches are now shipped (under `[Unreleased]`) — the manual `PUBLIC_ORIGIN` override and the opt-in `cloudflared` named-tunnel launcher (`--tunnel <cred.json> --origin <host>`, see below). Only the drop-rate reliability test remains design only — this stays a tradeoff study for that part, not a committed migration.
+> status: done · shipped v1.8.0 (PUBLIC_ORIGIN & cloudflared named tunnel)
+
+Both ingress escape hatches are shipped: the manual `PUBLIC_ORIGIN` override and the opt-in `cloudflared` named-tunnel launcher (`--tunnel <cred.json> --origin <host>`). Only the separate drop-rate reliability benchmark remains design-only/deferred.
 
 ## Shipped (`[Unreleased]`) — two ingress escape hatches
 

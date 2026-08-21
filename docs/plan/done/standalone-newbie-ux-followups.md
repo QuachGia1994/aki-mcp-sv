@@ -1,5 +1,7 @@
 # Standalone newbie UX follow-ups
 
+> status: done · 2026-08-16
+
 Sequences the two findings left open by `docs/research/standalone-newbie-user-flow-audit-aug16.md` (items 13, 15). Everything else that audit found is already fixed.
 
 ## 1. README structure — theory before install (finding 13)

@@ -252,7 +252,7 @@ If that returns `SSL_ERROR_SYSCALL`/timeout despite `tailscale funnel status` sa
 
 ### Alternative ingress (if Funnel is unreliable)
 
-The Funnel edge can intermittently drop individual requests in some regions. The drop-rate difference against Cloudflare is still unmeasured, so these are not a proven upgrade — reach for them only if Funnel is unreliable for you. Both replace the Tailscale edge entirely; the OAuth server and tool suite are unchanged. Precedence when more than one is set: `--tunnel` > `PUBLIC_ORIGIN` > saved panel config (section 0 → "Owned public origin") > Tailscale Funnel. Full rationale: `docs/plan/cloudflare-tunnel-ingress.md`.
+The Funnel edge can intermittently drop individual requests in some regions. The drop-rate difference against Cloudflare is still unmeasured, so these are not a proven upgrade — reach for them only if Funnel is unreliable for you. Both replace the Tailscale edge entirely; the OAuth server and tool suite are unchanged. Precedence when more than one is set: `--tunnel` > `PUBLIC_ORIGIN` > saved panel config (section 0 → "Owned public origin") > Tailscale Funnel. Full rationale: `docs/plan/done/cloudflare-tunnel-ingress.md`.
 
 **Bring your own edge (`PUBLIC_ORIGIN`):** point an env var at a stable public HTTPS origin you run and terminate yourself, and `npm start` skips Tailscale entirely, serving at that origin:
 

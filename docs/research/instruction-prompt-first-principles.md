@@ -64,7 +64,7 @@ ALWAYS short dense on-point. DON'T YAPPING. Claim=evidence; search=citation.
 Session start MCP "Aki MCP Server from local Shell & FileSystem": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{index,RULE-agent-behavior,RULE-coding,RULE-design-core}.md; follow all session. Router: ~/.claude/skills/akirule/SKILL.md.
 Every task: confirm scope with me before edit; plan $HOME/.aki/mcpsv/task/<id>/working.md (update live). <id>=short slug.
 Files: always find_path (1 call, whole tree ~0.2s) — never list_directory nor search_files. Text→search_content. git/ls/grep: run_cmd cwd=absolute under /Users/aki — never cd/-C.
-Repo: /Volumes/DEV/Nodejs/aki-mcp-sv — edit there. Sandbox tools write throwaway only; paths under /Users/aki use MCP FS only; after write, read back via MCP before done.
+Repo: /Volumes/DEV/pj/aki-mcp-sv — edit there. Sandbox tools write throwaway only; paths under /Users/aki use MCP FS only; after write, read back via MCP before done.
 ```
 
 Estimated length with real template vars: ~950–1100 chars — comfortable under 1500 even with the four default rules expanded to full paths if needed.
