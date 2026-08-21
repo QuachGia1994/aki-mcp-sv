@@ -9,12 +9,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Kimi K3 is now end-to-end verified through `aki-bridge.oakgatekeeper.uk` -> Worker -> D1 -> local Aki.** Live `filesystem__read_text_file` and `local__run_cmd` tasks both completed successfully. Kimi's Cloudflare plugin could list the D1 database but received error 7500 from `/query`, while `*.workers.dev` timed out at the TCP layer, so the custom-domain Worker route is the supported path.
 
 ### Security
+- **Closed trusted-directory write+exec gaps.** Shell preallow now checks the same live writable roots used by the native in-process filesystem tools, so a trusted executable zone cannot overlap any path the connector can write. Interpreter preallow is fail-closed to a trusted script at `argv[0]`, blocking option-operand confusion such as `node --require <trusted.js> -e '<code>'`.
+- **Bounded public OAuth admission and rotated public refresh grants.** `/register`, `POST /authorize`, and `/token` cap request bodies at 64 KiB; persisted DCR clients are capped at 128; DCR/public clients rotate refresh tokens on refresh while the pre-registered confidential client keeps its compatibility behavior.
 - **Rotated the dedicated Qwen Worker bearer secret after the first live test value appeared in shared chat text**, and removed the embedded value from the local live-test recipe. The Worker secret remains separate from the Cloudflare D1 API token.
 - **Added optional `AKI_KIMI_SECRET` as a separately revocable Kimi credential** while retaining `AKI_BRIDGE_SECRET` for Qwen Coder; either valid secret authenticates the same narrow task/readiness API without exposing Cloudflare account or D1 credentials.
 
 ### Fixed
+- **The bridge's 25-active-task queue cap is now atomic under concurrency.** Worker admission moved from `SELECT COUNT` followed by a separate `INSERT` to one conditional SQLite `INSERT ... SELECT`, so concurrent distinct idempotency keys cannot all observe the same pre-insert count and overfill the queue.
 - **Timed-out task creation is now retry-safe with `Idempotency-Key`.** `POST /v1/tasks` requires one 16-128 character key per logical task, stores it under a unique D1 index, returns the original task ID when the same key/payload is retried, and returns HTTP 409 if a key is reused for different tool/arguments. Existing D1 mailboxes are migrated automatically with the nullable column plus unique index, so the API can keep the task-list endpoint closed.
 - **Windows read-only workers no longer depend on stale PATH/interactive permission prompts.** `kiro-mcp.js` resolves the native per-user Windows MSI install at `%LOCALAPPDATA%\\Kiro-Cli\\kiro-cli.exe` (with `KIRO_CLI_PATH` override and PATH fallback), fixing `spawn kiro-cli ENOENT`. `agy-mcp.js` resolves the native `%LOCALAPPDATA%\\agy\\bin\\agy.exe`, automatically approves confirmations only for `--mode plan` so headless `ReadFile` is not soft-denied, updates the discovery default to `gemini-3.7-flash-high`, and avoids passing a conflicting `--effort` flag when the model id already encodes `low`/`medium`/`high`.
+
 ## [1.10.0] - 2026-08-21
 
 ### Added

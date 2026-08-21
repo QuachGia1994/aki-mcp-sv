@@ -14,10 +14,11 @@ const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx',
 const GIT_NO_ARGS_SUBCOMMANDS = new Set(['ls-remote']);
 
 const warnedDirs = new Set();
-// A trusted dir inside a writable filesystem root would let write_file + run_cmd become arbitrary code execution with no allowlist review in between. Drop it, fail-safe, and say why once.
+// The native filesystem tools read the same roots live as shell/search, so one root set is now the complete write surface. A trusted dir overlapping it would make write_file + run_cmd arbitrary code execution without allowlist review.
 function activeTrustedDirs() {
+  const writeRoots = getRoots();
   return loadAllowlistDirs().filter((dir) => {
-    const clash = getRoots().find((root) => overlaps(dir, root));
+    const clash = writeRoots.find((root) => overlaps(dir, root));
     if (clash && !warnedDirs.has(dir)) {
       warnedDirs.add(dir);
       process.stderr.write(`[shell] trusted dir ignored — overlaps writable root ${clash} (write+exec = RCE): ${dir}\n`);
@@ -36,6 +37,12 @@ function underTrusted(p, dirs) {
   }
 }
 
+export function trustedInterpreterScriptArg(bin, args) {
+  if (!INTERPRETERS.has(path.basename(bin))) return null;
+  const script = args[0];
+  return script && !script.startsWith('-') ? script : null;
+}
+
 function preallowedByDir(bin, args) {
   const dirs = activeTrustedDirs();
   if (!dirs.length) return false;
@@ -48,11 +55,8 @@ function preallowedByDir(bin, args) {
       return false;
     }
   }
-  if (INTERPRETERS.has(path.basename(bin))) {
-    const script = args.find((a) => !a.startsWith('-')); // first non-flag arg is the script; `node -e '<code>'` has none under a zone, so it stays blocked
-    return script ? underTrusted(script, dirs) : false;
-  }
-  return false;
+  const script = trustedInterpreterScriptArg(bin, args);
+  return script ? underTrusted(script, dirs) : false;
 }
 
 class Shell {

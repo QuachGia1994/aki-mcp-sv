@@ -18,7 +18,7 @@ Four related problems in the shell-allowlist subsystem, bundled in one doc becau
 | Phase 3 row-list UI | ✅ code done | needs live browser check; panel is the product's face for many users (60★/2d), not a solo tool |
 | Phase 4 `allowlistDirs` preallow | ✅ code done | both conditions met, incl. interpreter case; editable panel UI (add/remove/save, live) |
 
-Phase 4 conditions, both met: (a) a preallow dir overlapping a filesystem write root is dropped at load, fail-safe, with a stderr warning (`activeTrustedDirs` in `shell-mcp.js`, using `roots.js` `overlaps`); (b) interpreter case — `node`/`python3`/… resolve the first non-flag arg as the script path and check it via `roots.js` `containedIn`, so `node ~/.aki/x.js` is allowed but `node -e '<code>'` (no file arg) stays blocked.
+Phase 4 conditions, both met: (a) a preallow dir overlapping any writable root is dropped fail-safe; since 1.10.0 the native in-process filesystem tools and shell share the same live roots from `setting.json`, so there is no lagging child-root set; (b) interpreter case — `node`/`python3`/… only accept a trusted script when the script itself is `argv[0]`, so option-bearing forms such as `node --require <trusted.js> -e '<code>'` cannot smuggle an eval behind a trusted option operand.
 
 ## Findings (evidence, not opinion)
 
@@ -167,8 +167,8 @@ Preallow by **trust zone**, not by **file**. `~/.aki` and `~/.claude` are direct
 
 ### Interpreter + script-argument invocations — RESOLVED
 The direct case (`bin` itself is the script, e.g. `~/.aki/scripts/foo.sh`) and the interpreter case (`node ~/.claude/skills/foo/run.js`, `python3 ~/.aki/scripts/bar.py`) are both covered by `preallowedByDir` in `shell-mcp.js`:
-- **Direct:** `bin` contains a path separator → resolve, require it under a trusted dir **and** executable (`X_OK`).
-- **Interpreter:** `path.basename(bin)` ∈ `INTERPRETERS` (`node python python3 bun deno tsx ruby perl php`; shells deliberately excluded — their arg is arbitrary code, not a locatable file) → the first non-flag arg is the script; require it under a trusted dir. `node -e '<code>'`/`python3 -c '<code>'` have no file arg, so they never match and stay blocked.
+- **Direct:** `bin` contains a path separator → resolve, require it under a trusted dir **and** executable (`X_OK`). Trusted-dir activation checks the same live roots used by the native filesystem tools, so a folder Save cannot create a write+exec mismatch between shell and file tools.
+- **Interpreter:** `path.basename(bin)` ∈ `INTERPRETERS` (`node python python3 bun deno tsx ruby perl php`; shells deliberately excluded — their arg is arbitrary code, not a locatable file) → require `args[0]` itself to be a non-flag script path under a trusted dir. This deliberately under-permits interpreter flags before the script, but closes option-operand confusion such as `node --require <trusted.js> -e '<code>'`; `node -e '<code>'`/`python3 -c '<code>'` remain blocked.
 - Crucially, the check runs even when `bin` **is** in the name allowlist but the subcommand is not (e.g. `node` is name-allowed only for `-v`): `checkPermission` is now `name-allow OR dir-allow`, so `node ~/.aki/x.js` passes via the dir path without loosening `node`'s name entry.
 - **Known limitation (fail-safe):** a *relative* script path is resolved against the server's cwd, not the run `cwd`, so it will be under-permitted, not over-permitted. Pass an absolute script path (the norm for skill invocations) for the preallow to fire. Not worth threading `cwd` into `checkPermission` for the MVP.
 

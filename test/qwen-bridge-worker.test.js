@@ -20,7 +20,6 @@ function makeEnv({ rows = new Map(), activeCount = 0 } = {}) {
           return {
             async first() {
               calls.push({ kind: 'first', sql, params });
-              if (sql.startsWith('SELECT COUNT')) return { count: activeCount };
               if (sql.startsWith('SELECT id, status, tool')) {
                 const id = idempotency.get(params[0]);
                 return id === undefined ? null : { id, ...rows.get(id) };
@@ -31,18 +30,18 @@ function makeEnv({ rows = new Map(), activeCount = 0 } = {}) {
             async run() {
               calls.push({ kind: 'run', sql, params });
               if (!sql.startsWith('INSERT OR IGNORE INTO aki_bridge_tasks')) throw new Error(`unexpected run SQL: ${sql}`);
-              const [key, tool, argumentsJson] = params;
-              if (idempotency.has(key)) return { success: true, meta: { changes: 0, last_row_id: 0 } };
+              const [key, tool, argumentsJson, maxActive] = params;
+              if (idempotency.has(key) || activeCount >= maxActive) return { success: true, meta: { changes: 0, last_row_id: 0 } };
               const id = nextId++;
               rows.set(id, { status: 'pending', result_json: null, error: null, tool, arguments_json: argumentsJson, idempotency_key: key });
               idempotency.set(key, id);
+              activeCount += 1;
               return { success: true, meta: { changes: 1, last_row_id: id } };
             },
           };
         },
         async first() {
           calls.push({ kind: 'first', sql, params: [] });
-          if (sql.startsWith('SELECT COUNT')) return { count: activeCount };
           if (sql.startsWith('SELECT id FROM aki_bridge_tasks')) return rows.values().next().value ?? null;
           throw new Error(`unexpected unbound first SQL: ${sql}`);
         },
@@ -109,7 +108,9 @@ test('POST /v1/tasks validates shape and inserts only tool plus arguments', asyn
   assert.equal(response.headers.get('idempotency-replayed'), 'false');
   const insert = state.calls.find((call) => call.kind === 'run');
   assert.match(insert.sql, /^INSERT OR IGNORE INTO aki_bridge_tasks/);
-  assert.deepEqual(insert.params, [IDEMPOTENCY_KEY, 'local__run_cmd', '{"command":"git status --short"}']);
+  assert.deepEqual(insert.params, [IDEMPOTENCY_KEY, 'local__run_cmd', '{"command":"git status --short"}', 25]);
+  assert.match(insert.sql, /SELECT COUNT\(\*\).*status IN/s);
+  assert.equal(state.calls.some((call) => call.kind === 'first' && call.sql.startsWith('SELECT COUNT')), false);
 });
 
 test('POST /v1/tasks requires a valid Idempotency-Key', async () => {

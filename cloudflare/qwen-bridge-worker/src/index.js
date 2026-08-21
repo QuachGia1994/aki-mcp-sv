@@ -103,16 +103,12 @@ async function createTask(request, env) {
   const replay = replayResponse(existing, validated.tool, argumentsJson);
   if (replay) return replay;
 
-  const active = await env.DB
-    .prepare("SELECT COUNT(*) AS count FROM aki_bridge_tasks WHERE status IN ('pending', 'running')")
-    .first();
-  if (Number(active?.count ?? 0) >= MAX_ACTIVE_TASKS) {
-    return json({ error: 'bridge queue is full; wait for an existing task to finish' }, 429, { 'retry-after': '5' });
-  }
-
+  // Admission and insert are one SQLite statement, so concurrent distinct keys cannot all observe the same pre-insert queue count and overfill the cap.
   const result = await env.DB
-    .prepare('INSERT OR IGNORE INTO aki_bridge_tasks (idempotency_key, tool, arguments_json) VALUES (?1, ?2, ?3)')
-    .bind(idempotency.key, validated.tool, argumentsJson)
+    .prepare(`INSERT OR IGNORE INTO aki_bridge_tasks (idempotency_key, tool, arguments_json)
+      SELECT ?1, ?2, ?3
+      WHERE (SELECT COUNT(*) FROM aki_bridge_tasks WHERE status IN ('pending', 'running')) < ?4`)
+    .bind(idempotency.key, validated.tool, argumentsJson, MAX_ACTIVE_TASKS)
     .run();
   if (Number(result?.meta?.changes ?? 0) === 1) {
     const id = Number(result?.meta?.last_row_id);
@@ -122,7 +118,7 @@ async function createTask(request, env) {
 
   const raced = await findTaskByIdempotencyKey(env, idempotency.key);
   return replayResponse(raced, validated.tool, argumentsJson)
-    ?? json({ error: 'failed to resolve idempotent task after insert race' }, 502);
+    ?? json({ error: 'bridge queue is full; wait for an existing task to finish' }, 429, { 'retry-after': '5' });
 }
 
 function parseStoredResult(row) {

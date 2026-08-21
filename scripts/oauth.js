@@ -30,6 +30,8 @@ const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
 const MISTRAL_CALLBACK = 'https://callback.mistral.ai/v1/integrations_auth/oauth2_callback';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
+const OAUTH_BODY_MAX_BYTES = 64 * 1024;
+const MAX_DCR_CLIENTS = 128;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const PASSPHRASE_LENGTH = 10; // 32^10 = 2^50 — brute-force still infeasible over network
@@ -154,8 +156,9 @@ export function metadataHandlers(origin) {
 export async function handleRegister(req, res) {
   let body;
   try {
-    body = JSON.parse(await readBody(req) || '{}');
-  } catch {
+    body = JSON.parse(await readBody(req, OAUTH_BODY_MAX_BYTES) || '{}');
+  } catch (e) {
+    if (e?.code === 'BODY_TOO_LARGE') return json(res, 413, { error: 'invalid_client_metadata', error_description: e.message });
     return json(res, 400, { error: 'invalid_client_metadata' });
   }
   const redirectUris = body.redirect_uris;
@@ -169,6 +172,11 @@ export async function handleRegister(req, res) {
     return json(res, 400, { error: 'invalid_client_metadata' });
   }
 
+  const map = loadDcrClients();
+  if (!dcrRegistrationAvailable(map)) {
+    return json(res, 429, { error: 'temporarily_unavailable', error_description: `dynamic client registration limit (${MAX_DCR_CLIENTS}) reached` });
+  }
+
   const clientId = randomBytes(16).toString('hex');
   const clientSecret = authMethod === 'client_secret_post' ? randomBytes(32).toString('hex') : null;
   const entry = {
@@ -178,7 +186,6 @@ export async function handleRegister(req, res) {
     tokenEndpointAuthMethod: authMethod,
     clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP client',
   };
-  const map = loadDcrClients();
   map[clientId] = entry;
   saveDcrClients(map);
 
@@ -223,7 +230,15 @@ function errorPage(title, message) {
 export async function handleAuthorize(req, res, passphrase, origin) {
   res.setHeader('Cache-Control', 'no-store');
   const url = new URL(req.url, 'http://internal');
-  const q = req.method === 'GET' ? url.searchParams : new URLSearchParams(await readBody(req));
+  let q;
+  try {
+    q = req.method === 'GET' ? url.searchParams : new URLSearchParams(await readBody(req, OAUTH_BODY_MAX_BYTES));
+  } catch (e) {
+    const status = e?.code === 'BODY_TOO_LARGE' ? 413 : 400;
+    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(errorPage('Connection request invalid', e?.code === 'BODY_TOO_LARGE' ? 'This connection request is too large.' : 'This connection request could not be read.'));
+    return;
+  }
   const redirectUri = q.get('redirect_uri');
   const clientId = q.get('client_id');
   const codeChallenge = q.get('code_challenge');
@@ -289,7 +304,12 @@ function authenticateClient(body) {
 
 export async function handleToken(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  const body = new URLSearchParams(await readBody(req));
+  let body;
+  try {
+    body = new URLSearchParams(await readBody(req, OAUTH_BODY_MAX_BYTES));
+  } catch (e) {
+    return json(res, e?.code === 'BODY_TOO_LARGE' ? 413 : 400, { error: 'invalid_request' });
+  }
   const grantType = body.get('grant_type');
   log(`[oauth] token request: grant_type=${grantType}`);
 
@@ -320,7 +340,7 @@ export async function handleToken(req, res) {
       log('[oauth] token FAILED: invalid_grant (PKCE code_verifier mismatch)');
       return json(res, 400, { error: 'invalid_grant' });
     }
-    return issueTokens(res, entry.clientId, undefined, 'authorization_code');
+    return issueTokens(res, entry.clientId, { via: 'authorization_code' });
   }
 
   if (grantType === 'refresh_token') {
@@ -329,20 +349,41 @@ export async function handleToken(req, res) {
       log(`[oauth] token FAILED: invalid_grant (${entry ? 'refresh_token belongs to another client' : 'unknown refresh_token — stale after tokens file reset?'})`);
       return json(res, 400, { error: 'invalid_grant' });
     }
-    return issueTokens(res, entry.clientId, body.get('refresh_token'), 'refresh_token');
+    return issueTokens(res, entry.clientId, {
+      existingRefresh: body.get('refresh_token'),
+      rotateRefresh: shouldRotateRefresh(client),
+      via: 'refresh_token',
+    });
   }
 
   log(`[oauth] token FAILED: unsupported_grant_type (${grantType})`);
   return json(res, 400, { error: 'unsupported_grant_type' });
 }
 
-function issueTokens(res, clientId, existingRefresh, via) {
+export function dcrRegistrationAvailable(map, maxClients = MAX_DCR_CLIENTS) {
+  return Object.keys(map ?? {}).length < maxClients;
+}
+
+export function shouldRotateRefresh(client) {
+  return client?.tokenEndpointAuthMethod === 'none';
+}
+
+export function rotateRefreshGrant(store, currentToken, clientId, tokenFactory = () => randomBytes(32).toString('hex')) {
+  const nextToken = tokenFactory();
+  store.delete(currentToken);
+  store.set(nextToken, { clientId });
+  return nextToken;
+}
+
+function issueTokens(res, clientId, { existingRefresh, rotateRefresh = false, via }) {
   const accessToken = randomBytes(32).toString('hex');
   accessTokens.set(accessToken, { expires: Date.now() + ACCESS_TTL_S * 1000 });
-  const refreshToken = existingRefresh || randomBytes(32).toString('hex');
-  refreshTokens.set(refreshToken, { clientId });
+  const refreshToken = rotateRefresh && existingRefresh
+    ? rotateRefreshGrant(refreshTokens, existingRefresh, clientId)
+    : existingRefresh || randomBytes(32).toString('hex');
+  if (!rotateRefresh || !existingRefresh) refreshTokens.set(refreshToken, { clientId });
   saveTokens();
-  log(`[oauth] tokens ISSUED via ${via} (access + refresh) — client is now authorized`);
+  log(`[oauth] tokens ISSUED via ${via} (access + refresh${rotateRefresh ? ', refresh rotated' : ''}) — client is now authorized`);
   json(res, 200, { access_token: accessToken, token_type: 'Bearer', expires_in: ACCESS_TTL_S, refresh_token: refreshToken });
 }
 

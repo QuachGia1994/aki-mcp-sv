@@ -9,12 +9,44 @@ const MIME = {
   '.css': 'text/css', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8',
 };
 
-export function readBody(req) {
+export class BodyTooLargeError extends Error {
+  constructor(limit) {
+    super(`request body exceeds ${limit} bytes`);
+    this.name = 'BodyTooLargeError';
+    this.code = 'BODY_TOO_LARGE';
+    this.limit = limit;
+  }
+}
+
+export function readBody(req, maxBytes = Infinity) {
   return new Promise((resolve, reject) => {
+    const declared = Number(req.headers?.['content-length']);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      req.resume?.();
+      reject(new BodyTooLargeError(maxBytes));
+      return;
+    }
+
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
+    let total = 0;
+    let failed = false;
+    req.on('data', (c) => {
+      if (failed) return;
+      total += c.length;
+      if (total > maxBytes) {
+        failed = true;
+        chunks.length = 0;
+        reject(new BodyTooLargeError(maxBytes));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (!failed) resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+    req.on('error', (error) => {
+      if (!failed) reject(error);
+    });
   });
 }
 

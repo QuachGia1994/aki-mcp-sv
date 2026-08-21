@@ -21,7 +21,7 @@ Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clie
 ## Client registration
 
 - **Claude (pre-registered)**: Client ID/Secret printed by `npm start`, pasted into Advanced settings. Redirect URI fixed to `https://claude.ai/api/mcp/auth_callback`. Auth method: `client_secret_post`.
-- **DCR/public clients**: ChatGPT and Grok self-register through `POST /register`; the allowlist also accepts Google's Gemini OAuth proxy prefixes and Mistral's fixed integration callback. Auth method: `none` (PKCE only). Arbitrary third-party redirect URIs are rejected.
+- **DCR/public clients**: ChatGPT and Grok self-register through `POST /register`; the allowlist also accepts Google's Gemini OAuth proxy prefixes and Mistral's fixed integration callback. Auth method: `none` (PKCE only). Arbitrary third-party redirect URIs are rejected. OAuth request bodies are capped at 64 KiB, and persistent DCR storage is capped at 128 clients so unauthenticated registration cannot grow memory/disk without bound.
 
 ## The 2 layers that actually block unauthorized access
 
@@ -32,9 +32,9 @@ Ingress edge does not change the trust boundary. Public reachability can come fr
 
 ## Real limitations
 
-- **No refresh token rotation** for the pre-registered confidential Claude client (spec rotation rule targets public clients).
-- **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible.
-- **DCR creates one stored client per connector instance** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations.
+- **No refresh token rotation** for the pre-registered confidential Claude client; DCR/public clients rotate their refresh token on every refresh grant.
+- **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible; request bodies are still bounded before passphrase validation.
+- **DCR creates one stored client per connector instance, capped at 128** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations or clear the cap.
 
 ## Cross-references
 - `docs/research/claude-ai-oauth-connector.md` — research that drove the Claude pre-registered path
