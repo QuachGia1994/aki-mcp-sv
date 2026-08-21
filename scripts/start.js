@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// Orchestrates mcp-hub + gatekeeper behind 1 `npm start`; foreground by design, manual stop/start only
+// Orchestrates gatekeeper + panel + the in-process tools server behind 1 `npm start`; foreground by
+// design, manual stop/start only. Single Node process (docs/plan/2.0.0-improve.md #7, Stage 2) — no
+// more mcp-hub child, since streamable-bridge.js now talks to the tools McpServer directly.
 // process.loadEnvFile throws ENOENT when the file is missing — swallow it so a .env is optional.
 try { process.loadEnvFile?.(); } catch {}
 if (existsSync('.env')) console.log('[start] loaded environment from .env');
@@ -7,27 +9,19 @@ if (existsSync('.env')) console.log('[start] loaded environment from .env');
 import { spawn } from 'node:child_process';
 import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { readFileSync, existsSync } from 'node:fs';
-import os from 'node:os';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startGatekeeper } from './gatekeeper.js';
 import { startPanel } from './panel.js';
 import { startD1Bridge } from './d1-bridge.js';
+import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
-import { HUB_CONFIG_PATH, USER_DIR, readIngressConfig } from './userdata.js';
+import { USER_DIR, readIngressConfig } from './userdata.js';
 
-const dataDir = process.env.MCP_DATA_DIR || os.homedir();
-const hubPort = process.env.MCP_HUB_PORT || '19999';
 const gatePort = process.env.GATEKEEPER_PORT || '9999';
 const panelPort = process.env.PANEL_PORT || '9998';
 const panelToken = randomBytes(16).toString('hex');
-const home = process.env.HOME || os.homedir();
-// HOME must be explicit: Windows does not set it, and the hub config's `${HOME}` placeholders resolve from the child env.
-const env = { ...process.env, HOME: home, USERPROFILE: process.env.USERPROFILE || home, MCP_DATA_DIR: dataDir };
-
-const spawnNode = (args, opts) => spawn(process.execPath, args, { stdio: 'inherit', windowsHide: true, ...opts });
 
 console.log(`[start] config & keys: ${USER_DIR}`);
 
@@ -96,28 +90,10 @@ const bar = (s) => console.log(`\x1b[43m\x1b[30m ${s} \x1b[0m`);
 if (updateInfo.mcp.updateAvailable) bar(`[update] aki-mcp-sv ${updateInfo.mcp.current} → ${updateInfo.mcp.latest} — open the panel to pull & restart`);
 if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel, then re-paste the Instructions (panel section 3) into the custom-instructions setting of each AI`);
 
-let hub;
 let panel;
 let d1Bridge = null;
 let cloudflared = null;
 let shuttingDown = false;
-
-function spawnHub() {
-  // Resolved and run through `node` directly so Windows never has to locate `npx.cmd`.
-  const cli = createRequire(import.meta.url).resolve('mcp-hub/dist/cli.js');
-  const child = spawnNode([cli, '--port', hubPort, '--config', HUB_CONFIG_PATH], { env });
-  // Only an unexpected death tears the stack down; a restart detaches the old child first.
-  child.on('exit', () => child === hub && shutdown());
-  child.on('error', (e) => console.error(`[start] mcp-hub failed to start: ${e.message}`));
-  hub = child;
-}
-
-function restartHub() {
-  const old = hub;
-  hub = null;
-  old.once('exit', spawnHub);
-  old.kill();
-}
 
 function spawnCloudflared(credPath) {
   let tunnelId;
@@ -143,10 +119,12 @@ function spawnCloudflared(credPath) {
   return child;
 }
 
-spawnHub();
+// Boot-time construction of the tools server surfaces registration-time failures before a client connects.
+warmToolsServer();
+// Optional web bridge uses the same in-process tools session and policy surface as /mcp clients.
 d1Bridge = startD1Bridge();
 if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(cloudflaredCredPath);
-// Gatekeeper runs in-process (docs/plan/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so the hub is never left orphaned.
+// Gatekeeper runs in-process (docs/plan/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so no child is ever left orphaned.
 let gateServer;
 try {
   gateServer = startGatekeeper(origin, shutdown);
@@ -155,7 +133,7 @@ try {
   shutdown();
 }
 
-panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, dataDir, restartHub, updateInfo });
+panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, updateInfo });
 const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
 // Escape hatch for automated runs (bootstrap smoke tests) that must not pop a browser window — off by default, normal `npm start` is unaffected.
 if (process.env.MCP_SKIP_BROWSER_OPEN) {
@@ -172,11 +150,10 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   d1Bridge?.close();
-  hub?.kill();
   cloudflared?.kill();
   gateServer?.close();
   panel?.close();
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-process.on('exit', () => { hub?.kill(); cloudflared?.kill(); }); // safety net: never leave a child orphaned if this process exits abruptly
+process.on('exit', () => cloudflared?.kill()); // safety net: never leave cloudflared orphaned if this process exits abruptly

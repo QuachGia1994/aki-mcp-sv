@@ -94,11 +94,6 @@ if [ ! -x "$NODE_BIN" ]; then
 fi
 
 cd "$APP_DIR"
-# mcp-hub.config.json's "local" and "filesystem" entries spawn "node" by bare command name
-# (PATH lookup, not an absolute path) — the bundled runtime's bin/ must be on PATH before start.js
-# spawns anything, or mcp-hub's own child spawns fail with ENOENT even though $NODE_BIN itself
-# is right here.
-export PATH="$RUNTIME_DIR/bin:$PATH"
 exec "$NODE_BIN" "$APP_DIR/scripts/start.js" "$@"
 `;
 }

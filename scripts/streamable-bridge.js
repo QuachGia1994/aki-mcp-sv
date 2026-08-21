@@ -1,20 +1,22 @@
 #!/usr/bin/env node
-// Streamable HTTP shim: bridges POST /mcp to mcp-hub's legacy SSE transport that modern clients (claude.ai) can't drive — rationale: docs/research/claude-ai-oauth-connector.md "Debug round 7".
-// One shared hub session for the whole process — rationale in docs/plan/bridge-session-churn.md (Option B) and CLAUDE.md § Session lifecycle.
-import http from 'node:http';
+// Streamable HTTP shim: bridges POST /mcp directly to the in-process tools McpServer over the SDK's
+// InMemoryTransport — no more separate mcp-hub process or SSE handshake (docs/plan/2.0.0-improve.md
+// #7, Stage 2 phase 2). One shared internal session for the whole process, same as before the
+// collapse: rationale in docs/plan/done/bridge-session-churn.md (Option B) and CLAUDE.md § Session
+// lifecycle — claude.ai re-sends `initialize` with no session id roughly every ~10s per conversation,
+// so every external "session" multiplexes onto one real MCP session, answered from a local cache.
 import { randomBytes } from 'node:crypto';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { DEFAULT_NEGOTIATED_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
 import { log } from './log.js';
 import { readBody, json as jsonResponse } from './http.js';
+import { createToolsServer } from './tools-server.js';
 
-const UPSTREAM_PORT = Number(process.env.MCP_HUB_PORT || 19999);
-// Per-request response timeout only — how long we wait for the upstream to answer one JSON-RPC call.
-// Long tool runs (shell) legitimately exceed the old 30s; default generous, override via env.
-const REQUEST_TIMEOUT_MS = Number(process.env.MCP_REQUEST_TIMEOUT_MS || 10 * 60 * 1000);
-
-// The single internal hub session; null until the first external `initialize` boots it, and reset to null if its upstream SSE dies (hub restart) so the next request transparently re-boots it.
+// The single internal session; null until the first external `initialize` boots it. Nothing in the
+// new in-process transport can independently die the way an upstream SSE socket could, so this only
+// ever resets via close()/onclose below — kept as defensive insurance, not an expected runtime path.
 let shared = null;
-let sharedBoot = null; // in-flight boot promise — collapses concurrent first-initializes onto one hub session
+let sharedBoot = null; // in-flight boot promise — collapses concurrent first-initializes onto one session
 let nextUpstreamId = 1; // globally-unique id per forwarded request; the remap that lets clients share one session
 const externalIds = new Set(); // minted external session ids, for protocol-correct 404-on-stale (re-init is now cheap)
 const INTERNAL_INIT_PARAMS = {
@@ -23,92 +25,41 @@ const INTERNAL_INIT_PARAMS = {
   clientInfo: { name: 'aki-internal-bridge', version: '1.0.0' },
 };
 
-function parseSseChunk(session, chunk) {
-  session.buffer += chunk;
-  const blocks = session.buffer.split('\n\n');
-  session.buffer = blocks.pop() ?? '';
-  for (const block of blocks) {
-    let event = 'message';
-    let data = '';
-    for (const line of block.split('\n')) {
-      if (line.startsWith('event:')) event = line.slice(6).trim();
-      else if (line.startsWith('data:')) data += line.slice(5).trim();
-    }
-    if (event === 'endpoint') {
-      const match = data.match(/sessionId=([a-f0-9-]+)/);
-      if (match) session.onEndpoint?.(match[1]);
-    } else if (event === 'message') {
-      let msg;
-      try {
-        msg = JSON.parse(data);
-      } catch {
-        continue;
-      }
-      const pending = session.pending.get(msg.id);
-      if (pending) {
-        clearTimeout(pending.timer);
-        session.pending.delete(msg.id);
-        pending.resolve(msg);
-      }
-    }
+function routeResponse(session, message) {
+  const pending = session.pending.get(message.id);
+  if (pending) {
+    clearTimeout(pending.timer);
+    session.pending.delete(message.id);
+    pending.resolve(message);
   }
 }
 
 function closeSession(session, reason = 'unspecified') {
   for (const { reject, timer } of session.pending.values()) {
     clearTimeout(timer);
-    reject(new Error('upstream session closed'));
+    reject(new Error('tools server session closed'));
   }
   session.pending.clear();
-  session.sseReq?.destroy();
   if (shared?.session === session) {
     shared = null;
     externalIds.clear();
   }
-  log(`[bridge] shared hub session closed (${reason})`);
+  log(`[bridge] shared tools-server session closed (${reason})`);
 }
 
-function openInternalSession() {
-  return new Promise((resolve, reject) => {
-    const session = { internalSessionId: null, pending: new Map(), buffer: '', sseReq: null, onEndpoint: null };
-    const req = http.request(
-      { host: '127.0.0.1', port: UPSTREAM_PORT, path: '/mcp', method: 'GET', headers: { Accept: 'text/event-stream' } },
-      (res) => {
-        res.setEncoding('utf8');
-        session.onEndpoint = (id) => {
-          session.internalSessionId = id;
-          resolve(session);
-        };
-        res.on('data', (chunk) => parseSseChunk(session, chunk));
-        res.on('end', () => closeSession(session, 'upstream SSE ended (hub closed/restarted)'));
-        res.on('error', (e) => closeSession(session, `upstream SSE error: ${e.message}`));
-      },
-    );
-    req.on('error', reject);
-    req.end();
-    session.sseReq = req;
-  });
+async function openInternalSession() {
+  const server = createToolsServer();
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const session = { transport: clientTransport, pending: new Map() };
+  clientTransport.onmessage = (message) => routeResponse(session, message);
+  clientTransport.onclose = () => closeSession(session, 'transport closed');
+  await server.connect(serverTransport);
+  await clientTransport.start();
+  return session;
 }
 
 function postMessage(session, message) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify(message);
-    const req = http.request(
-      {
-        host: '127.0.0.1',
-        port: UPSTREAM_PORT,
-        path: `/messages?sessionId=${session.internalSessionId}`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      },
-      (res) => {
-        res.on('data', () => {});
-        res.on('end', () => resolve(res.statusCode));
-      },
-    );
-    req.on('error', reject);
-    req.end(body);
-  });
+  return session.transport.send(message);
 }
 
 // Forward one request over `session` and await its matching response by id. `message.id` must already be a unique upstream id. Resolves with the full JSON-RPC response object.
@@ -116,9 +67,9 @@ function requestUpstream(session, message) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       session.pending.delete(message.id);
-      log(`[bridge] request timeout after ${REQUEST_TIMEOUT_MS}ms (method=${message.method ?? '?'}, id=${message.id})`);
-      reject(new Error('upstream response timeout'));
-    }, REQUEST_TIMEOUT_MS);
+      log(`[bridge] request timeout (method=${message.method ?? '?'}, id=${message.id})`);
+      reject(new Error('tools server response timeout'));
+    }, Number(process.env.MCP_REQUEST_TIMEOUT_MS || 10 * 60 * 1000));
     session.pending.set(message.id, { resolve, reject, timer });
     postMessage(session, message).catch((e) => {
       clearTimeout(timer);
@@ -128,7 +79,7 @@ function requestUpstream(session, message) {
   });
 }
 
-// Boot the one shared hub session using the first client's initialize params (so the negotiated protocol version is whatever that real client asked for), then cache the hub's initialize result for every later client.
+// Boot the one shared session using the first client's initialize params (so the negotiated protocol version is whatever that real client asked for), then cache the result for every later client.
 function ensureShared(initParams) {
   if (shared) return Promise.resolve(shared);
   if (sharedBoot) return sharedBoot;
@@ -137,7 +88,7 @@ function ensureShared(initParams) {
     const response = await requestUpstream(session, { jsonrpc: '2.0', id: nextUpstreamId++, method: 'initialize', params: initParams });
     await postMessage(session, { jsonrpc: '2.0', method: 'notifications/initialized' });
     shared = { session, initResult: response.result };
-    log('[bridge] shared hub session opened — all external clients multiplex onto it');
+    log('[bridge] shared tools-server session opened — all external clients multiplex onto it');
     return shared;
   })();
   return sharedBoot.finally(() => {
@@ -148,14 +99,23 @@ function ensureShared(initParams) {
 async function requestShared(method, params = {}) {
   const s = await ensureShared(INTERNAL_INIT_PARAMS);
   const response = await requestUpstream(s.session, { jsonrpc: '2.0', id: nextUpstreamId++, method, params });
-  if (response.error) throw new Error(response.error.message ?? `upstream ${method} failed`);
+  if (response.error) throw new Error(response.error.message ?? `tools server ${method} failed`);
   return response.result;
 }
 
-export async function callSharedHubTool(name, args = {}) {
+// D1/Qwen/Kimi use the same in-process MCP session and tool registry as /mcp clients, so transport
+// never creates a second filesystem/shell policy surface.
+export async function callSharedTool(name, args = {}) {
   const listed = await requestShared('tools/list');
-  if (!listed?.tools?.some((tool) => tool.name === name)) throw new Error(`tool "${name}" is not exposed by mcp-hub`);
+  if (!listed?.tools?.some((tool) => tool.name === name)) throw new Error(`tool "${name}" is not exposed by the tools server`);
   return requestShared('tools/call', { name, arguments: args });
+}
+
+// Called once at start.js boot: constructs a throwaway tools server so a registration-time crash
+// (a bad tool schema, a broken import) surfaces immediately in the startup console, before any real
+// client ever connects — the same "fail loud at boot" role mcp-hub's spawnHub() used to play.
+export function warmToolsServer() {
+  createToolsServer();
 }
 
 export async function handleStreamableMcp(req, res) {
@@ -169,14 +129,14 @@ export async function handleStreamableMcp(req, res) {
   const method = message.method;
   const hasId = message.id !== undefined && message.id !== null;
 
-  // initialize → answered locally; the first one boots the shared hub session, the rest reuse its cached result.
+  // initialize → answered locally; the first one boots the shared session, the rest reuse its cached result.
   if (method === 'initialize') {
     let s;
     try {
       s = await ensureShared(message.params);
     } catch (e) {
-      log(`[bridge] upstream unreachable booting shared session: ${e.message}`);
-      return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `upstream unreachable: ${e.message}` }, id: message.id ?? null });
+      log(`[bridge] failed to boot shared tools-server session: ${e.message}`);
+      return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `tools server unreachable: ${e.message}` }, id: message.id ?? null });
     }
     const extId = randomBytes(16).toString('hex');
     externalIds.add(extId);
@@ -217,6 +177,6 @@ export async function handleStreamableMcp(req, res) {
 }
 
 export function terminateSession(externalSessionId) {
-  // One client leaving never tears down the shared hub session — the others still multiplex onto it.
+  // One client leaving never tears down the shared session — the others still multiplex onto it.
   externalIds.delete(externalSessionId);
 }

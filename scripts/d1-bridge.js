@@ -1,5 +1,5 @@
 import { log } from './log.js';
-import { callSharedHubTool } from './streamable-bridge.js';
+import { callSharedTool } from './streamable-bridge.js';
 
 const TABLE = 'aki_bridge_tasks';
 const DEFAULT_POLL_MS = 2000;
@@ -124,7 +124,7 @@ async function finishTask(client, id, status, result, error) {
   return client.query(FINISH_SQL, [status, serialized, error ?? '', String(id)]);
 }
 
-export async function processNextD1Task(client, callTool = callSharedHubTool) {
+export async function processNextD1Task(client, callTool = callSharedTool) {
   const pending = await client.query(SELECT_PENDING_SQL);
   if (!pending.ok) return pending;
   const row = pending.data.results?.[0];
@@ -155,7 +155,7 @@ export async function processNextD1Task(client, callTool = callSharedHubTool) {
   return finished.ok ? { ok: true, data: { processed: true, id, status } } : finished;
 }
 
-export function startD1Bridge({ env = process.env, fetchImpl = fetch, callTool = callSharedHubTool } = {}) {
+export function startD1Bridge({ env = process.env, fetchImpl = fetch, callTool = callSharedTool } = {}) {
   const config = readD1BridgeConfig(env);
   if (!config.enabled) {
     if (config.error) log(`[d1-bridge] disabled: ${config.error}`);

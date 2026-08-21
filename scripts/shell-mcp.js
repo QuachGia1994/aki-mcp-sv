@@ -10,6 +10,9 @@ import { ok, err, fail } from './mcp-tool.js';
 // Interpreters run a script file passed as an argument, so trust must follow the script's path, not the interpreter binary (which lives on PATH, outside the trusted zones). Shells (sh/bash/zsh) are excluded on purpose — their argument is arbitrary code, not a file to locate under a zone.
 const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx', 'ruby', 'perl', 'php']);
 
+// ls-remote requires zero extra args — a repository/URL argument lets git's own ext:: transport helper spawn an arbitrary process before anything "read-only" happens; bare invocation only queries the configured remote.
+const GIT_NO_ARGS_SUBCOMMANDS = new Set(['ls-remote']);
+
 const warnedDirs = new Set();
 // A trusted dir inside a writable filesystem root would let write_file + run_cmd become arbitrary code execution with no allowlist review in between. Drop it, fail-safe, and say why once.
 function activeTrustedDirs() {
@@ -101,7 +104,12 @@ class Shell {
     const allowlist = loadAllowlist();
     if (bin in allowlist) {
       const allowedSubcommands = allowlist[bin];
-      if (!Array.isArray(allowedSubcommands) || allowedSubcommands.includes(args[0])) return;
+      if (!Array.isArray(allowedSubcommands) || allowedSubcommands.includes(args[0])) {
+        if (bin === 'git' && GIT_NO_ARGS_SUBCOMMANDS.has(args[0]) && args.length > 1) {
+          throw new Error(`"git ${args[0]}" only allowed with no further arguments — a repository/URL argument can smuggle code execution via git's transport helpers (ext::, --upload-pack=)`);
+        }
+        return;
+      }
     }
     if (preallowedByDir(bin, args)) return; // not named (or the named subcommand is blocked), but it targets a script under a trusted zone
     throw new Error(`"${bin}${args[0] ? ` ${args[0]}` : ''}" is not in the allowlist`);

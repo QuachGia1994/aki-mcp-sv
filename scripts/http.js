@@ -4,7 +4,7 @@ import { extname, join, normalize, sep } from 'node:path';
 
 const PUBLIC_DIR = join(process.cwd(), 'public');
 const MIME = {
-  '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.png': 'image/png',
+  '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json',
   '.css': 'text/css', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8',
 };

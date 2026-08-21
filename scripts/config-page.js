@@ -161,7 +161,8 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 <option value="akitao.com" data-price="24">akitao.com</option>
 <option value="akinet.me" data-price="19">akinet.me</option>
 <option value="aiobox.app" data-price="12">aiobox.app</option>
-<option value="akimcp.cfd" data-price="5" selected>akimcp.cfd</option>
+<option value="akimcp.top" data-price="2" selected>akimcp.top</option>
+<option value="akimcp.cfd" data-price="1" data-note="EXPIRED AUG 13 2027">akimcp.cfd</option>
 </select>
 <span class="helptext" id="domainPrice" style="margin:0;flex:0 0 auto;white-space:nowrap"></span>
 </div></div>
@@ -176,10 +177,10 @@ ${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
 
 <nav class="tabs" role="tablist">
-  <button class="tab active" data-tab="claude">Claude</button>
-  <button class="tab" data-tab="grok">Grok</button>
-  <button class="tab" data-tab="chatgpt">ChatGPT</button>
-  <button class="tab" data-tab="gemini">Gemini</button>
+  <button class="tab active" data-tab="claude"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude</button>
+  <button class="tab" data-tab="grok"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok</button>
+  <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
+  <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -237,10 +238,10 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
 <p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
 <div class="acts">
-  <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener">Claude ↗</a>
-  <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener">Grok ↗</a>
-  <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener">ChatGPT ↗</a>
-  <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener">Gemini ↗</a>
+  <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude ↗</a>
+  <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok ↗</a>
+  <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT ↗</a>
+  <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini ↗</a>
 </div>
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
   <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
@@ -265,13 +266,11 @@ ${field('Widen command', WIDEN_SNIPPET)}
 <section id="s5"><h2>5 · Folders the connector may reach</h2>
 <p class="helptext">These folders scope file tools and the shell's working directory. Allowed shell commands run with your user permissions and may access files outside this list.</p>
 <p class="helptext">The default root is your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects.</p>
-<p class="helptext">Save takes effect immediately for the shell and search tools. The file read/write/edit tools run in a separate helper process that only picks up a change after "Apply to file tools" (or a full restart) — press that too if you need those tools to see it right away.</p>
+<p class="helptext">Save takes effect immediately for every tool (shell, search, and file read/write/edit alike) — no restart needed.</p>
 <div class="flist" id="paths"></div>
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>
   <button data-act="savePaths">Save</button>
-  <button data-act="applyFilesystem">Apply to file tools (restarts hub)</button>
-  <button data-act="restart">Restart hub</button>
   <span class="msg" id="msgPaths"></span>
 </div>
 </section>
@@ -310,7 +309,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
       <div class="foot-social">${SOCIAL.map(socialLink).join('')}<a class="social" href="https://zalo.me/0869297957" target="_blank" rel="noopener" aria-label="Zalo" title="Zalo"><img src="${SITE}/img/icon-zalo.png" alt="" width="15" height="15" loading="lazy"></a></div>
       <div class="donate">
         <p class="foot-title">Buy me a coffee</p>
-        <img class="qr" id="donateQr" src="/QR-AkiTao-PayPal.png" alt="PayPal donate QR" width="118" height="118" loading="lazy">
+        <img class="qr" id="donateQr" src="/QR-AkiTao-PayPal.png" alt="PayPal donate QR" width="250" height="250" loading="lazy">
         <div class="qr-toggle">
           <button type="button" class="qr-tab" data-qr="momo">MoMo</button>
           <button type="button" class="qr-tab active" data-qr="paypal">PayPal</button>

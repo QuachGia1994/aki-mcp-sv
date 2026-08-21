@@ -1,7 +1,7 @@
 # Plan: Unify MCP tool servers into a single Node.js process (Stage 2 — deferred)
 
 ## Status
-Deferred. This is the endgame that follows `docs/plan/consolidate-mcp-tool-processes.md` (Stage 1, which reduces 8 → 4 processes at low risk). Stage 2 removes the last two processes but crosses two risk boundaries, so it is sized as its own run and not started with Stage 1.
+Merged into `docs/plan/2.0.0-improve.md`. This Stage 2 architecture endgame (dropping `mcp-hub` & native filesystem tools) is now incorporated directly into the v2.0.0 evolution roadmap.
 
 ## Goal
 From the 4-process baseline Stage 1 leaves, reach a **single Node.js process** by removing the two remaining external processes (`mcp-hub` and the `npx` filesystem server), cutting baseline RAM toward ~40MB.

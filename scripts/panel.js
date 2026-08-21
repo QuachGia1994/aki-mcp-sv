@@ -9,9 +9,9 @@ import { renderPanel } from './config-page.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
 import { getRoots, overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
-import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig, splitLaunchArgs } from './userdata.js';
+import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
-import { getLocalVersions, cmpSemver } from './update-check.js';
+import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
@@ -19,31 +19,6 @@ const RULES_DIR = path.join(os.homedir(), '.aki', 'akidevrule');
 const SOURCE_REPO_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
-
-const readJson = (file, fallback) => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : fallback);
-
-// Shows placeholders expanded and saves back what it shows: a folder list is only checkable if it reads as real folders.
-const expandPath = (p, dataDir) =>
-  p
-    .replace(/\$\{MCP_DATA_DIR\}/g, dataDir)
-    .replace(/\$\{HOME\}/g, os.homedir())
-    .replace(/\$\{userHome\}/g, os.homedir())
-    .replace(/\$\{pathSeparator\}/g, path.sep)
-    .replace(/\$\{\/\}/g, path.sep);
-
-// filesystem.args = [prefix..., ...dirs] — split via the same rule userdata.js's reconciliation uses, so an old-shape live entry (still mid-migration) is read the same way it's written.
-function filesystemPaths(dataDir) {
-  const { dirs } = splitLaunchArgs(readJson(HUB_CONFIG, {}).mcpServers.filesystem.args);
-  return dirs.map((p) => expandPath(p, dataDir));
-}
-
-// The npx-successor filesystem child takes its allowed dirs as spawn args, re-reads nothing at runtime — so this only takes effect on the next restart of that child (see the "apply to file tools" panel action). Our own tools (shell/find_path/search_content/agy/kiro) no longer read this file at all; they read setting.json's `folders` fresh per call via roots.js:getRoots().
-function setFilesystemPaths(paths) {
-  const config = readJson(HUB_CONFIG, {});
-  const { prefix } = splitLaunchArgs(config.mcpServers.filesystem.args);
-  config.mcpServers.filesystem.args = [...prefix, ...paths];
-  writeFileSync(HUB_CONFIG, `${JSON.stringify(config, null, 2)}\n`);
-}
 
 function writeJsonAtomic(file, data) {
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
@@ -188,8 +163,8 @@ async function pullUpdate() {
 }
 
 // Mirror shell-mcp's classification: a zone overlapping a writable root is dropped (write+exec = RCE). Name the offending root so the panel can show why a zone is disabled.
-function trustedDirStatus(dataDir) {
-  const roots = filesystemPaths(dataDir).map((p) => path.resolve(p));
+function trustedDirStatus() {
+  const roots = getRoots().map((p) => path.resolve(p));
   return loadAllowlistDirs().map((dir) => {
     const conflict = roots.find((root) => overlaps(dir, root)) || null;
     return { dir, active: !conflict, conflict };
@@ -203,6 +178,7 @@ function refreshLocalVersions(updateInfo) {
     updateInfo[key].current = local[key];
     updateInfo[key].updateAvailable = cmpSemver(local[key], updateInfo[key].latest) < 0;
   }
+  writeStatusFile(updateInfo);
 }
 
 const ROUTES = {
@@ -211,7 +187,7 @@ const ROUTES = {
     paths: getRoots(),
     allowlist: loadAllowlist(),
     allowAll: readSettings().shell?.allowAll === true,
-    trustedDirs: trustedDirStatus(ctx.dataDir),
+    trustedDirs: trustedDirStatus(),
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
     ingressConfig: readIngressConfig(),
   }),
@@ -221,12 +197,6 @@ const ROUTES = {
     setFolders(validatePaths(body.paths));
     return { ok: true, message: 'saved — shell, find, and search pick this up on their next call' };
   },
-  // The filesystem child (read_file/write_file/edit_file) takes its allowed dirs as spawn args and re-reads nothing — this is the explicit, labeled opt-in that pushes the saved folder list to it and bounces mcp-hub to apply it.
-  'POST /api/paths/apply-filesystem': async (body, ctx) => {
-    setFilesystemPaths(getRoots());
-    ctx.restartHub();
-    return { ok: true, message: 'restarted mcp-hub — file read/write/edit tools now use your saved folder list' };
-  },
   'POST /api/allowlist': async (body) => {
     setShellAllowlist(validateAllowlist(body.allowlist), body.allowAll);
     return { ok: true, message: `saved shell permissions to ${SETTINGS_PATH}` };
@@ -235,10 +205,6 @@ const ROUTES = {
   'POST /api/trusted-dirs': async (body) => {
     setTrustedDirs(validateTrustedDirs(body.dirs));
     return { ok: true, message: `saved trusted directories to ${SETTINGS_PATH}` };
-  },
-  'POST /api/restart': async (body, ctx) => {
-    ctx.restartHub();
-    return { ok: true, message: 'restarted mcp-hub' };
   },
   'POST /api/install-rules': async (body, ctx) => {
     const message = await installRules();
@@ -258,7 +224,7 @@ const ROUTES = {
   },
 };
 
-export function startPanel({ port, token, origin, ingress, client, passphrase, dataDir, restartHub, updateInfo }) {
+export function startPanel({ port, token, origin, ingress, client, passphrase, updateInfo }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
     const route = `${req.method} ${urlPath}`;
@@ -279,7 +245,7 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, d
     if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
 
     try {
-      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { restartHub, dataDir, updateInfo }));
+      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { updateInfo }));
     } catch (e) {
       json(res, 400, { error: e.message });
     }

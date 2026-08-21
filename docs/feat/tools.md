@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-08-17 · v1.9.3
+> updated 2026-08-22 · v1.10.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -8,9 +8,9 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 
 | Tool (MCP `name`) | Tools exposed | What it does | Who drives it |
 |---|---|---|---|
-| `filesystem` (official `@modelcontextprotocol/server-filesystem`) | `read_file`, `write_file`, `edit_file`, … | Read/write/edit files under the allowed roots | The remote model, directly |
+| `filesystem` (native, `scripts/filesystem-mcp.js`) | `read_text_file`, `write_file`, `edit_file`, `create_directory`, `move_file`, `get_file_info`, `list_allowed_directories` | Read/write/edit files under the allowed roots, symlink-safe | The remote model, directly |
 | `search` | `find_path`, `search_content` | Fast index-backed path + content lookup (no per-call `find`/`grep` spawn) | The remote model, directly |
-> The upstream `filesystem` server also exposes `search_files`, but `find_path` supersedes it (files+dirs, ~0.2s). It is **prompt-banned**, not removed: the pasteable instruction tells the model `never … search_files`. This is a soft/UX boundary — the tool is still listed. A hard removal would need a stdio filter proxy, which was rejected because it would break the args-position allowlist parsers in `scripts/panel.js` (`docs/plan/improve-instructions-1.3.1.md` §2).
+> The third-party `@modelcontextprotocol/server-filesystem` package this replaced also exposed `list_directory`/`directory_tree`/`search_files`/`read_multiple_files`/`read_media_file` — dropped outright rather than prompt-banned, since `find_path`/`search_content` already supersede the listing/search family in practice and the rest had no evidence of real use (`docs/plan/2.0.0-improve.md` §7). Cheap to re-add if a real need shows up.
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy` | `agy` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-high` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
@@ -19,9 +19,9 @@ On Windows, both arms resolve their native per-user executables instead of relyi
 
 ## Web transports without custom MCP
 
-Kimi Web and Qwen Coder Web can reach the same capability suite through the optional Cloudflare D1 mailbox. D1 is only asynchronous transport: each row names an existing MCP tool and JSON arguments, `scripts/d1-bridge.js` verifies the name against live `tools/list`, then calls it through the shared `mcp-hub` session. It does not add a second shell/file policy or bypass the existing one.
+Kimi Web and Qwen Coder Web can reach the same capability suite through the optional Cloudflare D1 mailbox. D1 is only asynchronous transport: each row names an existing MCP tool and JSON arguments, `scripts/d1-bridge.js` verifies the name against live `tools/list`, then calls it through the same shared in-process tools session as `/mcp`. It does not add a second shell/file policy or bypass the existing one.
 
-Kimi Web K3 and Qwen Coder Web (`coder.qwen.ai`) are both live-verified through the narrow `cloudflare/qwen-bridge-worker` ingress and shared D1 mailbox. Kimi uses the custom domain `aki-bridge.oakgatekeeper.uk` plus its own `AKI_KIMI_SECRET` because its sandbox timed out on `*.workers.dev`; Qwen Coder retains `AKI_BRIDGE_SECRET`. Both completed `filesystem__read_text_file` and `local__run_cmd` end to end. Qwen Chat (`chat.qwen.ai`) is not equivalent: its Python sandbox returned `[Errno 101] Network is unreachable`, and its web extractor could only GET the Worker, not POST tasks. Setup: `docs/ref/kimi-web-d1-bridge.md` and `docs/ref/qwen-web-worker-bridge.md`.
+Kimi Web K3 and Qwen Coder Web (`coder.qwen.ai`) are both live-verified through the narrow `cloudflare/qwen-bridge-worker` ingress and shared D1 mailbox. Kimi uses the custom domain `aki-bridge.oakgatekeeper.uk` plus its own `AKI_KIMI_SECRET` because its sandbox timed out on `*.workers.dev`; Qwen Coder retains `AKI_BRIDGE_SECRET`. The 1.10 canonical file-read name is `local__read_text_file`; `filesystem__read_text_file` remains as a compatibility alias for existing bridge prompts, and `local__run_cmd` is unchanged. Qwen Chat (`chat.qwen.ai`) is not equivalent: its Python sandbox returned `[Errno 101] Network is unreachable`, and its web extractor could only GET the Worker, not POST tasks. Setup: `docs/ref/kimi-web-d1-bridge.md` and `docs/ref/qwen-web-worker-bridge.md`.
 
 ## Two classes — and why the second is not redundant
 

@@ -1,6 +1,6 @@
 {
   "name": "mcp-local",
-  "version": "1.9.3",
+  "version": "1.10.0",
   "private": true,
   "description": "Give Claude on the web (claude.ai) local filesystem/search/shell access over Tailscale Funnel + OAuth 2.1 — read-only allowlist by default with an explicit owner-controlled unrestricted shell mode, no desktop app or device lock-in required",
   "license": "MIT",
@@ -15,8 +15,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@modelcontextprotocol/server-filesystem": "^2026.7.10",
-    "mcp-hub": "^4.2.1",
+    "diff": "^8.0.3",
     "zod": "^3.23.8"
   }
 }

@@ -13,7 +13,8 @@ const UNIX_DEFAULT = [
   'basename', 'dirname', 'realpath', 'which', 'date', 'strings', 'uptime', 'pgrep',
   ['lsof', '-i'],
   ['npm', 'list', 'ls', 'outdated'], ['pip', 'freeze', 'list'], ['node', '-v'],
-  ['git', 'status', 'log', 'diff', 'show', 'branch', 'remote', 'blame', 'check-ignore', 'ls-files', 'rev-parse', 'tag'],
+  // fetch excluded — writes local refs, not read-only; ls-remote kept but shell-mcp.js requires zero extra args (its ext:: transport can smuggle code execution via a repository/URL argument).
+  ['git', 'status', 'log', 'diff', 'show', 'branch', 'remote', 'blame', 'check-ignore', 'ls-files', 'rev-parse', 'tag', 'ls-remote', 'describe', 'shortlog', 'merge-base'],
 ];
 
 // Per-OS extras, selected as data by process.platform (never a business-logic branch). open/sips/ffmpeg are macOS media helpers — not read-only, unlike the rest of the set.

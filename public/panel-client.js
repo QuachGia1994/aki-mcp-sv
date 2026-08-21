@@ -312,8 +312,6 @@ const ACTIONS = {
     btn.classList.remove('primary');
     return message;
   }),
-  applyFilesystem: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/paths/apply-filesystem')).message),
-  restart: (btn) => act(btn, 'msgPaths', async () => (await api('POST', '/api/restart')).message),
   addTrusted: () => { addTrustedDir('', null, true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
   saveTrusted: (btn) => act(btn, 'msgTrusted', async () => {
     const dirs = [...document.querySelectorAll('#trustedDirs input')].map((i) => i.value.trim()).filter(Boolean);
@@ -395,7 +393,8 @@ document.querySelectorAll('.tabs').forEach((nav) => {
 
 function updateDomainPrice() {
   const opt = document.getElementById('tldSelect').selectedOptions[0];
-  document.getElementById('domainPrice').textContent = '$' + opt.dataset.price + '/yr';
+  const note = opt.dataset.note ? ' — ' + opt.dataset.note : '';
+  document.getElementById('domainPrice').textContent = '$' + opt.dataset.price + '/yr' + note;
 }
 document.getElementById('tldSelect').onchange = updateDomainPrice;
 updateDomainPrice();
