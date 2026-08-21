@@ -1,6 +1,6 @@
 # Security model — minimal OAuth 2.1 (Claude + ChatGPT)
 
-Updated 2026-08-14 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
+Updated 2026-08-21 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
 
 ## Current auth architecture
 
@@ -13,7 +13,7 @@ claude.ai / ChatGPT
 gatekeeper.js  ── /register  → RFC 7591 (redirect URIs: Claude callback + chatgpt.com/connector/oauth/*)
                ── /authorize → confirmation page, requires passphrase (~/.aki/mcpsv/passphrase.txt)
                ── /token     → PKCE S256; confidential clients need client_secret, DCR public clients use none
-               ── /mcp       → Bearer access token required, else 401 + WWW-Authenticate → mcp-hub
+               ── /mcp       → Bearer access token required, else 401 + WWW-Authenticate → tools server (in-process)
 ```
 
 Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clients (ChatGPT) persist in `~/.aki/mcpsv/oauth-dcr-clients.json`. Access/refresh tokens persist in `~/.aki/mcpsv/tokens.json`.
@@ -27,8 +27,6 @@ Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clie
 
 1. **Passphrase at `/authorize`** (`~/.aki/mcpsv/passphrase.txt`, 10 random characters from a 32-character unambiguous alphabet — `abcdefghjkmnpqrstuvwxyz23456789`, ~50-bit entropy) — anyone who doesn't know the passphrase can't get past the consent step, so no auth code is ever issued. **Deliberately not a bare Approve button with no passphrase**: `POST /authorize` is public via Funnel; a simulated request can't be distinguished from a button click without a secret.
 2. **PKCE S256** — an access token is only issued to the exact client whose `code_challenge` matches the `code_verifier` sent to `/token`.
-
-The real `mcp-hub` still only listens on loopback `19999`, and `/api/*` is never forwarded.
 
 Ingress edge does not change the trust boundary. Public reachability can come from Tailscale Funnel (default), a `PUBLIC_ORIGIN` edge you run, or a Cloudflare named tunnel (`--tunnel`) — these terminate TLS at different edges but all forward to the same loopback server, and the OAuth gate in `scripts/oauth.js` (passphrase at `/authorize` + PKCE S256 at `/token`) stays the only auth layer regardless of which one is used.
 

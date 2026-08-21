@@ -2,6 +2,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Collapsed from 4 Node processes to 1**: `mcp-hub` and the third-party `@modelcontextprotocol/server-filesystem` child are gone. `streamable-bridge.js` now talks to a single in-process `McpServer` (`scripts/tools-server.js`) directly over the SDK's `InMemoryTransport` — no more SSE handshake to a separately spawned process. The claude.ai session-multiplexing fix (`docs/plan/done/bridge-session-churn.md`) is unchanged: one shared internal session, `initialize` answered from cache, JSON-RPC id remapping. Baseline RAM is expected to drop toward the ~40MB single-process target; not yet measured against a live run (`docs/plan/2.0.0-improve.md` §7).
+- **File read/write/edit tools rewritten native**: `scripts/filesystem-mcp.js` replaces the third-party package with 7 hand-written tools (`read_text_file`, `write_file`, `edit_file`, `create_directory`, `move_file`, `get_file_info`, `list_allowed_directories`), symlink-safe (realpath containment check, ported from the package's own `validatePath()`) and reading allowed folders live from `setting.json` via `roots.js` — a panel folder edit now takes effect on the very next call, same as shell/search already did. Dropped rather than ported: `read_file` (deprecated alias), `list_directory`/`list_directory_with_sizes`/`directory_tree`/`search_files` (superseded in practice by `find_path`/`search_content`), `read_multiple_files`, `read_media_file` (no evidence of real use through this remote connector).
+- **Tool names unchanged**: served names still carry the `local__` prefix (`local__read_text_file`, `local__write_file`, …) despite the aggregator that used to apply it being gone — reproduced centrally in `tools-server.js` so nothing already configured on claude.ai/ChatGPT (or the pasted instruction prompt) needs updating.
+
+### Removed
+- **"Restart hub" and "Apply to file tools" panel buttons**: both are pointless now that every tool — file read/write/edit included — picks up a folder-list change on its next call with no restart. `POST /api/restart` and `POST /api/paths/apply-filesystem` are gone from `panel.js`.
+- **`mcp-hub` dependency and `mcp-hub.config.json`**: including `scripts/userdata.js`'s live-config reconciliation logic and `splitLaunchArgs`, which existed only to keep that file's server set in sync across upgrades.
+
 ## [1.9.3] - 2026-08-16
 
 ### Changed

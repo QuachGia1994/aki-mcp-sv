@@ -33,18 +33,13 @@ Signature: `npm start` is healthy, funnel status says "on", but client reports "
 
 ## Session lifecycle
 
-- **Single shared session**: `scripts/streamable-bridge.js` maintains exactly **one** internal hub session for the process. External clients multiplex onto it via JSON-RPC ID remapping; `initialize` is answered locally from cache.
-- **No per-client session Map**: Never reintroduce per-client session tracking or an `MCP_MAX_SESSIONS` cap. Upstream SSE reboots transparently on hub restart.
+- **Single shared session**: `scripts/streamable-bridge.js` maintains exactly **one** internal session for the process, held over an in-process `InMemoryTransport` pair (no child process, no SSE). External clients multiplex onto it via JSON-RPC ID remapping; `initialize` is answered locally from cache.
+- **No per-client session Map**: Never reintroduce per-client session tracking or an `MCP_MAX_SESSIONS` cap.
 - **Timeouts & Persistence**: Per-request timeout only (`MCP_REQUEST_TIMEOUT_MS`, default 10m). Tokens persist in `scripts/oauth.js`; Funnel routing is ephemeral.
 
-## Process topology (Stage 1 consolidation)
+## Process topology (Stage 2 — single process)
 
-4 Node processes:
-1. `start.js`: Orchestrator + in-process gatekeeper (OAuth + `/mcp`) + panel. Fatal listen error calls `shutdown()` and kills the hub.
-2. `scripts/local-tools-mcp.js`: Single `McpServer` mounting `shell`, `agy`, `kiro`, `search` as `register(server)` modules. Spawned by hub as `local` (tool namespace: `local__*`: `local__run_cmd`, `local__agy_run`, `local__kiro_read`, `local__find_path`, `local__search_content`).
-3. `mcp-hub`: Process manager for MCP backends.
-4. `@modelcontextprotocol/server-filesystem` (direct `node` invocation, network-free): Child process for filesystem operations. Folder scope only updates on this child via the panel's "Apply to file tools" restart — `scripts/userdata.js`'s config reconciliation self-heals its launch shape across upgrades (see `splitLaunchArgs`).
-- *Stage 2* (dropping `mcp-hub` / native filesystem) is deferred; do not collapse processes prematurely.
+1 Node process. `start.js` orchestrates: in-process gatekeeper (OAuth + `/mcp`), panel, and a boot-time `warmToolsServer()` call. `scripts/tools-server.js` builds the one shared `McpServer`, mounting `shell`, `agy`, `kiro`, `search`, `filesystem` as `register(server)` modules (tool namespace: `local__*` — `local__run_cmd`, `local__agy_run`, `local__kiro_read`, `local__find_path`, `local__search_content`, plus the native filesystem tools). `streamable-bridge.js` talks to it directly over `InMemoryTransport`; no `mcp-hub`, no third-party filesystem child. Folder scope (`scripts/roots.js`) is read fresh from `setting.json` on every call — a panel save takes effect on the next tool call, no restart.
 
 ## Release process
 

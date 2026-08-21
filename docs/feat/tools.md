@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-08-15 · v1.8.0
+> updated 2026-08-21 · v1.9.3
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -8,9 +8,9 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 
 | Tool (MCP `name`) | Tools exposed | What it does | Who drives it |
 |---|---|---|---|
-| `filesystem` (official `@modelcontextprotocol/server-filesystem`) | `read_file`, `write_file`, `edit_file`, … | Read/write/edit files under the allowed roots | The remote model, directly |
+| `filesystem` (native, `scripts/filesystem-mcp.js`) | `read_text_file`, `write_file`, `edit_file`, `create_directory`, `move_file`, `get_file_info`, `list_allowed_directories` | Read/write/edit files under the allowed roots, symlink-safe | The remote model, directly |
 | `search` | `find_path`, `search_content` | Fast index-backed path + content lookup (no per-call `find`/`grep` spawn) | The remote model, directly |
-> The upstream `filesystem` server also exposes `search_files`, but `find_path` supersedes it (files+dirs, ~0.2s). It is **prompt-banned**, not removed: the pasteable instruction tells the model `never … search_files`. This is a soft/UX boundary — the tool is still listed. A hard removal would need a stdio filter proxy, which was rejected because it would break the args-position allowlist parsers in `scripts/panel.js` (`docs/plan/improve-instructions-1.3.1.md` §2).
+> The third-party `@modelcontextprotocol/server-filesystem` package this replaced also exposed `list_directory`/`directory_tree`/`search_files`/`read_multiple_files`/`read_media_file` — dropped outright rather than prompt-banned, since `find_path`/`search_content` already supersede the listing/search family in practice and the rest had no evidence of real use (`docs/plan/2.0.0-improve.md` §7). Cheap to re-add if a real need shows up.
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy` | `agy` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.6-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |

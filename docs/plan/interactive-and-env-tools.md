@@ -42,7 +42,7 @@ Bổ sung khả năng chạy tiến trình tương tác dài hạn (Node.js/Pyth
 
 ## 3. Kiến trúc tích hợp (Hướng tới v2 Single-Process)
 
-- **Chuẩn bị module `scripts/process-mcp.js`**: Viết theo pattern chuẩn `register(server)` để có thể mount thẳng vào `local-tools-mcp.js` (hoặc in-process `McpServer` của v2) mà không cần tạo thêm tiến trình trung gian.
+- **Chuẩn bị module `scripts/process-mcp.js`**: Viết theo pattern chuẩn `register(server)` để có thể mount thẳng vào `scripts/tools-server.js` (in-process `McpServer` duy nhất, đã hợp nhất ở Stage 2 — `docs/plan/2.0.0-improve.md` §7) mà không cần tạo thêm tiến trình trung gian.
 - **Context Injection qua Tool Description**: Do một số client MCP không đọc trường `instructions` khi handshake, toàn bộ hướng dẫn sử dụng và định dạng đầu vào/đầu ra sẽ được mô tả súc tích ngay trong trường `description` của từng tool.
 
 ---

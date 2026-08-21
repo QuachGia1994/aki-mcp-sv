@@ -79,11 +79,11 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
 - Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
 
-The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for the shell, find, and search tools, no restart; the file read/write/edit tools run in a separate child process that only picks up the change after pressing "Apply to file tools" (or a full restart). To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
+The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for every tool — shell, find, search, and file read/write/edit alike — no restart. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
 
-Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
+Beyond `$MCP_DATA_DIR`, the filesystem tools are also granted `~/.aki` (where akidevrule deploys) and `~/.claude`, so claude.ai can read your **native** `CLAUDE.md` and skill router the same way Claude Code does, with no copying or staging.
 
-`~/.claude` is granted at the folder level (the filesystem server can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. This row is locked in panel section 5, with no delete button by design so it can't be revoked by accident; the panel itself cannot remove it. If you don't want `~/.claude` granted at all, edit `~/.aki/mcpsv/mcp-hub.config.json` and remove the `${HOME}/.claude` entries from it before connecting, then restart the hub; claude.ai then loses access to your `CLAUDE.md` too.
+`~/.claude` is granted at the folder level (the filesystem tools can't scope to individual files), so `.claude.json`/`auth-cache.json` (session tokens) and `history.jsonl` (chat history) inside it are also reachable through the connector. This row is locked in panel section 5, with no delete button by design so it can't be revoked by accident; the panel itself cannot remove it. If you don't want `~/.claude` granted at all, edit `~/.aki/mcpsv/setting.json` and remove the `~/.claude` entry from its `folders` list before connecting; claude.ai then loses access to your `CLAUDE.md` too.
 
 `npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
@@ -96,7 +96,7 @@ Beyond `$MCP_DATA_DIR`, the filesystem server is also granted `~/.aki` (where ak
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the tool suite: `filesystem__*` plus the in-house `local__*` tools (`local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`).
+claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`, plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
 
 **Note on the connector icon:** claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host: `https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32`. `<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
 
@@ -154,23 +154,19 @@ gatekeeper.js  — public port 9999
       │           /mcp                  requires a valid Bearer access token, else 401
       │                                 POST → real Streamable HTTP (scripts/streamable-bridge.js)
       ▼
-mcp-hub        — internal only (loopback), port 19999, legacy HTTP+SSE transport
-      │
-      ├─► filesystem server    (@modelcontextprotocol/server-filesystem — read/write inside the allowed folders)
-      └─► local-tools-mcp.js   — one process hosting 4 in-house tools (local__*):
-                                  search-mcp.js  (find_path/search_content, whole-tree in one call)
-                                  shell-mcp.js   (allowlisted commands, curated to read-only)
-                                  agy-mcp.js     (Antigravity CLI, read-only plan mode)
-                                  kiro-mcp.js    (kiro_read, read-only, needs kiro-cli on PATH)
+tools-server.js — one shared McpServer, in-process (InMemoryTransport, no child, no SSE), tools:
+                                  search-mcp.js       (find_path/search_content, whole-tree in one call)
+                                  shell-mcp.js        (allowlisted commands, curated to read-only)
+                                  agy-mcp.js          (Antigravity CLI, read-only plan mode)
+                                  kiro-mcp.js         (kiro_read, read-only, needs kiro-cli on PATH)
+                                  filesystem-mcp.js   (native read/write/edit inside the allowed folders)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
-                 control UI: allowed folders, shell allowlist, restart hub,
+                 control UI: allowed folders, shell allowlist,
                  install akidevrule, generate the connector prompt
 ```
 
-The ingress layer is swappable: Tailscale Funnel is the zero-config default, but the same `/mcp` endpoint can instead be served through your own Cloudflare named tunnel or any stable public HTTPS edge you already run — see [Exposing to the internet](#exposing-to-the-internet). Everything below the ingress line (gatekeeper, OAuth, mcp-hub) is unchanged whichever edge you pick.
-
-`mcp-hub` ships its own unauthenticated admin REST API (`/api/*`) on the same port. `gatekeeper.js` exists specifically so that never reaches the internet (`docs/plan/done/init.md`).
+The ingress layer is swappable: Tailscale Funnel is the zero-config default, but the same `/mcp` endpoint can instead be served through your own Cloudflare named tunnel or any stable public HTTPS edge you already run — see [Exposing to the internet](#exposing-to-the-internet). Everything below the ingress line (gatekeeper, OAuth) is unchanged whichever edge you pick.
 
 OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/research/claude-ai-oauth-connector.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
 
@@ -179,18 +175,18 @@ OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Clien
 ```
 aki-mcp-sv/
 ├── package.json
-├── mcp-hub.config.json         # shipped default, uses ${MCP_DATA_DIR}/${HOME} placeholders
 ├── scripts/
-│   ├── start.js                 # orchestrates mcp-hub + gatekeeper
+│   ├── start.js                 # orchestrates gatekeeper + panel, single process
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
-│   ├── streamable-bridge.js      # Streamable HTTP shim <-> mcp-hub's legacy SSE transport
+│   ├── streamable-bridge.js      # Streamable HTTP shim <-> the in-process tools server (InMemoryTransport)
+│   ├── tools-server.js           # builds the one shared McpServer mounting shell/agy/kiro/search/filesystem
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
-│   ├── local-tools-mcp.js        # one process hosting shell/agy/kiro/search as register(server) modules
 │   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
-│   ├── agy-mcp.js                # register() module for the agy CLI (mounted by local-tools-mcp.js)
+│   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
+│   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call
@@ -210,8 +206,7 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs l
 
 ```
 ~/.aki/mcpsv/
-├── mcp-hub.config.json   # live config (which folders you granted access to)
-├── setting.json          # shell allowlist, edited from the panel
+├── setting.json          # allowed folders + shell allowlist, edited from the panel
 ├── oauth-client.json     # pre-issued client ID + secret, for Claude (0600)
 ├── oauth-dcr-clients.json # clients that self-registered via /register, one per ChatGPT connector (0600)
 ├── passphrase.txt        # passphrase for the /authorize consent screen (0600)
@@ -282,15 +277,15 @@ When a custom ingress is active, the panel's section 0 skips the Tailscale check
 
 ## Finding files
 
-Use `local__find_path`, not `filesystem__search_files`, to locate a file or directory. The built-in `search_files` doesn't return directories and tends to time out on large trees, so a remote session can appear to "not see" the very project it has access to. `find_path` scans the whole tree in one call (measured: ~0.2s across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
+Use `local__find_path` to locate a file or directory — it scans the whole tree in one call (measured: ~0.2s across 164k files / 11.7k directories), returns **both files and directories**, and skips `node_modules`/`.git`/build output automatically. `query` is a case-insensitive substring, or a glob when it contains `*`/`?`.
 
 ## Security
 
 Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
 
-- `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is the filesystem server's main root, plus `~/.aki` and `~/.claude` (for native rule files), fixed at process start; changing it via the panel restarts the hub. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/mcp-hub.config.json` before connecting if you want it out).
+- `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is every tool's main root, plus `~/.aki` and `~/.claude` (for native rule files) — read fresh from `~/.aki/mcpsv/setting.json` on every call, so a panel edit takes effect on the next call, no restart. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/setting.json`'s `folders` list directly if you want it out).
 - The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js` — flag-rich binaries whose own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) are deliberately kept out of it (issue #2), so a default connector cannot write, delete, or exec through the shell tool; the `find_path`/`search_content` tools cover the read-only lookup they were used for. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
-- `gatekeeper.js` is the single public entry point; the real `mcp-hub` never listens on anything but loopback.
+- `gatekeeper.js` is the single public entry point; every tool runs in-process behind it, nothing else listens on any port.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
 - Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
