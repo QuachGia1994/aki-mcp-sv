@@ -176,10 +176,10 @@ ${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
 
 <nav class="tabs" role="tablist">
-  <button class="tab active" data-tab="claude">Claude</button>
-  <button class="tab" data-tab="grok">Grok</button>
-  <button class="tab" data-tab="chatgpt">ChatGPT</button>
-  <button class="tab" data-tab="gemini">Gemini</button>
+  <button class="tab active" data-tab="claude"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude</button>
+  <button class="tab" data-tab="grok"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok</button>
+  <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
+  <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -237,10 +237,10 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
 <p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
 <div class="acts">
-  <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener">Claude ↗</a>
-  <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener">Grok ↗</a>
-  <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener">ChatGPT ↗</a>
-  <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener">Gemini ↗</a>
+  <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude ↗</a>
+  <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok ↗</a>
+  <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT ↗</a>
+  <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini ↗</a>
 </div>
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
   <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
@@ -305,7 +305,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
       <div class="foot-social">${SOCIAL.map(socialLink).join('')}<a class="social" href="https://zalo.me/0869297957" target="_blank" rel="noopener" aria-label="Zalo" title="Zalo"><img src="${SITE}/img/icon-zalo.png" alt="" width="15" height="15" loading="lazy"></a></div>
       <div class="donate">
         <p class="foot-title">Buy me a coffee</p>
-        <img class="qr" id="donateQr" src="/QR-AkiTao-PayPal.png" alt="PayPal donate QR" width="118" height="118" loading="lazy">
+        <img class="qr" id="donateQr" src="/QR-AkiTao-PayPal.png" alt="PayPal donate QR" width="250" height="250" loading="lazy">
         <div class="qr-toggle">
           <button type="button" class="qr-tab" data-qr="momo">MoMo</button>
           <button type="button" class="qr-tab active" data-qr="paypal">PayPal</button>

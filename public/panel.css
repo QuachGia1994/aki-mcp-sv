@@ -33,7 +33,8 @@ textarea, input[type=text], select { width: 100%; padding: 6px 9px; background: 
 textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 .lnk { font-size: 12px; margin: 0 0 10px; }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 18px 0 0; flex-wrap: wrap; }
-.tab { border: 1px solid var(--line); border-bottom: none; background: var(--bg); color: var(--muted); border-radius: 8px 8px 0 0; padding: 7px 15px; cursor: pointer; font-size: 12.5px; }
+.tab { border: 1px solid var(--line); border-bottom: none; background: var(--bg); color: var(--muted); border-radius: 8px 8px 0 0; padding: 7px 15px; cursor: pointer; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
+.provider-icon { width: 15px; height: 15px; vertical-align: middle; }
 .tab:hover { color: var(--accent); }
 .tab.active { color: var(--accent); border-color: var(--accent); background: var(--card); font-weight: 600; margin-bottom: -1px; padding-bottom: 8px; }
 .tabpane { display: none; padding-top: 14px; }
@@ -87,7 +88,7 @@ details.adv summary:hover { color: var(--accent); }
 .msg { font-size: 12px; margin-left: 4px; }
 .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
 a { color: var(--accent); }
-.btnlink { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12px; text-decoration: none; }
+.btnlink { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .btnlink:hover { border-color: var(--accent); }
 .steps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; line-height: 1.9; }
 .steps li { margin-bottom: 2px; }
@@ -104,7 +105,7 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 .foot-logo b { color: var(--accent); font-weight: 800; }
 .foot-desc { font-size: 12.5px; line-height: 1.6; margin: 0; }
 .donate { margin-top: 6px; }
-.donate .qr { width: 118px; height: 118px; border: 1px solid var(--line); border-radius: 8px; display: block; margin-top: 6px; background: #fff; }
+.donate .qr { width: 100%; max-width: 250px; height: auto; aspect-ratio: 1 / 1; border: 1px solid var(--line); border-radius: 8px; display: block; margin-top: 6px; background: #fff; }
 .qr-toggle { display: flex; gap: 4px; margin-top: 6px; }
 .qr-tab { border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 6px; padding: 2px 8px; font-size: 10.5px; cursor: pointer; }
 .qr-tab.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }

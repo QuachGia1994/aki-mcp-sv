@@ -25,6 +25,7 @@ export const APP_ENTRIES = [
   'public/panel.css',
   'public/panel-client.js',
   'public/favicon',
+  'public/img/providers',
   'public/extension-claude-usage.png',
   'public/extension-grok-usage.png',
   'public/QR-AkiTao-PayPal.png',
