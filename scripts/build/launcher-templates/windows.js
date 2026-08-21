@@ -60,10 +60,6 @@ if (-not (Test-Path $NodeBin)) {
 }
 
 Set-Location $AppDir
-# mcp-hub.config.json's "local" and "filesystem" entries spawn "node" by bare command name
-# (PATH lookup, not an absolute path) — the bundled runtime dir must be on PATH before start.js
-# spawns anything, or mcp-hub's own child spawns fail even though $NodeBin itself is right here.
-$env:PATH = "$RuntimeDir;$env:PATH"
 & $NodeBin (Join-Path $AppDir "scripts\\start.js")
 `;
 

@@ -29,7 +29,6 @@ export const APP_ENTRIES = [
   'public/extension-grok-usage.png',
   'public/QR-AkiTao-PayPal.png',
   'public/QR-Aki.MOMO.jpg',
-  'mcp-hub.config.json',
   'package.json',
   'LICENSE',
 ];

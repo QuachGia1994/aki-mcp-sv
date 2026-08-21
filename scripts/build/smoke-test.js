@@ -57,7 +57,7 @@ function launcherKeyForPlatform() {
 // Async spawn: spawnSync would block the event loop and starve serveDir's HTTP server.
 // PUBLIC_ORIGIN + MCP_SKIP_BROWSER_OPEN stop this run from touching the real machine (coding.B3).
 function runLauncher(launcherPath, scrubbedPath, fakeHome, timeoutMs) {
-  const portEnv = { MCP_HUB_PORT: '29999', GATEKEEPER_PORT: '28999', PANEL_PORT: '28998' }; // off start.js's defaults, avoids colliding with a real running instance
+  const portEnv = { GATEKEEPER_PORT: '28999', PANEL_PORT: '28998' }; // off start.js's defaults, avoids colliding with a real running instance
   const safetyEnv = { PUBLIC_ORIGIN: 'http://127.0.0.1:28998', MCP_SKIP_BROWSER_OPEN: '1' };
   const isWin = process.platform === 'win32';
   const [cmd, args, env] = isWin

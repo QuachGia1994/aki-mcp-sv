@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadFolders } from './allowlist.js';
 
-// Fallback when setting.json carries no `folders` key yet (fresh install, or a folder edit was never saved via the panel): reconstructs the same default the old boot-time MCP_DATA_DIR env var used to expand to (dataDir + ~/.aki + ~/.claude), so behavior is unchanged until the first save — including the rule/config dirs the panel's own prompt-builder tells the AI to read. MCP_DATA_DIR may itself already be that pre-joined string when read inside the `local` child (mcp-hub interpolates it from mcp-hub.config.json), so dedupe rather than assume either shape.
+// Fallback when setting.json carries no `folders` key yet (fresh install, or a folder edit was never saved via the panel): reconstructs the same default the old boot-time MCP_DATA_DIR env var used to expand to (dataDir + ~/.aki + ~/.claude), so behavior is unchanged until the first save — including the rule/config dirs the panel's own prompt-builder tells the AI to read.
 function envDefaultRoots() {
   const base = (process.env.MCP_DATA_DIR || os.homedir())
     .split(',')
