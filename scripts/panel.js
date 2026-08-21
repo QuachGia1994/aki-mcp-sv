@@ -11,7 +11,7 @@ import { getRoots, overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { HUB_CONFIG_PATH as HUB_CONFIG, SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig, splitLaunchArgs } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
-import { getLocalVersions, cmpSemver } from './update-check.js';
+import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
@@ -202,6 +202,7 @@ function refreshLocalVersions(updateInfo) {
     updateInfo[key].current = local[key];
     updateInfo[key].updateAvailable = cmpSemver(local[key], updateInfo[key].latest) < 0;
   }
+  writeStatusFile(updateInfo);
 }
 
 const ROUTES = {
