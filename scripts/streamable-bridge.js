@@ -7,7 +7,11 @@
 // so every external "session" multiplexes onto one real MCP session, answered from a local cache.
 import { randomBytes } from 'node:crypto';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { DEFAULT_NEGOTIATED_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
+import {
+  DEFAULT_NEGOTIATED_PROTOCOL_VERSION,
+  LATEST_PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+} from '@modelcontextprotocol/sdk/types.js';
 import { log } from './log.js';
 import { readBody, json as jsonResponse } from './http.js';
 import { createToolsServer } from './tools-server.js';
@@ -24,6 +28,10 @@ const INTERNAL_INIT_PARAMS = {
   capabilities: {},
   clientInfo: { name: 'aki-internal-bridge', version: '1.0.0' },
 };
+
+function negotiateExternalProtocolVersion(requestedVersion) {
+  return SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion) ? requestedVersion : LATEST_PROTOCOL_VERSION;
+}
 
 function routeResponse(session, message) {
   const pending = session.pending.get(message.id);
@@ -141,7 +149,11 @@ export async function handleStreamableMcp(req, res) {
     const extId = randomBytes(16).toString('hex');
     externalIds.add(extId);
     res.setHeader('Mcp-Session-Id', extId);
-    return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, result: s.initResult });
+    const initResult = {
+      ...s.initResult,
+      protocolVersion: negotiateExternalProtocolVersion(message.params?.protocolVersion),
+    };
+    return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, result: initResult });
   }
 
   // Every other request must carry a session id we minted, and the shared session must still be alive.

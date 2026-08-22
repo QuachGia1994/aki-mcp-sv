@@ -78,6 +78,7 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
 - Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
 - Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
+- Starts a **loopback-only Streamable HTTP MCP endpoint** at `http://127.0.0.1:19999/mcp` for trusted local desktop MCP clients. It has no OAuth because it is not reachable off-machine, sends no CORS headers, rejects browser-origin requests, and accepts POST bodies only as `application/json`.
 
 The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for every tool — shell, find, search, and file read/write/edit alike — no restart. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
 
@@ -165,7 +166,15 @@ gatekeeper.js  — public port 9999
       │           /register         RFC 7591 dynamic client registration (ChatGPT self-registers here)
       │           /mcp                  requires a valid Bearer access token, else 401
       │                                 POST → real Streamable HTTP (scripts/streamable-bridge.js)
+      │
+local desktop MCP client
+      │  http://127.0.0.1:19999/mcp (loopback-only Streamable HTTP, no OAuth/CORS)
       ▼
+loopback-mcp.js ───────────────────────────────┐
+      │                                        │
+      └──────────────→ streamable-bridge.js ←──┘
+                       │
+                       ▼
 tools-server.js — one shared McpServer, in-process (InMemoryTransport, no child, no SSE), tools:
                                   search-mcp.js       (find_path/search_content, whole-tree in one call)
                                   shell-mcp.js        (allowlisted commands, curated to read-only)
@@ -195,6 +204,7 @@ aki-mcp-sv/
 │   ├── start.js                 # orchestrates gatekeeper + panel, single process
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
+│   ├── loopback-mcp.js           # local-only Streamable HTTP MCP listener on 127.0.0.1:19999
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> the in-process tools server (InMemoryTransport)
 │   ├── tools-server.js           # one shared McpServer mounting shell/agy/kiro/search/filesystem
@@ -234,7 +244,7 @@ A clone stays exactly as checked out: editing folders/allowlist from the panel n
 
 ## Configuration
 
-Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN` (`AKI_PUBLIC_ORIGIN` is accepted as a backward-compatible alias), `GATEKEEPER_PORT`, `PANEL_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`, plus the optional shared Kimi/Qwen D1 mailbox set `AKI_D1_ACCOUNT_ID`, `AKI_D1_DATABASE_ID`, `AKI_D1_API_TOKEN`, `AKI_D1_POLL_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
+Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads it automatically on boot (falls back silently to defaults when `.env` is absent, so the default Tailscale flow is unaffected). Supported vars: `PUBLIC_ORIGIN` (`AKI_PUBLIC_ORIGIN` is accepted as a backward-compatible alias), `GATEKEEPER_PORT`, `PANEL_PORT`, `LOOPBACK_MCP_PORT`, `MCP_DATA_DIR`, `MCP_REQUEST_TIMEOUT_MS`, plus the optional shared Kimi/Qwen D1 mailbox set `AKI_D1_ACCOUNT_ID`, `AKI_D1_DATABASE_ID`, `AKI_D1_API_TOKEN`, `AKI_D1_POLL_MS`. For a one-off alternate profile, pass `node --env-file=.env.user ./scripts/start.js` instead.
 
 **Standalone package:** `.env.example` isn't part of the downloaded payload, so create `.env` by hand instead, in the same per-version app directory the launcher runs from (not the folder you downloaded the launcher into):
 - macOS: `~/Library/Application Support/aki-mcp-sv/app/<version>/.env`
@@ -303,6 +313,7 @@ Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; DCR/p
 - `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is every tool's main root, plus `~/.aki` and `~/.claude` (for native rule files) — read fresh from `~/.aki/mcpsv/setting.json` on every call, so a panel edit takes effect on the next call, no restart. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/setting.json`'s `folders` list directly if you want it out).
 - The shell MCP is hand-written (`shell-mcp.js`) and uses `execFile`, never an implicit shell; direct chaining/redirection syntax such as `;`, `&`, `|`, and backticks is rejected before execution. The default mode enforces the read-only allowlist from `allowlist.js`, with panel edits stored at `~/.aki/mcpsv/setting.json` → `shell.allowlist`. Section 6 also exposes an explicit **Allow all shell commands** switch (`shell.allowAll=true`) for owners who intentionally want every executable name accepted; that disables the executable-name allowlist but does not remove the parser's no-chaining/no-redirection boundary. Enabling it gives the connected AI the same command-level reach as the local user account, so use it only when that is the intended trust model. Flag-rich binaries whose own flags escape read-only stay out of the default set. A command can run in any directory under the allowed roots via the `cwd` parameter.
 - `gatekeeper.js` is the single public entry point; every tool and the optional D1 bridge route through the same in-process policy surface, and nothing else listens on a public port.
+- `loopback-mcp.js` binds only `127.0.0.1` for local desktop MCP clients. It deliberately emits no CORS headers, rejects requests carrying an `Origin` header, and requires `application/json` for POST, so a web page cannot turn a simple cross-origin request into local tool execution. It reuses the same `streamable-bridge.js` and tool policy as the public OAuth path.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
 - Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.

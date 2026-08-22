@@ -1,6 +1,6 @@
 # aki-mcp-sv — project guidance
 
-Local MCP server (filesystem, search, shell, agy) for Claude/ChatGPT/Grok/Gemini over HTTPS + OAuth 2.1, plus opt-in Kimi Web K3 and Qwen Coder Web transports through a shared Cloudflare Worker + D1 mailbox. Kimi reaches the Worker through `aki-bridge.oakgatekeeper.uk`; Qwen Coder uses the same `cloudflare/qwen-bridge-worker`. Client secrets are separate, and task creation is retry-safe through required `Idempotency-Key`. Entry: `npm start` → `scripts/start.js` (foreground, manual stop/start). Rule loader: `akirule` skill.
+Local MCP server (filesystem, search, shell, agy) for Claude/ChatGPT/Grok/Gemini over HTTPS + OAuth 2.1, local desktop clients over loopback-only Streamable HTTP (`127.0.0.1:19999/mcp`), plus opt-in Kimi Web K3 and Qwen Coder Web transports through a shared Cloudflare Worker + D1 mailbox. Kimi reaches the Worker through `aki-bridge.oakgatekeeper.uk`; Qwen Coder uses the same `cloudflare/qwen-bridge-worker`. Client secrets are separate, and task creation is retry-safe through required `Idempotency-Key`. Entry: `npm start` → `scripts/start.js` (foreground, manual stop/start). Rule loader: `akirule` skill.
 
 ## RECURRING #1 — "Couldn't connect" / no `POST /token`: Tailscale Funnel desync, NOT the code
 
@@ -33,13 +33,13 @@ Signature: `npm start` is healthy, funnel status says "on", but client reports "
 
 ## Session lifecycle
 
-- **Single shared session**: `scripts/streamable-bridge.js` maintains exactly **one** internal session for the process, held over an in-process `InMemoryTransport` pair (no child process, no SSE). External clients multiplex onto it via JSON-RPC ID remapping; `initialize` is answered locally from cache.
+- **Single shared session**: `scripts/streamable-bridge.js` maintains exactly **one** internal session for the process, held over an in-process `InMemoryTransport` pair (no child process, no SSE). OAuth-public `/mcp`, loopback-only `/mcp`, and D1 bridge calls all reuse the same tool registry/session policy; external HTTP clients multiplex onto it via JSON-RPC ID remapping and `initialize` is answered locally from cache.
 - **No per-client session Map**: Never reintroduce per-client session tracking or an `MCP_MAX_SESSIONS` cap.
 - **Timeouts & Persistence**: Per-request timeout only (`MCP_REQUEST_TIMEOUT_MS`, default 10m). Tokens persist in `scripts/oauth.js`; Funnel routing is ephemeral.
 
 ## Process topology (Stage 2 — single process)
 
-1 Node process. `start.js` orchestrates: in-process gatekeeper (OAuth + `/mcp`), panel, optional `d1-bridge.js` polling, and a boot-time `warmToolsServer()` call. `scripts/tools-server.js` builds the one shared `McpServer`, mounting `shell`, `agy`, `kiro`, `search`, and native `filesystem` modules. `streamable-bridge.js` talks to it directly over `InMemoryTransport`; the optional D1 bridge calls the same shared session, so Qwen/Kimi do not add a process or a second policy surface. Canonical tool names are `local__*`; the native filesystem tools also keep `filesystem__*` compatibility aliases for pre-1.10 bridge prompts. Folder scope (`scripts/roots.js`) is read fresh from `setting.json` on every call — a panel save takes effect on the next tool call, no restart. There is no `mcp-hub` and no third-party filesystem child.
+1 Node process. `start.js` orchestrates: in-process gatekeeper (OAuth + public `/mcp`), loopback-only Streamable HTTP MCP on `127.0.0.1:19999`, panel, optional `d1-bridge.js` polling, and a boot-time `warmToolsServer()` call. `scripts/tools-server.js` builds the one shared `McpServer`, mounting `shell`, `agy`, `kiro`, `search`, and native `filesystem` modules. Both HTTP entry points and the optional D1 bridge call the same `streamable-bridge.js` shared session, so local desktop clients and Qwen/Kimi do not add a second policy surface. Canonical tool names are `local__*`; the native filesystem tools also keep `filesystem__*` compatibility aliases for pre-1.10 bridge prompts. Folder scope (`scripts/roots.js`) is read fresh from `setting.json` on every call — a panel save takes effect on the next tool call, no restart. There is no `mcp-hub` and no third-party filesystem child.
 
 ## Release process
 

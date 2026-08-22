@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startGatekeeper } from './gatekeeper.js';
+import { startLoopbackMcp } from './loopback-mcp.js';
 import { startPanel } from './panel.js';
 import { startD1Bridge } from './d1-bridge.js';
 import { warmToolsServer } from './streamable-bridge.js';
@@ -92,6 +93,7 @@ if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.
 
 let panel;
 let d1Bridge = null;
+let loopbackMcp = null;
 let cloudflared = null;
 let shuttingDown = false;
 
@@ -121,6 +123,8 @@ function spawnCloudflared(credPath) {
 
 // Boot-time construction of the tools server surfaces registration-time failures before a client connects.
 warmToolsServer();
+// Qwen Desktop uses a loopback-only Streamable HTTP endpoint, avoiding OAuth and child-process launchers while reusing the exact same in-process tool policy surface.
+loopbackMcp = startLoopbackMcp();
 // Optional web bridge uses the same in-process tools session and policy surface as /mcp clients.
 d1Bridge = startD1Bridge();
 if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(cloudflaredCredPath);
@@ -150,6 +154,7 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   d1Bridge?.close();
+  loopbackMcp?.close();
   cloudflared?.kill();
   gateServer?.close();
   panel?.close();
