@@ -2,7 +2,7 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.11.0] - 2026-08-23
 
 ### Added
 - **First-session MCP onboarding**: `docs/ref/mcp-intro.md` (live-plan pattern, cross-account continuity) is read once, gated by `~/.aki/mcpsv/intro.json`, via a single pointer line in the pasted instruction prompt — not the full text, since the ChatGPT 1500-char cap has no room for it (measured: 1141/1500 chars before this change, 1292/1500 after, `docs/plan/2.0.0-improve.md` checklist item 6).
