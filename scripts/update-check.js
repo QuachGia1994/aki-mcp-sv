@@ -11,8 +11,7 @@ import { USER_DIR } from './userdata.js';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RULE_CHANGELOG = path.join(os.homedir(), '.aki', 'akidevrule', 'CHANGELOG.md');
 
-// Lives under this app's own USER_DIR (pattern.A1 SSoT), not the shared ~/.aki root —
-// akidevrule's CHANGELOG above is a different product's data and stays under ~/.aki directly.
+// Lives under this app's own USER_DIR (pattern.A1 SSoT), not the shared ~/.aki root — akidevrule's CHANGELOG above is a different product's data and stays under ~/.aki directly.
 export const STATUS_PATH = path.join(USER_DIR, 'aki-mcp-status.json');
 export const REPO_MCP = 'lacvietanh/aki-mcp-sv';
 export const BRANCH_MCP = 'main';
@@ -22,8 +21,7 @@ export const BRANCH_RULE = 'master';
 const MCP_PKG_URL = `https://raw.githubusercontent.com/${REPO_MCP}/${BRANCH_MCP}/package.json`;
 const RULE_CHANGELOG_URL = `https://raw.githubusercontent.com/${REPO_RULE}/${BRANCH_RULE}/CHANGELOG.md`;
 
-// Newest released version in a keep-a-changelog file: the first `## [x.y.z]` heading,
-// skipping the `[Unreleased]` buffer. akidevrule has no version field, so its CHANGELOG is the SSoT.
+// Newest released version in a keep-a-changelog file: the first `## [x.y.z]` heading, skipping the `[Unreleased]` buffer. akidevrule has no version field, so its CHANGELOG is the SSoT.
 export function parseChangelogVersion(text) {
   const m = text && text.match(/^##\s*\[(\d+\.\d+\.\d+)\]/m);
   return m ? m[1] : null;
@@ -79,8 +77,7 @@ function fetchText(url, timeoutMs, redirectsLeft = 3) {
   });
 }
 
-// { mcp:{current,latest,updateAvailable}, rule:{...} }. current is local (always attempted);
-// latest is null on any network/parse failure; updateAvailable is only true when latest > current.
+// { mcp:{current,latest,updateAvailable}, rule:{...} }. current is local (always attempted); latest is null on any network/parse failure; updateAvailable is only true when latest > current.
 export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
   const local = getLocalVersions();
   const [mcpPkg, ruleLog] = await Promise.all([
@@ -93,8 +90,7 @@ export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
   return { mcp: branch(local.mcp, mcpLatest), rule: branch(local.rule, parseChangelogVersion(ruleLog)) };
 }
 
-// A convenience mirror the pasted instruction reads at session start (under ~/.aki = a locked allowed root),
-// so a remote AI can tell the user its instruction is stale. Never fatal — the console/panel banners stand alone.
+// A convenience mirror the pasted instruction reads at session start (under ~/.aki = a locked allowed root), so a remote AI can tell the user its instruction is stale. Never fatal — the console/panel banners stand alone.
 export function writeStatusFile(info) {
   try {
     writeFileSync(STATUS_PATH, `${JSON.stringify({ checkedAt: new Date().toISOString(), ...info }, null, 2)}\n`);
