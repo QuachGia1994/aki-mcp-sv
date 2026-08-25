@@ -334,6 +334,7 @@ const TOKEN = ${JSON.stringify(token)};
 const RULES_DIR = ${JSON.stringify(rulesDir)};
 const CLAUDE_DIR = ${JSON.stringify(CLAUDE_DIR)};
 const AKI_DIR = ${JSON.stringify(AKI_DIR)};
+const USER_DIR = ${JSON.stringify(userDir)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
 const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
