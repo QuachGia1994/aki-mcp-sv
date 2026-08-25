@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Custom rule baseline is hard-locked in panel section 3.** `index`, `agent-behavior`, `coding`, `pattern-core`, `agent-engineering`, `docs`, and `release` are always selected and cannot be unchecked individually; every other installed rule remains optional. One `LOCKED_RULES` list drives both rendering and prompt selection.
+
 ## [1.11.0] - 2026-08-23
 
 ### Added

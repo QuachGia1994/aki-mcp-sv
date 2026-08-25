@@ -234,13 +234,12 @@ function renderRuleChecks(files) {
     checks.innerHTML = '<span class="empty">akidevrule isn\'t installed yet; install it in section 2 above, or skip and use the prompt without rules.</span>';
     return;
   }
-  // index.md is the rule map — always first, and locked so it can't be unchecked.
+  // Custom baseline: keep the owner's always-read rule set selected and locked; index.md stays first for orientation.
   const sorted = [...files].sort((a, b) => (a === 'index.md' ? -1 : b === 'index.md' ? 1 : 0));
   for (const f of sorted) {
     const label = document.createElement('label');
-    const locked = f === 'index.md';
-    const checked = locked || DEFAULT_RULES.includes(f);
-    label.innerHTML = '<input type="checkbox" value="' + f + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + '>';
+    const locked = LOCKED_RULES.includes(f);
+    label.innerHTML = '<input type="checkbox" value="' + f + '"' + (locked ? ' checked disabled' : '') + '>';
     label.append(document.createTextNode(f.replace(/^(RULE|METHOD)-/, '').replace(/\.md$/, '') + (locked ? ' 🔒' : '')));
     checks.append(label);
   }

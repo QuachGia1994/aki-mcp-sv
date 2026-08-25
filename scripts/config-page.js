@@ -23,7 +23,7 @@ const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvieta
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
-const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'];
+const LOCKED_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'RULE-agent-engineering.md', 'RULE-docs.md', 'RULE-release.md'];
 
 // Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
@@ -337,7 +337,7 @@ const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const USER_DIR = ${JSON.stringify(userDir)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
-const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
+const LOCKED_RULES = ${JSON.stringify(LOCKED_RULES)};
 const MCP_VERSION = ${JSON.stringify(mcpVer)};
 const RULE_VERSION = ${JSON.stringify(ruleVer)};
 const SAVED_INGRESS = ${JSON.stringify(savedIngress)};
