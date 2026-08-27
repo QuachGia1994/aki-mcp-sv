@@ -97,7 +97,7 @@ Beyond `$MCP_DATA_DIR`, the filesystem tools are also granted `~/.aki` (where ak
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`, plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
+claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__run_cmd`, `local__agy_run`, `local__kiro_read`, optional read-only claude-mem lookup (`local__claude_mem_search`, `local__claude_mem_timeline`, `local__claude_mem_get_observations`), plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
 
 **Note on the connector icon:** claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host: `https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32`. `<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
 
@@ -180,6 +180,7 @@ tools-server.js — one shared McpServer, in-process (InMemoryTransport, no chil
                                   shell-mcp.js        (allowlisted commands, curated to read-only)
                                   agy-mcp.js          (Antigravity CLI, read-only plan mode)
                                   kiro-mcp.js         (kiro_read, read-only, needs kiro-cli on PATH)
+                                  claude-mem-mcp.js   (read-only local worker search/timeline/observation lookup)
                                   filesystem-mcp.js   (native read/write/edit inside the allowed folders)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
@@ -207,12 +208,13 @@ aki-mcp-sv/
 │   ├── loopback-mcp.js           # local-only Streamable HTTP MCP listener on 127.0.0.1:19999
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> the in-process tools server (InMemoryTransport)
-│   ├── tools-server.js           # one shared McpServer mounting shell/agy/kiro/search/filesystem
+│   ├── tools-server.js           # one shared McpServer mounting shell/agy/kiro/search/claude-mem/filesystem
 │   ├── d1-bridge.js              # optional Kimi/Qwen D1 mailbox bridge, disabled unless configured
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
 │   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
 │   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
+│   ├── claude-mem-mcp.js         # read-only local claude-mem worker HTTP bridge
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel

@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- **Read-only claude-mem bridge for the in-process MCP server.** Aki now exposes only `local__claude_mem_search`, `local__claude_mem_timeline`, and `local__claude_mem_get_observations`, calling the local claude-mem worker over bounded HTTP with environment/settings overrides; no capture, write, or delete memory tools are registered.
+
 ### Changed
 - **Custom rule baseline is hard-locked in panel section 3.** `index`, `agent-behavior`, `coding`, `pattern-core`, `agent-engineering`, `docs`, and `release` are always selected and cannot be unchecked individually; every other installed rule remains optional. One `LOCKED_RULES` list drives both rendering and prompt selection.
 
