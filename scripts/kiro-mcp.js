@@ -28,24 +28,26 @@ export function resolveKiroExecutable({ platform = process.platform, env = proce
   return 'kiro-cli';
 }
 
-function run(trustTools, { prompt, effort, cwd }) {
+export function classifyKiroOutput(error, stdout = '', stderr = '') {
+  const cleanStdout = stripAnsi(stdout);
+  const cleanStderr = stripAnsi(stderr);
+  if (error) return { ok: false, text: cleanStdout || cleanStderr || error.message };
+  if (cleanStdout && cleanStdout.trim()) return { ok: true, text: cleanStdout };
+  if (cleanStderr && cleanStderr.trim()) return { ok: false, text: cleanStderr };
+  return { ok: false, text: 'kiro-cli returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.' };
+}
+
+export function runKiroRead({ prompt, effort, cwd }) {
   const r = resolveOrFail(cwd);
   if (!r.ok) return Promise.resolve(fail(r.error));
   const dir = r.dir;
-  const args = ['chat', '--no-interactive', '--model', MODEL, `--trust-tools=${trustTools}`];
+  const args = ['chat', '--no-interactive', '--model', MODEL, '--trust-tools=fs_read'];
   if (effort) args.push('--effort', effort);
   args.push(prompt);
   return new Promise((resolve) => {
     execFile(resolveKiroExecutable(), args, { cwd: dir, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-      const cleanStdout = stripAnsi(stdout);
-      const cleanStderr = stripAnsi(stderr);
-      if (error) {
-        return resolve(err(cleanStdout || cleanStderr || error.message));
-      }
-      if (!cleanStdout || !cleanStdout.trim()) {
-        return resolve(err('kiro-cli returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.'));
-      }
-      resolve(ok(cleanStdout));
+      const result = classifyKiroOutput(error, stdout, stderr);
+      resolve(result.ok ? ok(result.text) : err(result.text));
     });
   });
 }
@@ -67,6 +69,6 @@ export function register(server) {
         cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
       },
     },
-    async ({ prompt, effort, cwd }) => run('fs_read', { prompt, effort, cwd }),
+    async ({ prompt, effort, cwd }) => runKiroRead({ prompt, effort, cwd }),
   );
 }

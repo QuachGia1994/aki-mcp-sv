@@ -18,6 +18,8 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__read_text_file'), true);
     assert.equal(names.has('filesystem__read_text_file'), true);
     assert.equal(names.has('local__run_cmd'), true);
+    assert.equal(names.has('local__agent_read'), true);
+    assert.equal(names.has('local__opencode_read'), true);
   } finally {
     await client.close();
     await server.close();

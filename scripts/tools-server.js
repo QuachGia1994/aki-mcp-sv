@@ -6,6 +6,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { register as registerShell } from './shell-mcp.js';
 import { register as registerAgy } from './agy-mcp.js';
 import { register as registerKiro } from './kiro-mcp.js';
+import { register as registerOpenCode } from './opencode-mcp.js';
+import { register as registerAgent } from './agent-mcp.js';
 import { register as registerSearch } from './search-mcp.js';
 import { register as registerClaudeMem } from './claude-mem-mcp.js';
 import { register as registerFilesystem } from './filesystem-mcp.js';
@@ -27,7 +29,7 @@ function prefixedServer(server, prefix) {
 export function createToolsServer() {
   const server = new McpServer({ name: 'local', version: '1.0.0', title: 'Local Tools' });
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerKiro, registerSearch, registerClaudeMem, registerFilesystem]) register(local);
+  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerAgent, registerSearch, registerClaudeMem, registerFilesystem]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on

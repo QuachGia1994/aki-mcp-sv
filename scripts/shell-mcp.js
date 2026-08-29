@@ -12,6 +12,20 @@ const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx',
 
 // ls-remote requires zero extra args — a repository/URL argument lets git's own ext:: transport helper spawn an arbitrary process before anything "read-only" happens; bare invocation only queries the configured remote.
 const GIT_NO_ARGS_SUBCOMMANDS = new Set(['ls-remote']);
+const NODE_CMD_SHIMS = new Map([
+  ['npm', 'npm-cli.js'],
+  ['npm.cmd', 'npm-cli.js'],
+  ['npx', 'npx-cli.js'],
+  ['npx.cmd', 'npx-cli.js'],
+]);
+
+export function resolveExecFileTarget(bin, args, { platform = process.platform, execPath = process.execPath, exists = fs.existsSync } = {}) {
+  if (platform !== 'win32') return { file: bin, args };
+  const shim = NODE_CMD_SHIMS.get(path.basename(bin).toLowerCase());
+  if (!shim) return { file: bin, args };
+  const script = path.join(path.dirname(execPath), 'node_modules', 'npm', 'bin', shim);
+  return exists(script) ? { file: execPath, args: [script, ...args] } : { file: bin, args };
+}
 
 const warnedDirs = new Set();
 // The native filesystem tools read the same roots live as shell/search, so one root set is now the complete write surface. A trusted dir overlapping it would make write_file + run_cmd arbitrary code execution without allowlist review.
@@ -121,12 +135,16 @@ class Shell {
 
   run(bin, args, cwd) {
     return new Promise((resolve) => {
-      execFile(bin, args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+      const target = resolveExecFileTarget(bin, args);
+      execFile(target.file, target.args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
         if (error) {
-          resolve(err(stderr || error.message));
-        } else {
-          resolve(ok(stdout || '(no output)'));
+          if (error.code === 'ENOENT') {
+            return resolve(err(`executable not found: "${bin}". run_cmd does not invoke a command shell; use the dedicated MCP filesystem/search tools instead of shell built-ins.`));
+          }
+          const combined = [stdout, stderr].filter((part) => part && part.trim()).join('\n');
+          return resolve(err(combined || error.message));
         }
+        resolve(ok(stdout || stderr || '(no output)'));
       });
     });
   }

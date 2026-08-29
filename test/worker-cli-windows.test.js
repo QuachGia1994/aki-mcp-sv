@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildAgyArgs, resolveAgyExecutable } from '../scripts/agy-mcp.js';
-import { resolveKiroExecutable, stripAnsi } from '../scripts/kiro-mcp.js';
+import { resolveOpenCodeExecutable } from '../scripts/opencode-mcp.js';
+import { classifyKiroOutput, resolveKiroExecutable, stripAnsi } from '../scripts/kiro-mcp.js';
 
 test('agy plan mode auto-approves confirmations while remaining plan-mode read-only', () => {
   const args = buildAgyArgs({
@@ -58,4 +59,20 @@ test('kiro supports an explicit executable override and portable fallback', () =
 
 test('kiro output strips ANSI control sequences before returning through MCP', () => {
   assert.equal(stripAnsi('\u001b[38;5;141mname=mcp-local\u001b[0m'), 'name=mcp-local');
+});
+
+test('kiro preserves stderr failures even when the CLI exits zero with empty stdout', () => {
+  const result = classifyKiroOutput(null, '', '\u001b[38;5;11mMonthly request limit reached\u001b[0m');
+  assert.deepEqual(result, { ok: false, text: 'Monthly request limit reached' });
+});
+
+test('opencode resolves the per-user Bun executable before PATH fallback', () => {
+  const expected = String.raw`C:\Users\User\.bun\bin\opencode.exe`;
+  const resolved = resolveOpenCodeExecutable({
+    platform: 'win32',
+    home: String.raw`C:\Users\User`,
+    env: {},
+    exists: (candidate) => candidate === expected,
+  });
+  assert.equal(resolved, expected);
 });

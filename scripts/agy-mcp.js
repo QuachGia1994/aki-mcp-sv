@@ -40,7 +40,7 @@ export function buildAgyArgs({ prompt, mode, model, effort, outputFormat }) {
   return args;
 }
 
-function run(args, cwd) {
+export function runAgy(args, cwd) {
   return new Promise((resolve) => {
     execFile(resolveAgyExecutable(), args, { cwd, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
@@ -93,7 +93,7 @@ export function register(server) {
         effort,
         outputFormat,
       });
-      return run(args, dir);
+      return runAgy(args, dir);
     },
   );
 }

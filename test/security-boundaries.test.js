@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { readBody } from '../scripts/http.js';
 import { dcrRegistrationAvailable, handleRegister, shouldRotateRefresh, rotateRefreshGrant } from '../scripts/oauth.js';
-import { trustedInterpreterScriptArg } from '../scripts/shell-mcp.js';
+import { resolveExecFileTarget, trustedInterpreterScriptArg } from '../scripts/shell-mcp.js';
 
 test('readBody rejects declared and streamed bodies above the configured cap', async () => {
   const declared = Readable.from(['small']);
@@ -35,6 +35,22 @@ test('trusted interpreter preallow only accepts a script as argv[0]', () => {
   assert.equal(trustedInterpreterScriptArg('node', ['--require', trusted, '-e', 'process.exit()']), null);
   assert.equal(trustedInterpreterScriptArg('python3', ['-c', 'print(1)']), null);
   assert.equal(trustedInterpreterScriptArg('bash', [trusted]), null);
+});
+
+test('Windows npm shims run through node instead of execFile on .cmd', () => {
+  const execPath = String.raw`D:\Program Files\nodejs\node.exe`;
+  const npmCli = String.raw`D:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js`;
+  const resolved = resolveExecFileTarget('npm', ['test'], {
+    platform: 'win32',
+    execPath,
+    exists: (candidate) => candidate === npmCli,
+  });
+  assert.equal(resolved.file, execPath);
+  assert.deepEqual(resolved.args, [npmCli, 'test']);
+});
+
+test('non-Windows shell commands remain untouched', () => {
+  assert.deepEqual(resolveExecFileTarget('npm', ['test'], { platform: 'linux' }), { file: 'npm', args: ['test'] });
 });
 
 test('DCR registration storage is bounded', () => {
