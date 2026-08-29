@@ -34,6 +34,8 @@
 - [plan/manus-connect.md](plan/manus-connect.md) — Manus "Import by JSON" has no OAuth step; JSON template + manual PKCE token-mint recipe (365-day token) to paste into `headers.Authorization`; unverified, no live test yet (design only, not started)
 - [plan/done/standalone-newbie-ux-followups.md](plan/done/standalone-newbie-ux-followups.md) — newbie flow follow-ups: README restructure shipped 2026-08-16, claude.ai desync filed as known platform limitation
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
+- [ref/KIMI-WEB-LIVE-TEST.md](ref/KIMI-WEB-LIVE-TEST.md) — portable Kimi K3 browser bootstrap for the custom-domain Worker -> D1 -> local Aki route; placeholders only, no runtime credentials
+- [ref/QWEN-WEB-LIVE-TEST.md](ref/QWEN-WEB-LIVE-TEST.md) — portable Qwen browser bootstrap using the custom domain, idempotent task creation, polling, and real Windows project access
 - [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)
 - [ref/harness-fact.md](ref/harness-fact.md) — the agy/kiro CLI facts the arm MCPs depend on (flags, model ids, effort enums), split by evidence tier: agy and kiro both verified live (kiro-cli 2.16.2, 2026-08-09)
 - [research/claude-ai-oauth-connector.md](research/claude-ai-oauth-connector.md) — research behind the switch from token-in-URL to OAuth, with dates and sources
