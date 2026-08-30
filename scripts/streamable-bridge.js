@@ -128,8 +128,7 @@ export async function handleStreamableMcp(req, res) {
   }
 
   // Every other request must carry a session id we minted, and the shared session must still be alive.
-  // Node normalizes incoming header names to lowercase, so this accepts every wire casing while
-  // rejecting duplicate/ambiguous values before they reach the shared in-process transport.
+  // Node normalizes incoming header names to lowercase, so this accepts every wire casing while rejecting duplicate/ambiguous values before they reach the shared in-process transport.
   const rawExternalSessionId = req.headers['mcp-session-id'];
   const externalSessionId = typeof rawExternalSessionId === 'string' ? rawExternalSessionId : null;
   if (!externalSessionId || !externalIds.has(externalSessionId) || !shared) {

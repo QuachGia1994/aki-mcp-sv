@@ -86,8 +86,7 @@ async function run() {
   }
 }
 
-// The bridge intentionally owns a process-lifetime shared InMemoryTransport, so a standalone test
-// exits explicitly after reporting the result instead of changing that production architecture.
+// The bridge intentionally owns a process-lifetime shared InMemoryTransport, so a standalone test exits explicitly after reporting the result instead of changing that production architecture.
 run().then(
   () => process.exit(0),
   (error) => {
