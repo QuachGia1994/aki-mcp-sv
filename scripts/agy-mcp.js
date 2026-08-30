@@ -8,7 +8,7 @@ import { ok, err, fail } from './mcp-tool.js';
 // 'plan' is agy's non-mutating mode — the only one enabled out of the box. Anything else must be explicitly opted into via setting.json -> { "agy": { "allowedModes": [...] } }.
 const DEFAULT_MODES = ['plan'];
 // Discovery-tier default per akiflow/harness-facts.md: fastest wide-context tier, generous quota.
-const DEFAULT_MODEL = 'gemini-3.6-flash-medium';
+const DEFAULT_MODEL = 'gemini-3.7-flash-medium';
 
 function loadAllowedModes() {
   const configured = readSettings().agy?.allowedModes;

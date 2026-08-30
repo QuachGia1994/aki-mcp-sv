@@ -119,12 +119,19 @@ export async function handleStreamableMcp(req, res) {
     }
     const extId = randomBytes(16).toString('hex');
     externalIds.add(extId);
-    res.setHeader('Mcp-Session-Id', extId);
-    return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, result: s.initResult });
+    return jsonResponse(
+      res,
+      200,
+      { jsonrpc: '2.0', id: message.id, result: s.initResult },
+      { 'MCP-Session-Id': extId },
+    );
   }
 
   // Every other request must carry a session id we minted, and the shared session must still be alive.
-  const externalSessionId = req.headers['mcp-session-id'];
+  // Node normalizes incoming header names to lowercase, so this accepts every wire casing while
+  // rejecting duplicate/ambiguous values before they reach the shared in-process transport.
+  const rawExternalSessionId = req.headers['mcp-session-id'];
+  const externalSessionId = typeof rawExternalSessionId === 'string' ? rawExternalSessionId : null;
   if (!externalSessionId || !externalIds.has(externalSessionId) || !shared) {
     externalIds.delete(externalSessionId);
     log(`[bridge] 404 session not found (${(externalSessionId ?? 'none').slice(0, 8)}…, method=${method ?? '?'}) — client must re-initialize`);

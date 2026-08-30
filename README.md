@@ -1,6 +1,6 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai), **ChatGPT**, and **Grok** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. *(Experimental support for Gemini — see [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini).)*
+Give Claude on the **web** (claude.ai), **ChatGPT**, and **Grok** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. *(Experimental support for Gemini — see [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini). Also connectable from Postman's AI Agent — see [Connecting from Postman](#connecting-from-postman).)*
 
 No desktop app. No device lock-in. No install needed if you use the standalone launcher below.
 
@@ -8,7 +8,7 @@ No desktop app. No device lock-in. No install needed if you use the standalone l
 
 [![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -119,6 +119,15 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 **Grok — verified, production-ready:** **self-registers** via the `/register` DCR path like ChatGPT — paste only the MCP URL, no Client ID. Its real `redirect_uri` `https://grok.com/connectors-oauth-exchange-code/` was observed live 2026-08-09 and is allowlisted via `GROK_CALLBACK_PREFIX`. Verified working end to end (`authorize → token` 200). If a future Grok change moves that callback, a rejected registration logs `register REJECTED (redirect_uri not allowlisted): [...]` so the new value can be re-allowlisted.
 
 **Gemini — experimental, connection works but tool use doesn't (yet)** (paid tiers only — Pro / Business / Enterprise; the free tier may not expose custom apps): pastes a **confidential client**, exactly like Claude — set the custom app link to the MCP URL, then under Advanced Settings paste the same Client ID / Client secret. Gemini's redirect goes through Google's OAuth proxy `https://oauth-redirect.googleusercontent.com/r/...` (observed live 2026-08-09), allowlisted by `isAllowedRedirect` in `scripts/oauth.js`. **Caveat:** the OAuth handshake succeeds and Gemini accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — connection healthy, tool use unreliable. Claude and Grok are the dependable clients today.
+
+## Connecting from Postman
+
+Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-party MCP servers and no persistent system-prompt field, so it connects differently from the clients above:
+
+1. Connect at least one other client first (Claude, ChatGPT, Grok, or Gemini) — completing its OAuth consent mints a real access token.
+2. Open `~/.aki/mcpsv/tokens.json` and copy any hex key under `"access"` whose `expires` is still in the future — that's the Bearer token. It is **not** the passphrase: the passphrase only gates the one-time browser consent page, `/mcp` itself only accepts an already-issued token, and any valid token works regardless of which client minted it.
+3. In Postman, add a new MCP server (Settings → Connected Accounts) with **Server URL** = the MCP URL and **Authorization** header = `Bearer <token from tokens.json>` — or paste the ready-made config JSON from panel section 1's Postman tab.
+4. Paste the panel's prompt instruction block into each new chat, since Postman doesn't persist one across sessions.
 
 ## Autonomous Cloud Automation (Grok + Local MCP)
 

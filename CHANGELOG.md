@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning per [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Postman connector**: a fifth control-panel tab (`scripts/config-page.js`) alongside Claude/Grok/ChatGPT/Gemini, with a setup walkthrough, an MCP config JSON snippet, a paste-in prompt (Postman has no persistent system-prompt field), and screenshots (`public/img/aki-mcp-instruct-postman-*.png`). Postman has no OAuth redirect for third-party MCP servers, so it authenticates with a static bearer token instead of the passphrase/OAuth flow the other clients use — the panel now instructs connecting one other client first, then copying an already-issued access token straight out of `tokens.json` (any entry works; `verifyBearer()` only checks map membership + expiry, not which client minted it).
+- **Regression test for the streamable bridge session header** (`scripts/streamable-bridge.test.js`, run via `npm test` and now in CI): confirms repeated `initialize` calls reuse exactly one internal tools-server session and that a mixed-case `mCp-SeSsIoN-iD` request header is still accepted (Node normalizes incoming header names to lowercase).
+
+### Fixed
+- **Postman tab shipped with a non-functional auth instruction**: it told users to send `Authorization: Bearer <Passphrase>`, but `/mcp` only ever accepts a real minted access token (`scripts/oauth.js`'s `verifyBearer()`) — the passphrase is checked only at the one-time `/authorize` consent page. Every request built from the original instructions would have 401'd. Now points at a real token instead.
+
+### Changed
+- **Session-id header casing**: `Mcp-Session-Id` → `MCP-Session-Id` in `scripts/gatekeeper.js` and `scripts/streamable-bridge.js` (CORS allow/expose lists and the minted response header). Purely cosmetic on the wire — HTTP header names are case-insensitive and this repo already reads incoming headers through Node's lowercased `req.headers` — done for consistency with this project's own "MCP" capitalization elsewhere.
+- **`agy` tool renamed to `agy_run`** (`scripts/agy-mcp.js`) for consistency with `kiro_read`'s `<agent>_<verb>` naming; default model bumped `gemini-3.6-flash-medium` → `gemini-3.7-flash-medium` per akidevrule's current discovery-tier default.
+- **Tool descriptions no longer bake in one hardcoded root path**: `filesystem-mcp.js`, `search-mcp.js`, `shell-mcp.js` now describe scope generically ("the configured roots") instead of interpolating `getRoots()[0]` at registration time, correct now that multiple roots are supported and can change live via the panel.
+- **`docs/ref/claude-connector.md`** rewritten for claude.ai's Aug 28 2025 "Add custom connector" dialog redesign (explicit Authentication/Advanced sections, auth-timing and client-registration radios, transport selection).
+
 ## [1.11.0] - 2026-08-23
 
 ### Added
