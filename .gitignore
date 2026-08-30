@@ -17,3 +17,7 @@ Icon?
 
 # disposable visual export from /akihtmlreport, regenerated wholesale
 REPORT.html
+
+# Postman GUI workspace scaffolding (auto-generated when Postman opens this folder)
+.postman/
+postman/
