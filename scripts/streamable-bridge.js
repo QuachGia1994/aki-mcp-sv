@@ -28,6 +28,7 @@ const INTERNAL_INIT_PARAMS = {
   capabilities: {},
   clientInfo: { name: 'aki-internal-bridge', version: '1.0.0' },
 };
+const STATELESS_2025_PROTOCOL_VERSION = '2025-06-18';
 const MODERN_PROTOCOL_VERSION = '2026-07-28';
 const MODERN_PROTOCOL_META = 'io.modelcontextprotocol/protocolVersion';
 const MODERN_SERVER_INFO_META = 'io.modelcontextprotocol/serverInfo';
@@ -236,7 +237,59 @@ export async function handleStreamableMcp(req, res) {
     return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, error: { code: -32601, message: `Method not found: ${method}` } });
   }
 
-  // initialize → answered locally; the first one boots the shared session, the rest reuse its cached result.
+  // MCP 2025-06-18 may be served statelessly: Postman v12 explicitly auto-detects this mode.
+  // We still keep 2025-03-26 and older clients on the external session-id path below.
+  if (!req.akiLoopback && method === 'initialize' && message.params?.protocolVersion === STATELESS_2025_PROTOCOL_VERSION) {
+    let s;
+    try {
+      s = await ensureShared(INTERNAL_INIT_PARAMS);
+    } catch (e) {
+      log(`[bridge] failed to boot shared tools-server session: ${e.message}`);
+      return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `tools server unreachable: ${e.message}` }, id: message.id ?? null });
+    }
+    return jsonResponse(res, 200, {
+      jsonrpc: '2.0',
+      id: message.id,
+      result: {
+        ...s.initResult,
+        protocolVersion: STATELESS_2025_PROTOCOL_VERSION,
+      },
+    });
+  }
+
+  const stateless2025Request = !req.akiLoopback
+    && req.headers['mcp-protocol-version'] === STATELESS_2025_PROTOCOL_VERSION
+    && !req.headers['mcp-session-id'];
+  if (stateless2025Request) {
+    let s;
+    try {
+      s = await ensureShared(INTERNAL_INIT_PARAMS);
+    } catch (e) {
+      return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `tools server unreachable: ${e.message}` }, id: message.id ?? null });
+    }
+
+    if (method === 'notifications/initialized') {
+      res.writeHead(202);
+      return res.end();
+    }
+
+    if (!hasId) {
+      postMessage(s.session, message).catch((e) => log(`[bridge] stateless notification forward failed (${method}): ${e.message}`));
+      res.writeHead(202);
+      return res.end();
+    }
+
+    const origId = message.id;
+    try {
+      const response = await requestUpstream(s.session, { ...message, id: nextUpstreamId++ });
+      response.id = origId;
+      return jsonResponse(res, 200, response);
+    } catch (e) {
+      return jsonResponse(res, 504, { jsonrpc: '2.0', error: { code: -32000, message: e.message }, id: origId });
+    }
+  }
+
+  // Stateful legacy initialize → answered locally; the first one boots the shared session, the rest reuse its cached result.
   if (method === 'initialize') {
     let s;
     try {

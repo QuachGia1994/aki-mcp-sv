@@ -27,6 +27,7 @@ export function startLoopbackMcp({ port = Number(process.env.LOOPBACK_MCP_PORT |
         res.writeHead(415, { 'Content-Type': 'text/plain' });
         return res.end('application/json required');
       }
+      req.akiLoopback = true;
       return handleStreamableMcp(req, res);
     }
     if (req.method === 'DELETE') {

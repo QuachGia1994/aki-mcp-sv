@@ -35,6 +35,26 @@ function initialize(baseUrl, id) {
   });
 }
 
+function stateless2025Initialize(baseUrl, id) {
+  return fetch(baseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'postman-stateless-regression', version: '1.0.0' },
+      },
+    }),
+  });
+}
+
 function modernRequest(baseUrl, id, method, params = {}) {
   const headers = {
     'Content-Type': 'application/json',
@@ -66,6 +86,27 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${server.address().port}/mcp`;
 
   try {
+    const statelessInit = await stateless2025Initialize(baseUrl, 'stateless-init');
+    assert.equal(statelessInit.status, 200);
+    assert.equal(statelessInit.headers.get('MCP-Session-Id'), null);
+    const statelessInitBody = await statelessInit.json();
+    assert.equal(statelessInitBody.result?.protocolVersion, '2025-06-18');
+
+    const statelessTools = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'MCP-Protocol-Version': '2025-06-18',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 'stateless-tools', method: 'tools/list', params: {} }),
+    });
+    assert.equal(statelessTools.status, 200);
+    assert.equal(statelessTools.headers.get('MCP-Session-Id'), null);
+    const statelessToolsBody = await statelessTools.json();
+    assert.ok(Array.isArray(statelessToolsBody.result?.tools));
+    assert.ok(statelessToolsBody.result.tools.length > 0);
+
     const modernDiscover = await modernRequest(baseUrl, 'discover-1', 'server/discover');
     assert.equal(modernDiscover.status, 200);
     assert.equal(modernDiscover.headers.get('MCP-Session-Id'), null);

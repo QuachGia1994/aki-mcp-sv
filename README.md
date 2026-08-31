@@ -138,7 +138,7 @@ Manual Agent Mode JSON is fallback only. If used, keep the literal `Bearer ` pre
 {"mcpServers":{"aki-mcp-sv":{"url":"https://your-host/mcp","headers":{"Authorization":"Bearer PASTE_ACCESS_TOKEN_HERE"}}}}
 ```
 
-The fork's public `/mcp` endpoint supports both the legacy 2025 sessionful Streamable HTTP handshake used by existing clients and the stateless MCP `2026-07-28` flow used by newer Postman tooling (`server/discover` + per-request metadata/headers). Both routes execute through the same in-process tool registry and policy.
+The fork's public `/mcp` endpoint supports all three relevant transport eras through the same in-process tool registry and policy: sessionful `2025-03-26`, stateless Streamable HTTP `2025-06-18` (the mode Postman v12 currently auto-detects), and stateless `2026-07-28` (`server/discover` + per-request metadata/headers).
 
 ## Kimi Web K3 via Cloudflare D1
 
