@@ -15,11 +15,15 @@ function render() {
   });
 }
 
-test('Postman panel requires Bearer prefix and direct Streamable HTTP config shape', () => {
+test('Postman panel requires Bearer auth and the tested MCP Request -> Agent Mode flow', () => {
   const html = render();
   assert.match(html, /Bearer PASTE_ACCESS_TOKEN_HERE/);
   assert.match(html, /raw 64-character token by itself is invalid and will return 401/);
-  assert.match(html, /direct .*url.*headers.*fields/);
+  assert.match(html, /MCP Request/);
+  assert.match(html, /Streamable HTTP/);
+  assert.match(html, /Generate Config .* Agent Mode .* Add to Agent Mode/);
+  assert.match(html, /known HTTP-MCP reconnect bug/);
+  assert.match(html, /Manual Agent Mode JSON is fallback only/);
   assert.match(html, /command.*args/);
   assert.doesNotMatch(html, /Authorization(?:&quot;|")?:(?:&quot;|")?PASTE_ACCESS_TOKEN_HERE/);
 });

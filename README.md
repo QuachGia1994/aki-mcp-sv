@@ -123,19 +123,20 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 
 ## Connecting from Postman
 
-Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-party MCP servers and no persistent system-prompt field, so it connects differently from the clients above:
+Postman's Agent Mode has no OAuth redirect for this third-party MCP server, so use an issued access token. Prefer Postman's documented MCP Request workflow instead of editing Agent Mode JSON first:
 
-1. Connect at least one other client first (Claude, ChatGPT, Grok, or Gemini) — completing its OAuth consent mints a real access token.
-2. Open `~/.aki/mcpsv/tokens.json` and copy one hex key directly under `"access"` whose `expires` is still in the future. Do not use a key from `"refresh"`.
-3. In Postman, open **Settings → Connected Accounts** and add an MCP server using direct `url` + `headers` fields. Do not use `command`/`args`.
-4. The Authorization value must be exactly `Bearer PASTE_ACCESS_TOKEN_HERE`: keep the literal `Bearer ` prefix (including the space) and replace only `PASTE_ACCESS_TOKEN_HERE` with the access key. A raw 64-character token by itself returns 401.
-5. Example config:
+1. Connect at least one OAuth client first (Claude, ChatGPT, Grok, or Gemini) so Aki has a valid access token.
+2. Open `~/.aki/mcpsv/tokens.json` and copy one unexpired key directly under `"access"`. Do not use a key from `"refresh"`.
+3. Create a new **MCP Request** in Postman. Choose **Streamable HTTP**, set the URL to the Aki MCP URL, and add header `Authorization: Bearer PASTE_ACCESS_TOKEN_HERE`.
+4. Connect that MCP Request and confirm Postman can load Aki's tools.
+5. From the working MCP Request choose **Generate Config → Agent Mode → Add to Agent Mode**. This is Postman's documented Agent Mode setup path.
+6. If Agent Mode gets stuck on `Connecting...` after the Aki server was restarted, close/reopen the Postman app/tab (or hard refresh the web app), delete the stale Agent Mode entry, and regenerate it from the working MCP Request. Postman has a known HTTP-MCP reconnect bug where toggling a server off/on may not release the old connection.
+
+Manual Agent Mode JSON is fallback only. If used, keep the literal `Bearer ` prefix, use direct `url` + `headers`, and never `command`/`args`:
 
 ```json
 {"mcpServers":{"aki-mcp-sv":{"url":"https://your-host/mcp","headers":{"Authorization":"Bearer PASTE_ACCESS_TOKEN_HERE"}}}}
 ```
-
-6. Click **Update**. Once connected, paste the panel's prompt instruction block into each new Agent Mode chat, since Postman doesn't persist one across sessions.
 
 The fork's public `/mcp` endpoint supports both the legacy 2025 sessionful Streamable HTTP handshake used by existing clients and the stateless MCP `2026-07-28` flow used by newer Postman tooling (`server/discover` + per-request metadata/headers). Both routes execute through the same in-process tool registry and policy.
 

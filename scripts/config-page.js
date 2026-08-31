@@ -233,18 +233,18 @@ ${field('Passphrase', passphrase)}
 </div>
 
 <div class="tabpane" id="tab-postman">
-  <p class="helptext">Postman AI Agent (via MCP). No system-prompt feature — paste the instruction block below into each new chat.</p>
-  <p class="helptext">Postman has no OAuth redirect for third-party MCP servers, so it authenticates with a static bearer token instead — <strong>not</strong> the Passphrase above (that only gates the one-time browser consent page other clients use; <span class="mono">/mcp</span> itself only accepts a real issued access token).</p>
+  <p class="helptext">Postman AI Agent (via MCP). Use Postman's MCP Request flow first, verify the server there, then add that tested request to Agent Mode. This avoids stale/manual Agent Mode connection state.</p>
+  <p class="helptext">Postman has no OAuth redirect for this third-party MCP server, so use an issued static bearer token — <strong>not</strong> the Passphrase above.</p>
   <div class="updwarn"><strong>Important:</strong> the Authorization value must start with the literal word <span class="mono">Bearer</span> followed by one space. A raw 64-character token by itself is invalid and will return 401.</div>
   <ol class="steps">
-    <li>Connect at least one other tab above first (Claude/Grok/ChatGPT/Gemini) — completing its OAuth consent mints a real access token.</li>
-    <li>Open <span class="mono">${esc(userDir)}/tokens.json</span> and copy one hex key directly under <span class="mono">"access"</span> whose <span class="mono">expires</span> is still in the future. Copy the key only; do not use anything under <span class="mono">"refresh"</span>.</li>
-    <li>In Postman, open <strong>Settings → Connected Accounts</strong> (or <a href="${esc(POSTMAN_SETTINGS_URL)}" target="_blank" rel="noopener">open directly ↗</a>).</li>
-    <li>Add a new MCP server using the JSON below. Replace only <span class="mono">${POSTMAN_TOKEN_PLACEHOLDER}</span> with the access key; keep the literal <span class="mono">Bearer </span> prefix. The object must contain direct <span class="mono">url</span> + <span class="mono">headers</span> fields — if Postman shows <span class="mono">command</span>/<span class="mono">args</span>, delete that entry and paste the JSON again.</li>
-    <li>Click <strong>Update</strong>. When the MCP entry connects, paste the Prompt instruction below into each new Agent Mode chat.</li>
+    <li>Connect at least one OAuth client above first (Claude/Grok/ChatGPT/Gemini) so Aki has a valid access token.</li>
+    <li>Open <span class="mono">${esc(userDir)}/tokens.json</span> and copy one unexpired hex key directly under <span class="mono">"access"</span>. Do not use anything under <span class="mono">"refresh"</span>.</li>
+    <li>In Postman create a new <strong>MCP Request</strong>. Choose <strong>Streamable HTTP</strong>, set URL = MCP URL above, then add header <span class="mono">Authorization</span> = <span class="mono">Bearer &lt;access-token&gt;</span>.</li>
+    <li>Connect the MCP Request and confirm Postman can load Aki's tools. Only after this succeeds, click <strong>Generate Config → Agent Mode → Add to Agent Mode</strong>. This is Postman's documented setup path.</li>
+    <li>If Agent Mode stays on <strong>Connecting...</strong> after Aki was restarted, close/reopen the Postman tab/app (or hard refresh the web app), delete the stale Agent Mode entry, then regenerate it from the working MCP Request. Postman has a known HTTP-MCP reconnect bug where toggle off/on does not release the old connection.</li>
   </ol>
   ${field('Authorization header value', postmanAuth, true)}
-  <p class="helptext">MCP config JSON — replace only <span class="mono">${POSTMAN_TOKEN_PLACEHOLDER}</span>; do not remove <span class="mono">Bearer </span>:</p>
+  <p class="helptext">Manual Agent Mode JSON is fallback only. If you must use it, replace only <span class="mono">${POSTMAN_TOKEN_PLACEHOLDER}</span>; keep <span class="mono">Bearer </span>, direct <span class="mono">url</span> + <span class="mono">headers</span>, and never use <span class="mono">command</span>/<span class="mono">args</span>:</p>
   ${copyEl(postmanConfig)}
   <p class="helptext" style="margin-top:12px">Prompt instruction — paste into each new chat (Postman has no persistent system prompt):</p>
   ${copyEl(POSTMAN_PROMPT)}
