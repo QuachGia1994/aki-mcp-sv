@@ -11,6 +11,7 @@ const GROK_SETTINGS_URL = 'https://grok.com/?_s=personality';
 const CHATGPT_SETTINGS_URL = 'https://chatgpt.com/#settings/Personalization';
 const GEMINI_SETTINGS_URL = 'https://gemini.google.com/saved-info';
 const POSTMAN_SETTINGS_URL = 'https://go.postman.co/settings/me/connected-accounts';
+const POSTMAN_TOKEN_PLACEHOLDER = 'PASTE_ACCESS_TOKEN_HERE';
 const POSTMAN_PROMPT = `MCP Tools: Files=find_path. Content=search_content. Agents=agy_run/kiro_read. Always use MCP tools to search files/dirs/content;
 never trigger native OS file-picker popups. Fall back to built-in native shell if local__run_cmd is blocked;
 explicitly prompt or warn before running sensitive non-whitelisted commands via native shell.
@@ -88,6 +89,8 @@ function field(label, value, hl = false) {
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false, savedIngress = null }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
+  const postmanAuth = `Bearer ${POSTMAN_TOKEN_PLACEHOLDER}`;
+  const postmanConfig = JSON.stringify({ mcpServers: { 'aki-mcp-sv': { url, headers: { Authorization: postmanAuth } } } });
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
   const activeIngressTab = funnelMode ? 'tailscale' : 'owned';
@@ -107,7 +110,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
 <link rel="stylesheet" href="/panel.css"></head><body><main>
 <a class="gh-top" href="${MCP_REPO_URL}" target="_blank" rel="noopener" aria-label="View on GitHub" title="View on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${SVG.github}"/></svg></a>
 <h1>Aki MCP Server</h1>
-<p class="sub">Gives Claude, ChatGPT, Grok, and Gemini read/edit access to files and a whitelisted shell on this machine, over Tailscale Funnel (or your own HTTPS edge / Cloudflare tunnel), gated by OAuth 2.1. Local panel only (127.0.0.1), never reachable through Funnel.</p>
+<p class="sub">Gives Claude, ChatGPT, Grok, Gemini, and Postman read/edit access to files and a whitelisted shell on this machine, over Tailscale Funnel (or your own HTTPS edge / Cloudflare tunnel), gated by OAuth 2.1 or an issued bearer token. Local panel only (127.0.0.1), never reachable through Funnel.</p>
 <p class="helptext">Running repo: <span class="mono">${esc(repoRoot)}</span> · Config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
 ${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
@@ -232,15 +235,17 @@ ${field('Passphrase', passphrase)}
 <div class="tabpane" id="tab-postman">
   <p class="helptext">Postman AI Agent (via MCP). No system-prompt feature — paste the instruction block below into each new chat.</p>
   <p class="helptext">Postman has no OAuth redirect for third-party MCP servers, so it authenticates with a static bearer token instead — <strong>not</strong> the Passphrase above (that only gates the one-time browser consent page other clients use; <span class="mono">/mcp</span> itself only accepts a real issued access token).</p>
+  <div class="updwarn"><strong>Important:</strong> the Authorization value must start with the literal word <span class="mono">Bearer</span> followed by one space. A raw 64-character token by itself is invalid and will return 401.</div>
   <ol class="steps">
     <li>Connect at least one other tab above first (Claude/Grok/ChatGPT/Gemini) — completing its OAuth consent mints a real access token.</li>
-    <li>Open <span class="mono">${esc(userDir)}/tokens.json</span> and copy any hex key under <span class="mono">"access"</span> whose <span class="mono">expires</span> is still in the future — that's your token (tokens last 1 year, and any of them works, regardless of which client minted it).</li>
+    <li>Open <span class="mono">${esc(userDir)}/tokens.json</span> and copy one hex key directly under <span class="mono">"access"</span> whose <span class="mono">expires</span> is still in the future. Copy the key only; do not use anything under <span class="mono">"refresh"</span>.</li>
     <li>In Postman, open <strong>Settings → Connected Accounts</strong> (or <a href="${esc(POSTMAN_SETTINGS_URL)}" target="_blank" rel="noopener">open directly ↗</a>).</li>
-    <li>Add a new MCP server. Set <strong>Server URL</strong> = MCP URL above, <strong>Authorization</strong> header = <span class="mono">Bearer &lt;token from tokens.json&gt;</span>.</li>
-    <li>Use the config JSON below, then paste the Prompt instruction into each new chat.</li>
+    <li>Add a new MCP server using the JSON below. Replace only <span class="mono">${POSTMAN_TOKEN_PLACEHOLDER}</span> with the access key; keep the literal <span class="mono">Bearer </span> prefix. The object must contain direct <span class="mono">url</span> + <span class="mono">headers</span> fields — if Postman shows <span class="mono">command</span>/<span class="mono">args</span>, delete that entry and paste the JSON again.</li>
+    <li>Click <strong>Update</strong>. When the MCP entry connects, paste the Prompt instruction below into each new Agent Mode chat.</li>
   </ol>
-  <p class="helptext">MCP config JSON (replace the URL if needed and paste the token from <span class="mono">tokens.json</span>):</p>
-  ${copyEl('{"mcpServers":{"aki-mcp-sv":{"url":"' + url + '","headers":{"Authorization":"Bearer <token from tokens.json>"}}}}')}
+  ${field('Authorization header value', postmanAuth, true)}
+  <p class="helptext">MCP config JSON — replace only <span class="mono">${POSTMAN_TOKEN_PLACEHOLDER}</span>; do not remove <span class="mono">Bearer </span>:</p>
+  ${copyEl(postmanConfig)}
   <p class="helptext" style="margin-top:12px">Prompt instruction — paste into each new chat (Postman has no persistent system prompt):</p>
   ${copyEl(POSTMAN_PROMPT)}
   <p class="helptext" style="margin-top:12px">Setup screenshots:</p>

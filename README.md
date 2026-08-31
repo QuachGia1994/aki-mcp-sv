@@ -126,9 +126,16 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-party MCP servers and no persistent system-prompt field, so it connects differently from the clients above:
 
 1. Connect at least one other client first (Claude, ChatGPT, Grok, or Gemini) — completing its OAuth consent mints a real access token.
-2. Open `~/.aki/mcpsv/tokens.json` and copy any hex key under `"access"` whose `expires` is still in the future — that's the Bearer token. It is **not** the passphrase: the passphrase only gates the one-time browser consent page, `/mcp` itself only accepts an already-issued token, and any valid token works regardless of which client minted it.
-3. In Postman, add a new MCP server (Settings → Connected Accounts) with **Server URL** = the MCP URL and **Authorization** header = `Bearer <token from tokens.json>` — or paste the ready-made config JSON from panel section 1's Postman tab.
-4. Paste the panel's prompt instruction block into each new chat, since Postman doesn't persist one across sessions.
+2. Open `~/.aki/mcpsv/tokens.json` and copy one hex key directly under `"access"` whose `expires` is still in the future. Do not use a key from `"refresh"`.
+3. In Postman, open **Settings → Connected Accounts** and add an MCP server using direct `url` + `headers` fields. Do not use `command`/`args`.
+4. The Authorization value must be exactly `Bearer PASTE_ACCESS_TOKEN_HERE`: keep the literal `Bearer ` prefix (including the space) and replace only `PASTE_ACCESS_TOKEN_HERE` with the access key. A raw 64-character token by itself returns 401.
+5. Example config:
+
+```json
+{"mcpServers":{"aki-mcp-sv":{"url":"https://your-host/mcp","headers":{"Authorization":"Bearer PASTE_ACCESS_TOKEN_HERE"}}}}
+```
+
+6. Click **Update**. Once connected, paste the panel's prompt instruction block into each new Agent Mode chat, since Postman doesn't persist one across sessions.
 
 ## Kimi Web K3 via Cloudflare D1
 
