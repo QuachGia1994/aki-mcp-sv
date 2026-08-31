@@ -10,8 +10,15 @@ const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const GROK_SETTINGS_URL = 'https://grok.com/?_s=personality';
 const CHATGPT_SETTINGS_URL = 'https://chatgpt.com/#settings/Personalization';
 const GEMINI_SETTINGS_URL = 'https://gemini.google.com/saved-info';
+const POSTMAN_SETTINGS_URL = 'https://go.postman.co/settings/me/connected-accounts';
+const POSTMAN_PROMPT = `MCP Tools: Files=find_path. Content=search_content. Agents=agy_run/kiro_read. Always use MCP tools to search files/dirs/content;
+never trigger native OS file-picker popups. Fall back to built-in native shell if local__run_cmd is blocked;
+explicitly prompt or warn before running sensitive non-whitelisted commands via native shell.
+Rules: Read ~/.aki/akidevrule/RULE-agent-behavior.md, RULE-coding.md, RULE-pattern-core.md, index.md.
+Router: ~/.claude/skills/akirule/SKILL.md (auto-read contextual rules before acting; output [RULES] receipt).
+Behavior: DON'T YAPPING. Dense on-point. Questions = read-only; Tasks = execute strictly in scope.
+Decompose tasks into progressive chunks with step-by-step feedback rather than extended silent reasoning.`;
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
-const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/plugins#settings/Security?section=developer-mode';
 const CHATGPT_CONNECTOR_URL = 'https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins';
 const GEMINI_CONNECTOR_URL = 'https://support.google.com/g/answer/17106276';
 const GROK_CONNECTOR_URL = 'https://grok.com/connectors';
@@ -81,7 +88,6 @@ function field(label, value, hl = false) {
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false, savedIngress = null }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
-  const regUrl = origin ? `${origin}/register` : 'not available yet, see section 0';
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
   const activeIngressTab = funnelMode ? 'tailscale' : 'owned';
@@ -170,7 +176,7 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </div>
 </section>
 
-<section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini</h2>
+<section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini, Postman</h2>
 <p class="helptext">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
@@ -181,6 +187,7 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="grok"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok</button>
   <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
+  <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -200,16 +207,15 @@ ${field('Passphrase', passphrase)}
 </div>
 
 <div class="tabpane" id="tab-chatgpt">
+  <p class="lnk"><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">↗ Create a connector</a></p>
   <ol class="steps">
-    <li>Turn on <a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">Developer mode</a> (Settings → Connectors → Advanced).</li>
-    <li><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">Create a connector</a>, then pick this repo's icon file for it: <span class="mono">${esc(repoRoot)}/public/favicon/icon-48.png</span>. Name and description are your choice.</li>
-    <li><strong>Server URL</strong> = MCP URL, <strong>Authentication</strong> = OAuth.</li>
-    <li>Open <strong>Advanced OAuth settings</strong> and set <strong>Registration URL</strong> to the value below; the other endpoints auto-fill.</li>
+    <li>Pick an <strong>Icon</strong> (optional — use <span class="mono">${esc(repoRoot)}/public/favicon/icon-48.png</span> or any image).</li>
+    <li>Enter a <strong>Name</strong> and <strong>Description</strong> (your choice).</li>
+    <li>Set <strong>Connection</strong> → <strong>Server URL</strong> = MCP URL above.</li>
     <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
-    <li>On connect, enter the same <strong>Passphrase</strong>.</li>
+    <li>On connect, enter the <strong>Passphrase</strong>.</li>
   </ol>
-  ${field('Registration URL', regUrl)}
-  <p class="helptext">Registration method = DCR, Token endpoint auth method = none; ChatGPT registers its own client via PKCE, no secret. Do not paste Claude's Client ID or Secret here. Write tools may be limited depending on OpenAI's current policy.</p>
+  <p class="helptext">ChatGPT self-registers via DCR (PKCE, no secret). Do not paste Claude's Client ID or Secret here. Write tools may be limited depending on OpenAI's current policy.</p>
 </div>
 
 <div class="tabpane" id="tab-gemini">
@@ -221,6 +227,26 @@ ${field('Passphrase', passphrase)}
     <li>Ignore Gemini's <strong>Copy redirect URI</strong> button; the redirect is already allowlisted server-side.</li>
     <li>On <strong>Continue</strong>, enter the <strong>Passphrase</strong>.</li>
   </ol>
+</div>
+
+<div class="tabpane" id="tab-postman">
+  <p class="helptext">Postman AI Agent (via MCP). No system-prompt feature — paste the instruction block below into each new chat.</p>
+  <p class="helptext">Postman has no OAuth redirect for third-party MCP servers, so it authenticates with a static bearer token instead — <strong>not</strong> the Passphrase above (that only gates the one-time browser consent page other clients use; <span class="mono">/mcp</span> itself only accepts a real issued access token).</p>
+  <ol class="steps">
+    <li>Connect at least one other tab above first (Claude/Grok/ChatGPT/Gemini) — completing its OAuth consent mints a real access token.</li>
+    <li>Open <span class="mono">${esc(userDir)}/tokens.json</span> and copy any hex key under <span class="mono">"access"</span> whose <span class="mono">expires</span> is still in the future — that's your token (tokens last 1 year, and any of them works, regardless of which client minted it).</li>
+    <li>In Postman, open <strong>Settings → Connected Accounts</strong> (or <a href="${esc(POSTMAN_SETTINGS_URL)}" target="_blank" rel="noopener">open directly ↗</a>).</li>
+    <li>Add a new MCP server. Set <strong>Server URL</strong> = MCP URL above, <strong>Authorization</strong> header = <span class="mono">Bearer &lt;token from tokens.json&gt;</span>.</li>
+    <li>Use the config JSON below, then paste the Prompt instruction into each new chat.</li>
+  </ol>
+  <p class="helptext">MCP config JSON (replace the URL if needed and paste the token from <span class="mono">tokens.json</span>):</p>
+  ${copyEl('{"mcpServers":{"aki-mcp-sv":{"url":"' + url + '","headers":{"Authorization":"Bearer <token from tokens.json>"}}}}')}
+  <p class="helptext" style="margin-top:12px">Prompt instruction — paste into each new chat (Postman has no persistent system prompt):</p>
+  ${copyEl(POSTMAN_PROMPT)}
+  <p class="helptext" style="margin-top:12px">Setup screenshots:</p>
+  <figure><img src="/img/aki-mcp-instruct-postman-1.png" alt="Postman MCP setup step 1" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
+  <figure><img src="/img/aki-mcp-instruct-postman-2.png" alt="Postman MCP setup step 2" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
+  <figure><img src="/img/aki-mcp-instruct-postman-3.png" alt="Postman MCP setup step 3" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
 </div>
 </section>
 

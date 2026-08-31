@@ -33,6 +33,7 @@
 - [plan/done/bridge-session-churn.md](plan/done/bridge-session-churn.md) — flow audit + fix for the mass "client disconnected from MCP HUB" log; the stateless↔stateful session mismatch, and the A/B decision (per-session vs one shared hub session)
 - [plan/manus-connect.md](plan/manus-connect.md) — Manus "Import by JSON" has no OAuth step; JSON template + manual PKCE token-mint recipe (365-day token) to paste into `headers.Authorization`; unverified, no live test yet (design only, not started)
 - [plan/done/standalone-newbie-ux-followups.md](plan/done/standalone-newbie-ux-followups.md) — newbie flow follow-ups: README restructure shipped 2026-08-16, claude.ai desync filed as known platform limitation
+- [ref/chatgpt-connector.md](ref/chatgpt-connector.md) — the real ChatGPT install flow: icon → name → description → connection (MCP URL) → tick "I understand"; DCR auto-registers the client, no Client ID/Secret to paste
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
 - [ref/KIMI-WEB-LIVE-TEST.md](ref/KIMI-WEB-LIVE-TEST.md) — portable Kimi K3 browser bootstrap for the custom-domain Worker -> D1 -> local Aki route; placeholders only, no runtime credentials
 - [ref/QWEN-WEB-LIVE-TEST.md](ref/QWEN-WEB-LIVE-TEST.md) — portable Qwen browser bootstrap using the custom domain, idempotent task creation, polling, and real Windows project access

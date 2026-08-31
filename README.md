@@ -1,14 +1,14 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai), **ChatGPT**, and **Grok** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. *(Experimental support for Gemini — see [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini).)*
+Give Claude on the **web** (claude.ai), **ChatGPT**, and **Grok** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. *(Experimental support for Gemini — see [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini). Also connectable from Postman's AI Agent — see [Connecting from Postman](#connecting-from-postman).)*
 
 No desktop app. No device lock-in. No install needed if you use the standalone launcher below.
 
 <img width="1190" height="1062" alt="aki-mcp-sv control panel" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-[![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
+[![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Kimi Web K3 via Cloudflare D1](#kimi-web-k3-via-cloudflare-d1) · [Qwen Coder Web via Worker + D1](#qwen-coder-web-via-worker--d1) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Kimi Web K3 via Cloudflare D1](#kimi-web-k3-via-cloudflare-d1) · [Qwen Coder Web via Worker + D1](#qwen-coder-web-via-worker--d1) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -103,15 +103,15 @@ claude.ai connects and calls the in-house `local__*` tool suite: `local__find_pa
 
 ## Connecting from ChatGPT
 
-Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for custom connectors.
+ChatGPT custom connectors use the MCP server URL directly and auto-discover OAuth/DCR metadata from `/.well-known/openid-configuration`; there is no Developer mode toggle, Advanced OAuth form, or Registration URL to paste in the current connector UI.
 
-1. ChatGPT → Settings → Apps & Connectors (or Security) → enable **Developer mode**
-2. Create a custom connector / app → paste the same MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`)
-3. Auth: **OAuth** → **Advanced OAuth settings** → set **Registration URL** to `https://your-machine.your-tailnet.ts.net/register` (the panel prints the exact value to copy). This is the step that enables DCR: ChatGPT self-registers its own client from it. Skip it and ChatGPT can't register, so it falls back to a user-defined client — and pasting Claude's Client ID there fails, because that client only allows `claude.ai` redirects.
-4. Leave registration method on **DCR**, token endpoint auth method **none** — do **not** paste Claude's Client ID/Secret here.
-5. Enter the same **passphrase** on the confirmation page
+1. ChatGPT → Settings → Connectors → New connector.
+2. Pick an icon if wanted, then enter a name and description.
+3. Under **Connection → Server URL**, paste the MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`).
+4. Tick **I understand and want to continue**, then create the connector.
+5. On connect, enter the same **passphrase** on the confirmation page.
 
-Same folder scope and shell policy as Claude, including the optional `shell.allowAll` mode from panel section 6. Restart `npm start` after upgrading so gatekeeper advertises `registration_endpoint` and serves `/.well-known/openid-configuration` (ChatGPT reads that to auto-fill the Registration URL).
+ChatGPT self-registers via DCR with PKCE and no client secret, using the `registration_endpoint` advertised by the server. Do **not** paste Claude's Client ID or Secret. Same folder scope and shell policy as Claude applies, including the optional `shell.allowAll` mode from panel section 6. Full current flow: [`docs/ref/chatgpt-connector.md`](docs/ref/chatgpt-connector.md).
 
 ## Connecting from Grok and Gemini
 
@@ -120,6 +120,15 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 **Grok — verified, production-ready:** **self-registers** via the `/register` DCR path like ChatGPT — paste only the MCP URL, no Client ID. Its real `redirect_uri` `https://grok.com/connectors-oauth-exchange-code/` was observed live 2026-08-09 and is allowlisted via `GROK_CALLBACK_PREFIX`. Verified working end to end (`authorize → token` 200). If a future Grok change moves that callback, a rejected registration logs `register REJECTED (redirect_uri not allowlisted): [...]` so the new value can be re-allowlisted.
 
 **Gemini — experimental, connection works but tool use doesn't (yet)** (paid tiers only — Pro / Business / Enterprise; the free tier may not expose custom apps): pastes a **confidential client**, exactly like Claude — set the custom app link to the MCP URL, then under Advanced Settings paste the same Client ID / Client secret. Gemini's redirect goes through Google's OAuth proxy `https://oauth-redirect.googleusercontent.com/r/...` (observed live 2026-08-09), allowlisted by `isAllowedRedirect` in `scripts/oauth.js`. **Caveat:** the OAuth handshake succeeds and Gemini accepts the instruction, but in repeated testing 2026-08-09 it did not reliably discover or drive the MCP tools — connection healthy, tool use unreliable. Claude and Grok are the dependable clients today.
+
+## Connecting from Postman
+
+Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-party MCP servers and no persistent system-prompt field, so it connects differently from the clients above:
+
+1. Connect at least one other client first (Claude, ChatGPT, Grok, or Gemini) — completing its OAuth consent mints a real access token.
+2. Open `~/.aki/mcpsv/tokens.json` and copy any hex key under `"access"` whose `expires` is still in the future — that's the Bearer token. It is **not** the passphrase: the passphrase only gates the one-time browser consent page, `/mcp` itself only accepts an already-issued token, and any valid token works regardless of which client minted it.
+3. In Postman, add a new MCP server (Settings → Connected Accounts) with **Server URL** = the MCP URL and **Authorization** header = `Bearer <token from tokens.json>` — or paste the ready-made config JSON from panel section 1's Postman tab.
+4. Paste the panel's prompt instruction block into each new chat, since Postman doesn't persist one across sessions.
 
 ## Kimi Web K3 via Cloudflare D1
 

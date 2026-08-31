@@ -1,6 +1,6 @@
 {
   "name": "mcp-local",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "description": "Give Claude on the web (claude.ai) local filesystem/search/shell access over Tailscale Funnel + OAuth 2.1 — read-only allowlist by default with an explicit owner-controlled unrestricted shell mode, no desktop app or device lock-in required",
   "license": "MIT",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node ./scripts/start.js",
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/*.test.js scripts/streamable-bridge.test.js",
     "package": "node ./scripts/build/package.js"
   },
   "dependencies": {

@@ -147,13 +147,12 @@ async function applyFileEdits(filePath, edits, dryRun) {
 }
 
 export function register(server) {
-  const root = getRoots()[0];
 
   server.registerTool(
     'read_text_file',
     {
       title: 'Read Text File',
-      description: `Read the complete contents of a text file. Use "tail"/"head" to read only the last/first N lines of a large file instead of the whole thing. Only works under ${root} (or the other configured roots).`,
+      description: 'Read the complete contents of a text file. Use "tail"/"head" to read only the last/first N lines of a large file instead of the whole thing. Only works under the configured roots.',
       inputSchema: {
         path: z.string(),
         tail: z.number().optional().describe('If provided, returns only the last N lines'),

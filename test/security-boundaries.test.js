@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { readBody } from '../scripts/http.js';
 import { dcrRegistrationAvailable, handleRegister, shouldRotateRefresh, rotateRefreshGrant } from '../scripts/oauth.js';
+import { DEFAULT_ALLOWLIST } from '../scripts/allowlist.js';
 import { resolveExecFileTarget, trustedInterpreterScriptArg } from '../scripts/shell-mcp.js';
 
 test('readBody rejects declared and streamed bodies above the configured cap', async () => {
@@ -35,6 +36,11 @@ test('trusted interpreter preallow only accepts a script as argv[0]', () => {
   assert.equal(trustedInterpreterScriptArg('node', ['--require', trusted, '-e', 'process.exit()']), null);
   assert.equal(trustedInterpreterScriptArg('python3', ['-c', 'print(1)']), null);
   assert.equal(trustedInterpreterScriptArg('bash', [trusted]), null);
+});
+
+test('default shell allowlist excludes package-script execution entrypoints', () => {
+  assert.deepEqual(DEFAULT_ALLOWLIST.npm, ['list', 'ls', 'outdated']);
+  assert.equal('npx' in DEFAULT_ALLOWLIST, false);
 });
 
 test('Windows npm shims run through node instead of execFile on .cmd', () => {

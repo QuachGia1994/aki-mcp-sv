@@ -165,12 +165,11 @@ class Shell {
 const shell = new Shell();
 
 export function register(server) {
-  const roots = getRoots();
   server.registerTool(
     'run_cmd',
     {
       title: 'Run Command',
-      description: `Run one shell command. Default policy is the panel-managed read-only allowlist; owners may explicitly enable shell.allowAll to accept any executable name. Use the search tools (find_path/search_content) for file/text lookup. Pass cwd (absolute path under one of ${roots.join(', ')}, or relative to ${roots[0]}) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.`,
+      description: 'Run one shell command. Default policy is the panel-managed read-only allowlist; owners may explicitly enable shell.allowAll to accept any executable name. Use the search tools (find_path/search_content) for file/text lookup. Pass cwd (absolute path under an allowed root, or relative to the first configured root) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.',
       inputSchema: { command: z.string(), cwd: z.string().optional() },
     },
     ({ command, cwd }) => shell.execute(command, cwd),
