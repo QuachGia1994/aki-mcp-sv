@@ -35,11 +35,67 @@ function initialize(baseUrl, id) {
   });
 }
 
+function modernRequest(baseUrl, id, method, params = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'MCP-Protocol-Version': '2026-07-28',
+    'Mcp-Method': method,
+  };
+  if (method === 'tools/call') headers['Mcp-Name'] = params.name;
+  return fetch(baseUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method,
+      params: {
+        ...params,
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientInfo': { name: 'postman-modern-regression', version: '1.0.0' },
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    }),
+  });
+}
+
 async function run() {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}/mcp`;
 
   try {
+    const modernDiscover = await modernRequest(baseUrl, 'discover-1', 'server/discover');
+    assert.equal(modernDiscover.status, 200);
+    assert.equal(modernDiscover.headers.get('MCP-Session-Id'), null);
+    const discoverBody = await modernDiscover.json();
+    assert.deepEqual(discoverBody.result?.supportedVersions, ['2026-07-28']);
+    assert.equal(discoverBody.result?.resultType, 'complete');
+    assert.equal(discoverBody.result?.ttlMs, 0);
+    assert.equal(discoverBody.result?.cacheScope, 'private');
+    assert.ok(discoverBody.result?.capabilities?.tools);
+
+    const modernTools = await modernRequest(baseUrl, 'tools-1', 'tools/list');
+    assert.equal(modernTools.status, 200);
+    assert.equal(modernTools.headers.get('MCP-Session-Id'), null);
+    const modernToolsBody = await modernTools.json();
+    assert.equal(modernToolsBody.result?.resultType, 'complete');
+    assert.equal(modernToolsBody.result?.ttlMs, 0);
+    assert.equal(modernToolsBody.result?.cacheScope, 'private');
+    assert.ok(Array.isArray(modernToolsBody.result?.tools));
+    assert.ok(modernToolsBody.result.tools.length > 0);
+
+    const modernCall = await modernRequest(baseUrl, 'call-1', 'tools/call', {
+      name: 'local__list_allowed_directories',
+      arguments: {},
+    });
+    assert.equal(modernCall.status, 200);
+    assert.equal(modernCall.headers.get('MCP-Session-Id'), null);
+    const modernCallBody = await modernCall.json();
+    assert.equal(modernCallBody.result?.resultType, 'complete');
+    assert.ok(Array.isArray(modernCallBody.result?.content));
+
     const firstInitialize = await initialize(baseUrl, 1);
     assert.equal(firstInitialize.status, 200);
     const firstSessionId = firstInitialize.headers.get('MCP-Session-Id');

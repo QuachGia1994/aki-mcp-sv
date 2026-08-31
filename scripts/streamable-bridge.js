@@ -28,9 +28,53 @@ const INTERNAL_INIT_PARAMS = {
   capabilities: {},
   clientInfo: { name: 'aki-internal-bridge', version: '1.0.0' },
 };
+const MODERN_PROTOCOL_VERSION = '2026-07-28';
+const MODERN_PROTOCOL_META = 'io.modelcontextprotocol/protocolVersion';
+const MODERN_SERVER_INFO_META = 'io.modelcontextprotocol/serverInfo';
+const MODERN_CACHE_HINT = { resultType: 'complete', ttlMs: 0, cacheScope: 'private' };
 
 function negotiateExternalProtocolVersion(requestedVersion) {
   return SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion) ? requestedVersion : LATEST_PROTOCOL_VERSION;
+}
+
+function withoutModernMeta(params = {}) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return params;
+  const { _meta, ...rest } = params;
+  return rest;
+}
+
+function isModernRequest(req, message) {
+  return req.headers['mcp-protocol-version'] === MODERN_PROTOCOL_VERSION
+    || message?.params?._meta?.[MODERN_PROTOCOL_META] === MODERN_PROTOCOL_VERSION
+    || message?.method === 'server/discover';
+}
+
+function validateModernHeaders(req, message) {
+  const headerVersion = req.headers['mcp-protocol-version'];
+  const bodyVersion = message?.params?._meta?.[MODERN_PROTOCOL_META];
+  if (headerVersion !== MODERN_PROTOCOL_VERSION || bodyVersion !== MODERN_PROTOCOL_VERSION) {
+    return 'MCP-Protocol-Version must match params._meta protocolVersion';
+  }
+  if (req.headers['mcp-method'] !== message.method) {
+    return 'Mcp-Method header must match the JSON-RPC method';
+  }
+  if (['tools/call', 'prompts/get', 'resources/read'].includes(message.method)) {
+    const bodyName = message.params?.name ?? message.params?.uri;
+    if (req.headers['mcp-name'] !== bodyName) return 'Mcp-Name header must match the request name/uri';
+  }
+  return null;
+}
+
+function modernResult(result, serverInfo, { cacheable = false } = {}) {
+  return {
+    ...(result ?? {}),
+    resultType: 'complete',
+    ...(cacheable ? MODERN_CACHE_HINT : {}),
+    _meta: {
+      ...(result?._meta ?? {}),
+      [MODERN_SERVER_INFO_META]: serverInfo,
+    },
+  };
 }
 
 function routeResponse(session, message) {
@@ -137,11 +181,66 @@ export async function handleStreamableMcp(req, res) {
   const method = message.method;
   const hasId = message.id !== undefined && message.id !== null;
 
+  // MCP 2026-07-28 is stateless: no initialize/session-id handshake. Translate its tool surface
+  // onto the same shared legacy in-process tools session so old and new clients share one policy.
+  if (isModernRequest(req, message)) {
+    const mismatch = validateModernHeaders(req, message);
+    if (mismatch) {
+      return jsonResponse(res, 400, { jsonrpc: '2.0', id: message.id ?? null, error: { code: -32020, message: mismatch } });
+    }
+
+    let sharedState;
+    try {
+      sharedState = await ensureShared(INTERNAL_INIT_PARAMS);
+    } catch (e) {
+      return jsonResponse(res, 502, { jsonrpc: '2.0', id: message.id ?? null, error: { code: -32000, message: `tools server unreachable: ${e.message}` } });
+    }
+    const serverInfo = sharedState.initResult?.serverInfo ?? { name: 'local', version: '1.0.0' };
+
+    if (method === 'server/discover') {
+      return jsonResponse(res, 200, {
+        jsonrpc: '2.0',
+        id: message.id,
+        result: {
+          ...MODERN_CACHE_HINT,
+          supportedVersions: [MODERN_PROTOCOL_VERSION],
+          capabilities: { tools: {} },
+          _meta: { [MODERN_SERVER_INFO_META]: serverInfo },
+        },
+      });
+    }
+
+    if (!hasId) {
+      res.writeHead(202);
+      return res.end();
+    }
+
+    if (method === 'tools/list') {
+      try {
+        const result = await requestShared('tools/list', withoutModernMeta(message.params));
+        return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, result: modernResult(result, serverInfo, { cacheable: true }) });
+      } catch (e) {
+        return jsonResponse(res, 504, { jsonrpc: '2.0', id: message.id, error: { code: -32000, message: e.message } });
+      }
+    }
+
+    if (method === 'tools/call' || method === 'ping') {
+      try {
+        const result = await requestShared(method, withoutModernMeta(message.params));
+        return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, result: modernResult(result, serverInfo) });
+      } catch (e) {
+        return jsonResponse(res, 504, { jsonrpc: '2.0', id: message.id, error: { code: -32000, message: e.message } });
+      }
+    }
+
+    return jsonResponse(res, 200, { jsonrpc: '2.0', id: message.id, error: { code: -32601, message: `Method not found: ${method}` } });
+  }
+
   // initialize → answered locally; the first one boots the shared session, the rest reuse its cached result.
   if (method === 'initialize') {
     let s;
     try {
-      s = await ensureShared(message.params);
+      s = await ensureShared(INTERNAL_INIT_PARAMS);
     } catch (e) {
       log(`[bridge] failed to boot shared tools-server session: ${e.message}`);
       return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `tools server unreachable: ${e.message}` }, id: message.id ?? null });

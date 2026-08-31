@@ -137,6 +137,8 @@ Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-
 
 6. Click **Update**. Once connected, paste the panel's prompt instruction block into each new Agent Mode chat, since Postman doesn't persist one across sessions.
 
+The fork's public `/mcp` endpoint supports both the legacy 2025 sessionful Streamable HTTP handshake used by existing clients and the stateless MCP `2026-07-28` flow used by newer Postman tooling (`server/discover` + per-request metadata/headers). Both routes execute through the same in-process tool registry and policy.
+
 ## Kimi Web K3 via Cloudflare D1
 
 Kimi Web K3 is live-verified end to end through the same narrow Worker + D1 mailbox used by Qwen Coder, but on the custom domain `aki-bridge.oakgatekeeper.uk`. Kimi's IPython sandbox could reach that hostname by POST while `*.workers.dev` timed out at the TCP layer. Kimi uses its own `AKI_KIMI_SECRET`, so its credential can be rotated or revoked independently from Qwen Coder. Each logical task also carries an `Idempotency-Key`, allowing a timed-out POST to be retried without creating a duplicate. Local Aki still claims the D1 task, calls the named MCP tool through the same in-process tools session used by `/mcp`, and writes the normal MCP result envelope back into the same row.
