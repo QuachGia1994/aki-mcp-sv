@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { resolveOrFail } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
@@ -14,6 +15,8 @@ const SERVER_HOST = '127.0.0.1';
 const SERVER_PORT = 4097;
 const SERVER_URL = `http://${SERVER_HOST}:${SERVER_PORT}`;
 const REQUEST_TIMEOUT_MS = 120_000;
+const HIDDEN_LAUNCHER = fileURLToPath(new URL('./run-hidden-command.vbs', import.meta.url));
+const SERVER_ARGS = ['serve', '--pure', '--hostname', SERVER_HOST, '--port', String(SERVER_PORT)];
 
 export function resolveOpenCodeExecutable({ platform = process.platform, env = process.env, home = os.homedir(), exists = existsSync } = {}) {
   if (env.AKI_OPENCODE_PATH) return env.AKI_OPENCODE_PATH;
@@ -26,6 +29,23 @@ export function resolveOpenCodeExecutable({ platform = process.platform, env = p
     if (found) return found;
   }
   return 'opencode';
+}
+
+export function buildOpenCodeServerLaunch({
+  executable = resolveOpenCodeExecutable(),
+  cwd,
+  platform = process.platform,
+  env = process.env,
+  launcherPath = HIDDEN_LAUNCHER,
+} = {}) {
+  const options = { cwd, detached: true, stdio: 'ignore', windowsHide: true };
+  if (platform !== 'win32') return { command: executable, args: SERVER_ARGS, options };
+  const windowsRoot = env.SystemRoot || env.WINDIR || 'C:\\Windows';
+  return {
+    command: path.win32.join(windowsRoot, 'System32', 'wscript.exe'),
+    args: [launcherPath, executable, ...SERVER_ARGS],
+    options,
+  };
 }
 
 export function buildOpenCodePromptBody(prompt) {
@@ -52,12 +72,8 @@ function canConnect(host = SERVER_HOST, port = SERVER_PORT, timeoutMs = 300) {
 
 export async function ensureOpenCodeServer({ executable = resolveOpenCodeExecutable(), cwd } = {}) {
   if (await canConnect()) return true;
-  const child = spawn(executable, ['serve', '--pure', '--hostname', SERVER_HOST, '--port', String(SERVER_PORT)], {
-    cwd,
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
+  const launch = buildOpenCodeServerLaunch({ executable, cwd });
+  const child = spawn(launch.command, launch.args, launch.options);
   child.unref();
   for (let attempt = 0; attempt < 50; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 100));
