@@ -277,6 +277,9 @@ ${field('Install command', RULES_INSTALL_CMD)}
 <label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
   <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
 </label>
+<div class="checks" id="customPromptLocks">
+  <label><input type="checkbox" id="researchGitHubBeforePlan" checked disabled> Research relevant GitHub repo before creating live plan 🔒 custom</label>
+</div>
 ${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste these Instructions into the custom-instructions setting of each AI (Claude / Grok / ChatGPT / Gemini).</div>` : ''}
 <div class="checks" id="ruleChecks"></div>
 <textarea id="prompt" readonly style="min-height:130px"></textarea>

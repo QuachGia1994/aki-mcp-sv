@@ -82,6 +82,9 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules not installed: ask the user to press Install/update in the Aki panel (section 2) before starting.');
   }
+  if (document.getElementById('researchGitHubBeforePlan')?.checked) {
+    lines.push('Before live plan: research the relevant GitHub repo/upstream first; use repo/docs/issues/releases evidence, then create the plan.');
+  }
   lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md (live); reply path on create. Skip pure Q&A. <id>=short slug.');
   lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under an allowed root, never cd/-C.');
   lines.push('Repo: ' + REPO_ROOT + '. local paths=Aki MCP FS only; sandbox throwaway; after write read-back MCP.');

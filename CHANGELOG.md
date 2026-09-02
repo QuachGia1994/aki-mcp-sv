@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Read-only claude-mem bridge for the in-process MCP server.** Aki now exposes only `local__claude_mem_search`, `local__claude_mem_timeline`, and `local__claude_mem_get_observations`, calling the local claude-mem worker over bounded HTTP with environment/settings overrides; no capture, write, or delete memory tools are registered.
 
 ### Changed
+- **Custom workflow lock now researches GitHub before live planning.** Panel section 3 shows an always-checked, disabled custom item requiring agents to research the relevant GitHub repo/upstream (repo/docs/issues/releases evidence) before creating the live task plan; the generated prompt emits this instruction immediately before the live-plan rule.
 - **Custom rule baseline is hard-locked in panel section 3.** `index`, `agent-behavior`, `coding`, `pattern-core`, `agent-engineering`, `docs`, and `release` are always selected and cannot be unchecked individually; every other installed rule remains optional. One `LOCKED_RULES` list drives both rendering and prompt selection.
 - **Upstream 1.12 worker changes reconciled without weakening fork defaults.** The fork already used the `agy_run` contract and intentionally keeps `gemini-3.7-flash-high` plus its Windows executable/permission hardening instead of taking upstream's lower default tier.
 
