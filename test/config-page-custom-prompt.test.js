@@ -27,6 +27,14 @@ test('fork workflow instructions are checked and locked in section 3', () => {
   assert.match(html, /Build\/CI: trigger only; do not wait or monitor unless asked .*custom/);
 });
 
+test('Gemini Spark panel documents one-call read worker and unavoidable client-side approvals', () => {
+  const html = render();
+  assert.match(html, /Gemini custom MCP apps now run inside <strong>Gemini Spark<\/strong>/);
+  assert.match(html, /approve every individual MCP tool call/);
+  assert.match(html, /local__agent_read<\/span> once with the full task/);
+  assert.match(html, /Write\/shell calls may still require separate Spark confirmation/);
+});
+
 test('generated workflow orders research before shared plan and encodes direct-repo/build handoff rules', () => {
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
   const research = client.indexOf('Before plan: research relevant GitHub repo/upstream');

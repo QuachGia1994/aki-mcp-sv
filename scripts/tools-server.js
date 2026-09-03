@@ -12,22 +12,73 @@ import { register as registerSearch } from './search-mcp.js';
 import { register as registerClaudeMem } from './claude-mem-mcp.js';
 import { register as registerFilesystem } from './filesystem-mcp.js';
 
+const SERVER_INSTRUCTIONS = [
+  'Gemini Spark confirms every MCP tools/call client-side.',
+  'For broad read-only repo/codebase/research tasks, call local__agent_read exactly once with the complete request and cwd; it performs multi-step retrieval through Aki workers server-side.',
+  'Do not decompose that work into list_allowed_directories/find_path/search_content/read_text_file unless agent_read fails or the user explicitly requests granular reads.',
+  'For mutations use the normal write/shell tools; Spark may still require confirmation for each call.',
+].join(' ');
+
+const LOCAL_READ_ONLY_TOOLS = new Set([
+  'read_text_file',
+  'get_file_info',
+  'list_allowed_directories',
+  'find_path',
+  'search_content',
+  'claude_mem_search',
+  'claude_mem_timeline',
+  'claude_mem_get_observations',
+]);
+
+const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'agent_read']);
+
+const MUTATING_TOOL_ANNOTATIONS = new Map([
+  ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],
+  ['edit_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
+  ['create_directory', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
+  ['move_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
+  // Both are configurable execution surfaces, so keep their static hints conservative even though the
+  // default policy is read-only/plan-mode. A future wider allowlist must not inherit a false safety claim.
+  ['run_cmd', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
+  ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
+]);
+
+function annotationsForTool(name) {
+  if (LOCAL_READ_ONLY_TOOLS.has(name)) {
+    return { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+  }
+  if (REMOTE_READ_ONLY_TOOLS.has(name)) {
+    return { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+  }
+  return MUTATING_TOOL_ANNOTATIONS.get(name) ?? null;
+}
+
 // mcp-hub used to prefix every tool from this server's config entry (key "local") with
 // `local__` when aggregating backends. Now that the bridge talks to this server directly, that
 // prefixing layer is gone — reproduce it here as the one place doing it, so served tool names
 // (local__run_cmd, local__find_path, …) stay exactly what README.md and CLAUDE.md already tell
-// every connected AI to call.
+// every connected AI to call. This seam also centralizes MCP ToolAnnotations; Spark still confirms
+// every call today, but accurate hints help other clients and future trust policies classify tools.
 function prefixedServer(server, prefix) {
   return new Proxy(server, {
     get(target, prop, receiver) {
       if (prop !== 'registerTool') return Reflect.get(target, prop, receiver);
-      return (name, ...rest) => target.registerTool(`${prefix}${name}`, ...rest);
+      return (name, config, callback) => {
+        const defaults = annotationsForTool(name);
+        const annotatedConfig = defaults
+          ? { ...config, annotations: { ...defaults, ...(config?.annotations ?? {}) } }
+          : config;
+        return target.registerTool(`${prefix}${name}`, annotatedConfig, callback);
+      };
     },
   });
 }
 
 export function createToolsServer() {
-  const server = new McpServer({ name: 'local', version: '1.0.0', title: 'Local Tools' });
+  const server = new McpServer(
+    { name: 'local', version: '1.0.0', title: 'Local Tools' },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
   const local = prefixedServer(server, 'local__');
   for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerAgent, registerSearch, registerClaudeMem, registerFilesystem]) register(local);
 

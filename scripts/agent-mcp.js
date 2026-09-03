@@ -47,8 +47,8 @@ export function register(server) {
   server.registerTool(
     'agent_read',
     {
-      title: 'Aki Read Worker Router',
-      description: 'Delegate one read-only retrieval task through a health-aware fallback chain: agy -> Kiro -> OpenCode. Failed providers enter a short cooldown so repeated conversations do not stall on the same quota/auth/bootstrap error.',
+      title: 'Aki One-Call Read Worker',
+      description: 'Preferred for broad read-only repo/codebase/research tasks, especially in Gemini Spark where every MCP tool call needs a user click. Send the complete task plus cwd once; Aki performs the multi-step retrieval server-side through a health-aware agy -> Kiro -> OpenCode fallback chain. Use granular find/search/read tools only when this worker fails or the user asks for exact file-level retrieval.',
       inputSchema: {
         prompt: z.string(),
         cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),
