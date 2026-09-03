@@ -9,13 +9,14 @@ import { register as registerKiro } from './kiro-mcp.js';
 import { register as registerOpenCode } from './opencode-mcp.js';
 import { register as registerAgent } from './agent-mcp.js';
 import { register as registerSearch } from './search-mcp.js';
+import { register as registerRepoSnapshot } from './repo-snapshot-mcp.js';
 import { register as registerClaudeMem } from './claude-mem-mcp.js';
 import { register as registerFilesystem } from './filesystem-mcp.js';
 
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
-  'For broad read-only repo/codebase/research tasks, call local__agent_read exactly once with the complete request and cwd; it performs multi-step retrieval through Aki workers server-side.',
-  'Do not decompose that work into list_allowed_directories/find_path/search_content/read_text_file unless agent_read fails or the user explicitly requests granular reads.',
+  'For broad local repo/codebase analysis, call local__repo_snapshot exactly once with the project path; it returns a bounded tree plus prioritized source/config/docs in one local read pass and is designed to finish within short client deadlines.',
+  'Use local__agent_read only for semantic/cross-source retrieval after repo_snapshot is insufficient; do not decompose broad analysis into list_allowed_directories/find_path/search_content/read_text_file unless the one-call paths fail or the user requests granular reads.',
   'For mutations use the normal write/shell tools; Spark may still require confirmation for each call.',
 ].join(' ');
 
@@ -25,6 +26,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'list_allowed_directories',
   'find_path',
   'search_content',
+  'repo_snapshot',
   'claude_mem_search',
   'claude_mem_timeline',
   'claude_mem_get_observations',
@@ -80,7 +82,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerAgent, registerSearch, registerClaudeMem, registerFilesystem]) register(local);
+  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerAgent, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on

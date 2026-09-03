@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { readBody } from '../scripts/http.js';
-import { dcrRegistrationAvailable, handleRegister, shouldRotateRefresh, rotateRefreshGrant } from '../scripts/oauth.js';
+import { dcrRegistrationAvailable, handleRegister, isAllowedRedirect, shouldRotateRefresh, rotateRefreshGrant } from '../scripts/oauth.js';
 import { DEFAULT_ALLOWLIST } from '../scripts/allowlist.js';
 import { resolveExecFileTarget, trustedInterpreterScriptArg } from '../scripts/shell-mcp.js';
 
@@ -57,6 +57,11 @@ test('Windows npm shims run through node instead of execFile on .cmd', () => {
 
 test('non-Windows shell commands remain untouched', () => {
   assert.deepEqual(resolveExecFileTarget('npm', ['test'], { platform: 'linux' }), { file: 'npm', args: ['test'] });
+});
+
+test('DCR redirect allowlist includes Antigravity 2.0 callback and rejects unrelated paths', () => {
+  assert.equal(isAllowedRedirect('https://antigravity.google/oauth-callback'), true);
+  assert.equal(isAllowedRedirect('https://antigravity.google/not-the-callback'), false);
 });
 
 test('DCR registration storage is bounded', () => {

@@ -27,11 +27,12 @@ test('fork workflow instructions are checked and locked in section 3', () => {
   assert.match(html, /Build\/CI: trigger only; do not wait or monitor unless asked .*custom/);
 });
 
-test('Gemini Spark panel documents one-call read worker and unavoidable client-side approvals', () => {
+test('Gemini Spark panel documents one-call repo snapshot and unavoidable client-side approvals', () => {
   const html = render();
   assert.match(html, /Gemini custom MCP apps now run inside <strong>Gemini Spark<\/strong>/);
   assert.match(html, /approve every individual MCP tool call/);
-  assert.match(html, /local__agent_read<\/span> once with the full task/);
+  assert.match(html, /local__repo_snapshot<\/span> once with the project path/);
+  assert.match(html, /avoiding the 60s <span class="mono">agent_read<\/span> timeout/);
   assert.match(html, /Write\/shell calls may still require separate Spark confirmation/);
 });
 
@@ -49,6 +50,7 @@ test('generated workflow orders research before shared plan and encodes direct-r
   assert.match(client, /done=>write outcome for next AI/);
   assert.match(client, /no sandbox\/virtual\/temp copies unless asked/);
   assert.match(client, /no wait\/poll\/monitor unless asked/);
+  assert.match(client, /Broad repo analysis: repo_snapshot once; granular reads only fallback/);
 });
 
 function promptForRuleSpec(ruleSpec) {
@@ -59,6 +61,7 @@ function promptForRuleSpec(ruleSpec) {
     'Mutate/multi-step: scope; ONE shared plan. Given plan path=>use it; else ~/.aki/mcpsv/task/<id>/plan.md. Read on handoff/resume; update checklist/decisions/evidence; done=>write outcome for next AI. Reply path on create. Q&A: no plan.',
     'Real repo only via Aki MCP: use user-specified path; no sandbox/virtual/temp copies unless asked. Read back writes.',
     'Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.',
+    'Broad repo analysis: repo_snapshot once; granular reads only fallback.',
     'Build/CI: trigger only; no wait/poll/monitor unless asked. User monitors; reported failure=>inspect/fix/retrigger.',
     'First session: if ~/.aki/mcpsv/intro.json absent, read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md; write {"seen":true}.',
     'Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions to each AI.',

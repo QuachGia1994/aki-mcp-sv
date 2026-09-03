@@ -223,13 +223,13 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane" id="tab-gemini">
   <p class="helptext">Gemini custom MCP apps now run inside <strong>Gemini Spark</strong>. Spark currently asks the user to approve every individual MCP tool call; that confirmation is client-side and cannot be disabled by the server.</p>
-  <div class="updwarn"><strong>Reduce approval clicks:</strong> for broad read-only repo/codebase/research tasks, Aki instructs Spark to call <span class="mono">local__agent_read</span> once with the full task + repo <span class="mono">cwd</span>. Aki then performs the multi-step retrieval server-side. Write/shell calls may still require separate Spark confirmation.</div>
+  <div class="updwarn"><strong>Reduce approval clicks:</strong> for broad local repo/codebase analysis, Aki instructs Spark to call <span class="mono">local__repo_snapshot</span> once with the project path. It returns a bounded tree + prioritized source/config/docs locally without nested AI workers, avoiding the 60s <span class="mono">agent_read</span> timeout. Write/shell calls may still require separate Spark confirmation.</div>
   <ol class="steps">
     <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> in Gemini Spark.</li>
     <li>Set the <strong>custom app link / Server URL</strong> = MCP URL.</li>
     <li>If automatic registration is unavailable, open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> from the Claude tab.</li>
     <li>On <strong>Continue</strong>, enter the <strong>Passphrase</strong>.</li>
-    <li>For codebase analysis, ask <span class="mono">@Local Tools</span> to use <span class="mono">local__agent_read</span> once with the project path.</li>
+    <li>For codebase analysis, ask <span class="mono">@Local Tools</span> to use <span class="mono">local__repo_snapshot</span> once with the project path.</li>
   </ol>
 </div>
 

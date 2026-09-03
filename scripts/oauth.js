@@ -28,6 +28,7 @@ const GEMINI_CALLBACK_PREFIXES = [
 // Grok self-registers (DCR) with this callback.
 const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
 const MISTRAL_CALLBACK = 'https://callback.mistral.ai/v1/integrations_auth/oauth2_callback';
+const ANTIGRAVITY_CALLBACK = 'https://antigravity.google/oauth-callback';
 const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
 const OAUTH_BODY_MAX_BYTES = 64 * 1024;
@@ -42,10 +43,10 @@ const authCodes = new Map();
 const accessTokens = new Map();
 const refreshTokens = new Map();
 
-function isAllowedRedirect(uri) {
+export function isAllowedRedirect(uri) {
   if (typeof uri !== 'string' || !uri) return false;
   if (uri === CLAUDE_CALLBACK || uri === CHATGPT_LEGACY_CALLBACK) return true;
-  if (uri === MISTRAL_CALLBACK) return true;
+  if (uri === MISTRAL_CALLBACK || uri === ANTIGRAVITY_CALLBACK) return true;
   return uri.startsWith(CHATGPT_CALLBACK_PREFIX)
     || uri.startsWith(GROK_CALLBACK_PREFIX)
     || GEMINI_CALLBACK_PREFIXES.some((prefix) => uri.startsWith(prefix));

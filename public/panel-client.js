@@ -89,6 +89,7 @@ function buildPrompt() {
   lines.push('Mutate/multi-step: scope; ONE shared plan. Given plan path=>use it; else ~/.aki/mcpsv/task/<id>/plan.md. Read on handoff/resume; update checklist/decisions/evidence; done=>write outcome for next AI. Reply path on create. Q&A: no plan.');
   lines.push('Real repo only via Aki MCP: use user-specified path; no sandbox/virtual/temp copies unless asked. Read back writes.');
   lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
+  lines.push('Broad repo analysis: repo_snapshot once; granular reads only fallback.');
   lines.push('Build/CI: trigger only; no wait/poll/monitor unless asked. User monitors; reported failure=>inspect/fix/retrigger.');
   lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
   lines.push('Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions to each AI.');
