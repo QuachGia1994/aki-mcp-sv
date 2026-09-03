@@ -43,11 +43,10 @@ test('generated workflow orders research before shared plan and encodes direct-r
   assert.match(client, /no wait\/poll\/monitor unless asked/);
 });
 
-test('default locked prompt stays safely below ChatGPT 1500-character cap', () => {
-  const rules = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'RULE-agent-engineering.md', 'RULE-docs.md', 'RULE-release.md'];
-  const lines = [
+function promptForRuleSpec(ruleSpec) {
+  return [
     "[akimcp 1.12.0 · akidevrule 2.7.0] ALWAYS short dense on-point. DON'T YAPPING. Claim=evidence; search=citation.",
-    'Session start MCP "Aki MCP Server from local Shell & FileSystem": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + rules.join(',') + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.',
+    'Session start MCP "Aki MCP Server from local Shell & FileSystem": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.',
     'Before plan: research relevant GitHub repo/upstream; use repo/docs/issues/releases evidence.',
     'Mutate/multi-step: scope; ONE shared plan. Given plan path=>use it; else ~/.aki/mcpsv/task/<id>/plan.md. Read on handoff/resume; update checklist/decisions/evidence; done=>write outcome for next AI. Reply path on create. Q&A: no plan.',
     'Real repo only via Aki MCP: use user-specified path; no sandbox/virtual/temp copies unless asked. Read back writes.',
@@ -55,7 +54,20 @@ test('default locked prompt stays safely below ChatGPT 1500-character cap', () =
     'Build/CI: trigger only; no wait/poll/monitor unless asked. User monitors; reported failure=>inspect/fix/retrigger.',
     'First session: if ~/.aki/mcpsv/intro.json absent, read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md; write {"seen":true}.',
     'Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions to each AI.',
-  ];
-  const prompt = lines.join('\n');
+  ].join('\n');
+}
+
+test('default locked prompt stays safely below ChatGPT 1500-character cap', () => {
+  const ruleSpec = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'RULE-agent-engineering.md', 'RULE-docs.md', 'RULE-release.md'].join(',');
+  const prompt = promptForRuleSpec(ruleSpec);
   assert.ok(prompt.length <= 1400, `default prompt should leave safety margin under 1500, got ${prompt.length}`);
+});
+
+test('full-tick prompt compacts all rule files and stays below ChatGPT 1500-character cap', () => {
+  const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
+  assert.match(client, /picked\.length === allRuleInputs\.length/);
+  assert.match(client, /'index\.md,METHOD-\*\.md,RULE-\*\.md'/);
+  assert.match(client, /: picked\.join\(','\)/, 'partial selections must still enumerate exactly the picked rules');
+  const prompt = promptForRuleSpec('index.md,METHOD-*.md,RULE-*.md');
+  assert.ok(prompt.length <= 1400, `full-tick prompt should leave safety margin under 1500, got ${prompt.length}`);
 });

@@ -75,7 +75,10 @@ function buildPrompt() {
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
   if (picked.length) {
-    lines.push('Session start MCP "' + MCP_NAME + '": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + picked.join(',') + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.');
+    const allRuleInputs = [...document.querySelectorAll('#ruleChecks input')];
+    const allRulesPicked = allRuleInputs.length > 0 && picked.length === allRuleInputs.length;
+    const ruleSpec = allRulesPicked ? 'index.md,METHOD-*.md,RULE-*.md' : picked.join(',');
+    lines.push('Session start MCP "' + MCP_NAME + '": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.');
   }
   const rulesOn = document.getElementById('loadRules').checked;
   const hasIndex = [...document.querySelectorAll('#ruleChecks input')].some((i) => i.value === 'index.md');
