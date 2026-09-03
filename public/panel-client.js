@@ -75,21 +75,20 @@ function buildPrompt() {
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
   if (picked.length) {
-    lines.push('Session start MCP "' + MCP_NAME + '": read ' + CLAUDE_DIR + '/CLAUDE.md + these under ' + RULES_DIR + ': ' + picked.join(', ') + '; follow all session. Router: ' + CLAUDE_DIR + '/skills/akirule/SKILL.md.');
+    lines.push('Session start MCP "' + MCP_NAME + '": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + picked.join(',') + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.');
   }
   const rulesOn = document.getElementById('loadRules').checked;
   const hasIndex = [...document.querySelectorAll('#ruleChecks input')].some((i) => i.value === 'index.md');
   if (rulesOn && !hasIndex) {
-    lines.push('Rules not installed: ask the user to press Install/update in the Aki panel (section 2) before starting.');
+    lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  if (document.getElementById('researchGitHubBeforePlan')?.checked) {
-    lines.push('Before live plan: research the relevant GitHub repo/upstream first; use repo/docs/issues/releases evidence, then create the plan.');
-  }
-  lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md (live); reply path on create. Skip pure Q&A. <id>=short slug.');
-  lines.push('Files: always find_path (1 call, whole tree ~0.2s), never list_directory nor search_files. Text: search_content. git/ls/grep: run_cmd cwd=absolute under an allowed root, never cd/-C.');
-  lines.push('Repo: ' + REPO_ROOT + '. local paths=Aki MCP FS only; sandbox throwaway; after write read-back MCP.');
-  lines.push('First session: if no ' + USER_DIR + '/intro.json, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md once then write intro.json {"seen":true}.');
-  lines.push('Also read ' + USER_DIR + '/aki-mcp-status.json; if its mcp.current/rule.current differ from the [akimcp·akidevrule] line above or any updateAvailable is true, tell me to update in the Aki panel and re-paste these instructions into the custom-instructions setting of each AI (claude/grok/chatgpt/gemini).');
+  lines.push('Before plan: research relevant GitHub repo/upstream; use repo/docs/issues/releases evidence.');
+  lines.push('Mutate/multi-step: scope; ONE shared plan. Given plan path=>use it; else ~/.aki/mcpsv/task/<id>/plan.md. Read on handoff/resume; update checklist/decisions/evidence; done=>write outcome for next AI. Reply path on create. Q&A: no plan.');
+  lines.push('Real repo only via Aki MCP: use user-specified path; no sandbox/virtual/temp copies unless asked. Read back writes.');
+  lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
+  lines.push('Build/CI: trigger only; no wait/poll/monitor unless asked. User monitors; reported failure=>inspect/fix/retrigger.');
+  lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
+  lines.push('Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions to each AI.');
   const value = lines.join('\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
