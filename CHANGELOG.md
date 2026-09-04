@@ -4,11 +4,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-05
+
 ### Added
+- **Postman desktop control from the local panel.** The Postman tab can Launch, Quit, and open a New window through an opt-in `scripts/aki-pmcontrol/` daemon that attaches to Postman Desktop, auto-clicks approval/run/retry prompts, and manages Thinking/Auto-run. `local__postman_status` reports daemon state read-only; `npm start` never launches the daemon automatically.
 - **One-call local repository snapshot tool.** `local__repo_snapshot` performs a bounded local filesystem pass and returns a repository tree plus prioritized source/config/docs contents without nested AI workers, shell, network, or subprocesses. Secret-like files/symlinks are omitted; on `D:\LacViet\LingoPlay` the default 180k-character snapshot completed in 95 ms (55 files / 33 directories), avoiding Spark's 60-second `agent_read` deadline.
 - **Read-only claude-mem bridge for the in-process MCP server.** Aki now exposes only `local__claude_mem_search`, `local__claude_mem_timeline`, and `local__claude_mem_get_observations`, calling the local claude-mem worker over bounded HTTP with environment/settings overrides; no capture, write, or delete memory tools are registered.
 
 ### Changed
+- **Postman control tests and dependency are integrated without removing fork packaging.** The fork adds `chrome-remote-interface` and Postman-control regression coverage under `test/` while retaining its standalone Windows/macOS/Linux package builder and release assets.
 - **Postman setup now gets a real bearer token directly from the local panel.** The panel reuses an unexpired MCP access token or mints and persists one when needed, then pre-fills both the Authorization value and fallback Agent Mode JSON; the fork keeps its tested MCP Request → Generate Config → Agent Mode flow and no longer requires opening `tokens.json` or connecting another OAuth client first.
 - **Gemini Spark codebase analysis now prefers `repo_snapshot` over the AI-worker router.** Spark still confirms each MCP `tools/call` client-side, but broad local repo analysis is now steered to one `local__repo_snapshot` call; `agent_read` remains secondary for semantic/cross-source retrieval. This removes the observed `DEADLINE_EXCEEDED` failure while retaining granular find/search/read as fallback.
 - **Antigravity 2.0 custom MCP is documented and OAuth-compatible.** Aki allowlists Antigravity's documented DCR callback `https://antigravity.google/oauth-callback`; README documents the global `~/.gemini/config/mcp_config.json`, required remote `serverUrl` field, and scoped `mcp(aki-mcp-sv/*)` permission grant instead of global `mcp(*)`.

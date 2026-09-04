@@ -81,7 +81,7 @@ const socialLink = ([label, url, path]) =>
   `<a class="social" href="${esc(url.startsWith('mailto:') ? url : withUtm(url))}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg></a>`;
 
 // The one copyable-code primitive (ui.A1 Tier-2 pattern class): every command/value/inline code renders as `.copy` and click-copies. `.mono` is plain monospace text, never a copy chip — the two roles stay visually distinct so nothing masquerades as copyable.
-const copyEl = (value, hl = false) => `<code class="copy${hl ? ' hl' : ''}" title="click to copy"><span class="txt">${esc(value)}</span></code>`;
+const copyEl = (value, hl = false, id) => `<code class="copy${hl ? ' hl' : ''}"${id ? ` id="${esc(id)}"` : ''} title="click to copy"><span class="txt">${esc(value)}</span></code>`;
 
 function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
@@ -236,6 +236,15 @@ ${field('Passphrase', passphrase)}
 </div>
 
 <div class="tabpane" id="tab-postman">
+  <h3 class="subh">Control the Postman app</h3>
+  <p class="helptext">Launch from this panel to attach Aki's Postman control daemon. It auto-clicks Approve / Continue / Run / Try again and manages Thinking / Auto-run inside Postman; if Postman is already open, it attaches instead of opening a duplicate instance.</p>
+  <div class="acts">
+    <button class="primary" data-act="launchPostman" id="pmBtnLaunch">Launch</button>
+    <button data-act="quitPostman" id="pmBtnQuit" hidden>Quit</button>
+    <button data-act="newWindowPostman" id="pmBtnNewWindow" hidden>New window</button>
+    <span class="dot" id="pmDaemonDot">…</span><span class="msg" id="msgPmDaemon"></span>
+  </div>
+  <h3 class="subh" style="margin-top:16px">Connect Postman to this MCP</h3>
   <p class="helptext">Postman AI Agent (via MCP). Use Postman's MCP Request flow first, verify the server there, then add that tested request to Agent Mode. This avoids stale/manual Agent Mode connection state.</p>
   <p class="helptext">Postman has no OAuth redirect for this third-party MCP server, so the panel mints or reuses a real issued bearer token automatically — <strong>not</strong> the Passphrase above.</p>
   <div class="updwarn"><strong>Important:</strong> the Authorization value must start with the literal word <span class="mono">Bearer</span> followed by one space. The ready-to-copy value below is already complete.</div>
@@ -246,7 +255,7 @@ ${field('Passphrase', passphrase)}
   </ol>
   ${field('Authorization header value', postmanAuth, true)}
   <p class="helptext">Manual Agent Mode JSON is fallback only. It is already filled with the current MCP URL and issued bearer token; keep the direct <span class="mono">url</span> + <span class="mono">headers</span> shape and never use <span class="mono">command</span>/<span class="mono">args</span>:</p>
-  ${copyEl(postmanConfig)}
+  ${copyEl(postmanConfig, false, 'postmanJson')}
   <p class="helptext" style="margin-top:12px">Prompt instruction — paste into each new chat (Postman has no persistent system prompt):</p>
   ${copyEl(POSTMAN_PROMPT)}
   <p class="helptext" style="margin-top:12px">Setup screenshots:</p>

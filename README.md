@@ -6,7 +6,7 @@ No desktop app. No device lock-in. No install needed if you use the standalone l
 
 <img width="1190" height="1062" alt="aki-mcp-sv control panel" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
 
-[![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
+[![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
 
 **Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok, Gemini Spark, and Antigravity 2.0](#connecting-from-grok-gemini-spark-and-antigravity-20) · [Connecting from Postman](#connecting-from-postman) · [Kimi Web K3 via Cloudflare D1](#kimi-web-k3-via-cloudflare-d1) · [Qwen Coder Web via Worker + D1](#qwen-coder-web-via-worker--d1) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
@@ -126,9 +126,9 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 
 ## Connecting from Postman
 
-Postman's Agent Mode has no OAuth redirect for this third-party MCP server, so the local Aki panel mints or reuses a real issued access token and shows a ready-to-copy Authorization value plus filled MCP JSON. Prefer Postman's documented MCP Request workflow instead of editing Agent Mode JSON first:
+Postman's Agent Mode has no OAuth redirect for this third-party MCP server, so the local Aki panel mints or reuses a real issued access token and shows a ready-to-copy Authorization value plus filled MCP JSON. The same Postman tab can now Launch/Quit/New window through Aki's optional Postman control daemon; launching there attaches CDP automation that auto-clicks Approve / Continue / Run / Try again and manages Thinking / Auto-run. The daemon is opt-in and never starts with `npm start`. Prefer Postman's documented MCP Request workflow instead of editing Agent Mode JSON first:
 
-1. Open Aki panel section 1 → Postman; the displayed `Authorization header value` is already complete (`Bearer <issued-token>`).
+1. Open Aki panel section 1 → Postman. Optionally click **Launch** to attach the Postman control daemon; the displayed `Authorization header value` is already complete (`Bearer <issued-token>`).
 2. Create a new **MCP Request** in Postman. Choose **Streamable HTTP**, set the URL to the Aki MCP URL, and paste that Authorization value.
 3. Connect that MCP Request and confirm Postman can load Aki's tools.
 4. From the working MCP Request choose **Generate Config → Agent Mode → Add to Agent Mode**. This is Postman's documented Agent Mode setup path.
@@ -199,10 +199,14 @@ tools-server.js — one shared McpServer, in-process (InMemoryTransport, no chil
                                   kiro-mcp.js         (kiro_read, read-only, needs kiro-cli on PATH)
                                   claude-mem-mcp.js   (read-only local worker search/timeline/observation lookup)
                                   filesystem-mcp.js   (native read/write/edit inside the allowed folders)
+                                  postman-mcp.js      (read-only daemon status tool + panel lifecycle helpers)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  control UI: allowed folders, shell allowlist,
-                 install akidevrule, generate the connector prompt
+                 install akidevrule, generate the connector prompt,
+                 optional Postman Launch/Quit/New window controls
+
+aki-pmcontrol/ — optional child daemon started only from the Postman panel tab
 ```
 
 The ingress layer is swappable: Tailscale Funnel is the zero-config default, but the same `/mcp` endpoint can instead be served through your own Cloudflare named tunnel or any stable public HTTPS edge you already run — see [Exposing to the internet](#exposing-to-the-internet). Everything below the ingress line (gatekeeper, OAuth, in-process tools server) is unchanged whichever edge you pick.
@@ -232,6 +236,8 @@ aki-mcp-sv/
 │   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── claude-mem-mcp.js         # read-only local claude-mem worker HTTP bridge
+│   ├── postman-mcp.js            # read-only postman_status + panel daemon lifecycle helpers
+│   ├── aki-pmcontrol/            # optional Postman desktop CDP control daemon, panel-launched only
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
@@ -245,6 +251,7 @@ aki-mcp-sv/
 │   ├── html.js                   # HTML escaper (esc) — shared by oauth confirm page and panel
 │   ├── userdata.js               # user data location (~/.aki/mcpsv) — single source of truth
 │   └── build/                    # standalone release builder: payload/launchers/checksums, smoke-test, release-gate
+├── test/                         # Node regression tests, including Postman control coverage
 └── public/                       # panel CSS/JS, favicon + images, served publicly by gatekeeper
 ```
 

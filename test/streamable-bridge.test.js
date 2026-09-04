@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import http from 'node:http';
-import { handleStreamableMcp } from './streamable-bridge.js';
+import { handleStreamableMcp } from '../scripts/streamable-bridge.js';
 
 const originalConsoleLog = console.log;
 const bridgeLogs = [];
