@@ -376,9 +376,14 @@ export function rotateRefreshGrant(store, currentToken, clientId, tokenFactory =
   return nextToken;
 }
 
-function issueTokens(res, clientId, { existingRefresh, rotateRefresh = false, via }) {
+function mintAccessToken() {
   const accessToken = randomBytes(32).toString('hex');
   accessTokens.set(accessToken, { expires: Date.now() + ACCESS_TTL_S * 1000 });
+  return accessToken;
+}
+
+function issueTokens(res, clientId, { existingRefresh, rotateRefresh = false, via }) {
+  const accessToken = mintAccessToken();
   const refreshToken = rotateRefresh && existingRefresh
     ? rotateRefreshGrant(refreshTokens, existingRefresh, clientId)
     : existingRefresh || randomBytes(32).toString('hex');
@@ -386,6 +391,17 @@ function issueTokens(res, clientId, { existingRefresh, rotateRefresh = false, vi
   saveTokens();
   log(`[oauth] tokens ISSUED via ${via} (access + refresh${rotateRefresh ? ', refresh rotated' : ''}) — client is now authorized`);
   json(res, 200, { access_token: accessToken, token_type: 'Bearer', expires_in: ACCESS_TTL_S, refresh_token: refreshToken });
+}
+
+export function getOrIssueAccessToken() {
+  const now = Date.now();
+  for (const [token, entry] of accessTokens) {
+    if (entry.expires >= now) return token;
+  }
+  const accessToken = mintAccessToken();
+  saveTokens();
+  log('[oauth] access token ISSUED via panel');
+  return accessToken;
 }
 
 export function verifyBearer(authHeader) {

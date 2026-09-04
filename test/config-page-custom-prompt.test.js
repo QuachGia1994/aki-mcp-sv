@@ -9,6 +9,7 @@ function render() {
     client: { clientId: 'client-id', clientSecret: 'client-secret' },
     passphrase: 'passphrase',
     token: 'panel-token',
+    accessToken: 'b'.repeat(64),
     repoRoot: 'D:\\repo',
     rulesDir: 'C:\\Users\\User\\.aki\\akidevrule',
     userDir: 'C:\\Users\\User\\.aki\\mcpsv',

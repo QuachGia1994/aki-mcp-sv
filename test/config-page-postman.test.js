@@ -8,6 +8,7 @@ function render() {
     client: { clientId: 'client-id', clientSecret: 'client-secret' },
     passphrase: 'passphrase',
     token: 'panel-token',
+    accessToken: 'a'.repeat(64),
     repoRoot: 'D:\\repo',
     rulesDir: 'C:\\Users\\User\\.aki\\akidevrule',
     userDir: 'C:\\Users\\User\\.aki\\mcpsv',
@@ -15,15 +16,17 @@ function render() {
   });
 }
 
-test('Postman panel requires Bearer auth and the tested MCP Request -> Agent Mode flow', () => {
+test('Postman panel prefills a real Bearer token and keeps the tested MCP Request -> Agent Mode flow', () => {
   const html = render();
-  assert.match(html, /Bearer PASTE_ACCESS_TOKEN_HERE/);
-  assert.match(html, /raw 64-character token by itself is invalid and will return 401/);
+  assert.match(html, new RegExp(`Bearer ${'a'.repeat(64)}`));
+  assert.match(html, /ready-to-copy value below is already complete/);
   assert.match(html, /MCP Request/);
   assert.match(html, /Streamable HTTP/);
   assert.match(html, /Generate Config .* Agent Mode .* Add to Agent Mode/);
   assert.match(html, /known HTTP-MCP reconnect bug/);
   assert.match(html, /Manual Agent Mode JSON is fallback only/);
   assert.match(html, /command.*args/);
-  assert.doesNotMatch(html, /Authorization(?:&quot;|")?:(?:&quot;|")?PASTE_ACCESS_TOKEN_HERE/);
+  assert.doesNotMatch(html, /PASTE_ACCESS_TOKEN_HERE/);
+  assert.match(html, /Enable Developer mode/);
+  assert.match(html, /#settings\/Security/);
 });

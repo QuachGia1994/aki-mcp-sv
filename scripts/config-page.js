@@ -9,9 +9,9 @@ const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const GROK_SETTINGS_URL = 'https://grok.com/?_s=personality';
 const CHATGPT_SETTINGS_URL = 'https://chatgpt.com/#settings/Personalization';
+const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/#settings/Security';
 const GEMINI_SETTINGS_URL = 'https://gemini.google.com/saved-info';
 const POSTMAN_SETTINGS_URL = 'https://go.postman.co/settings/me/connected-accounts';
-const POSTMAN_TOKEN_PLACEHOLDER = 'PASTE_ACCESS_TOKEN_HERE';
 const POSTMAN_PROMPT = `MCP Tools: Files=find_path. Content=search_content. Agents=agy_run/kiro_read. Always use MCP tools to search files/dirs/content;
 never trigger native OS file-picker popups. Fall back to built-in native shell if local__run_cmd is blocked;
 explicitly prompt or warn before running sensitive non-whitelisted commands via native shell.
@@ -87,9 +87,9 @@ function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
 
-export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false, savedIngress = null }) {
+export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false, savedIngress = null }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
-  const postmanAuth = `Bearer ${POSTMAN_TOKEN_PLACEHOLDER}`;
+  const postmanAuth = `Bearer ${accessToken}`;
   const postmanConfig = JSON.stringify({ mcpServers: { 'aki-mcp-sv': { url, headers: { Authorization: postmanAuth } } } });
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
@@ -210,9 +210,11 @@ ${field('Passphrase', passphrase)}
 </div>
 
 <div class="tabpane" id="tab-chatgpt">
+  <p class="lnk"><a href="${esc(CHATGPT_DEVMODE_URL)}" target="_blank" rel="noopener">↗ Enable Developer mode</a> · Settings → Security and login</p>
   <p class="lnk"><a href="${esc(CHATGPT_CONNECTOR_URL)}" target="_blank" rel="noopener">↗ Create a connector</a></p>
   <ol class="steps">
-    <li>Pick an <strong>Icon</strong> (optional — use <span class="mono">${esc(repoRoot)}/public/favicon/icon-48.png</span> or any image).</li>
+    <li>Turn on <strong>Developer mode</strong> first. OpenAI requires it to create custom MCP apps.</li>
+    <li>Pick an <strong>Icon</strong> (optional — use ${copyEl(`${repoRoot}/public/favicon/icon-48.png`)} or any image).</li>
     <li>Enter a <strong>Name</strong> and <strong>Description</strong> (your choice).</li>
     <li>Set <strong>Connection</strong> → <strong>Server URL</strong> = MCP URL above.</li>
     <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
@@ -235,17 +237,15 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane" id="tab-postman">
   <p class="helptext">Postman AI Agent (via MCP). Use Postman's MCP Request flow first, verify the server there, then add that tested request to Agent Mode. This avoids stale/manual Agent Mode connection state.</p>
-  <p class="helptext">Postman has no OAuth redirect for this third-party MCP server, so use an issued static bearer token — <strong>not</strong> the Passphrase above.</p>
-  <div class="updwarn"><strong>Important:</strong> the Authorization value must start with the literal word <span class="mono">Bearer</span> followed by one space. A raw 64-character token by itself is invalid and will return 401.</div>
+  <p class="helptext">Postman has no OAuth redirect for this third-party MCP server, so the panel mints or reuses a real issued bearer token automatically — <strong>not</strong> the Passphrase above.</p>
+  <div class="updwarn"><strong>Important:</strong> the Authorization value must start with the literal word <span class="mono">Bearer</span> followed by one space. The ready-to-copy value below is already complete.</div>
   <ol class="steps">
-    <li>Connect at least one OAuth client above first (Claude/Grok/ChatGPT/Gemini) so Aki has a valid access token.</li>
-    <li>Open <span class="mono">${esc(userDir)}/tokens.json</span> and copy one unexpired hex key directly under <span class="mono">"access"</span>. Do not use anything under <span class="mono">"refresh"</span>.</li>
-    <li>In Postman create a new <strong>MCP Request</strong>. Choose <strong>Streamable HTTP</strong>, set URL = MCP URL above, then add header <span class="mono">Authorization</span> = <span class="mono">Bearer &lt;access-token&gt;</span>.</li>
+    <li>In Postman create a new <strong>MCP Request</strong>. Choose <strong>Streamable HTTP</strong>, set URL = MCP URL above, then paste the ready-to-copy <strong>Authorization header value</strong> below.</li>
     <li>Connect the MCP Request and confirm Postman can load Aki's tools. Only after this succeeds, click <strong>Generate Config → Agent Mode → Add to Agent Mode</strong>. This is Postman's documented setup path.</li>
     <li>If Agent Mode stays on <strong>Connecting...</strong> after Aki was restarted, close/reopen the Postman tab/app (or hard refresh the web app), delete the stale Agent Mode entry, then regenerate it from the working MCP Request. Postman has a known HTTP-MCP reconnect bug where toggle off/on does not release the old connection.</li>
   </ol>
   ${field('Authorization header value', postmanAuth, true)}
-  <p class="helptext">Manual Agent Mode JSON is fallback only. If you must use it, replace only <span class="mono">${POSTMAN_TOKEN_PLACEHOLDER}</span>; keep <span class="mono">Bearer </span>, direct <span class="mono">url</span> + <span class="mono">headers</span>, and never use <span class="mono">command</span>/<span class="mono">args</span>:</p>
+  <p class="helptext">Manual Agent Mode JSON is fallback only. It is already filled with the current MCP URL and issued bearer token; keep the direct <span class="mono">url</span> + <span class="mono">headers</span> shape and never use <span class="mono">command</span>/<span class="mono">args</span>:</p>
   ${copyEl(postmanConfig)}
   <p class="helptext" style="margin-top:12px">Prompt instruction — paste into each new chat (Postman has no persistent system prompt):</p>
   ${copyEl(POSTMAN_PROMPT)}
