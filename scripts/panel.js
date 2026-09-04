@@ -124,6 +124,19 @@ function run(command, args, cwd) {
   });
 }
 
+export function dependencyInstallArgs(changedFiles, hasLockfile) {
+  const changed = new Set(String(changedFiles || '').split(/\r?\n/).map((file) => file.trim()).filter(Boolean));
+  if (!changed.has('package.json') && !changed.has('package-lock.json')) return null;
+  return hasLockfile ? ['ci'] : ['install'];
+}
+
+async function runNpm(args) {
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath && existsSync(npmExecPath)) return run(process.execPath, [npmExecPath, ...args], REPO_ROOT);
+  if (IS_WIN) return run('cmd.exe', ['/d', '/s', '/c', ['npm', ...args].join(' ')], REPO_ROOT);
+  return run('npm', args, REPO_ROOT);
+}
+
 // Three states, one button: already cloned locally, cloned by us before, or never seen on this machine.
 async function installRules() {
   const recorded = existsSync(SOURCE_REPO_FILE) ? readFileSync(SOURCE_REPO_FILE, 'utf8').trim() : null;
@@ -160,8 +173,19 @@ async function pullUpdate() {
   if (dirty && dirty !== '(no output)') {
     throw new Error('working tree has uncommitted changes — commit or stash them first, then pull');
   }
+  const before = (await run('git', ['-C', REPO_ROOT, 'rev-parse', 'HEAD'])).trim();
   await run('git', ['-C', REPO_ROOT, 'pull', '--ff-only']);
-  return 'pulled latest — press Ctrl+C and run `npm start` again to load the new code';
+  const after = (await run('git', ['-C', REPO_ROOT, 'rev-parse', 'HEAD'])).trim();
+  let dependencyMessage = '';
+  if (before !== after) {
+    const changedFiles = await run('git', ['-C', REPO_ROOT, 'diff', '--name-only', before, after, '--', 'package.json', 'package-lock.json']);
+    const installArgs = dependencyInstallArgs(changedFiles, existsSync(path.join(REPO_ROOT, 'package-lock.json')));
+    if (installArgs) {
+      await runNpm(installArgs);
+      dependencyMessage = `; npm ${installArgs[0]} completed`;
+    }
+  }
+  return `pulled latest${dependencyMessage} — press Ctrl+C and run \`npm start\` again to load the new code`;
 }
 
 // Mirror shell-mcp's classification: a zone overlapping a writable root is dropped (write+exec = RCE). Name the offending root so the panel can show why a zone is disabled.
