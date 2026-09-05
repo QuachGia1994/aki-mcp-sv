@@ -89,8 +89,8 @@ function buildPrompt() {
   lines.push('Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.');
   lines.push('Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.');
   lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
-  lines.push('Broad repo analysis: repo_snapshot once; granular reads only fallback.');
-  lines.push('Aki skills ' + REPO_ROOT + '/skills: web/live=>browser; concept/art/image/edit=>imagegen. Read SKILL.md; use host-native tools.');
+  lines.push('Broad repo: repo_snapshot once; deep=>agent_read (xKiro free first if set); granular fallback.');
+  lines.push('Aki skills ' + REPO_ROOT + '/skills: web/live=>browser; visual/edit=>imagegen; read SKILL.md; use native tools.');
   lines.push("Build/CI: trigger only; don't poll unless asked; failure=>inspect/fix/retrigger.");
   lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
   lines.push('Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions.');
@@ -286,6 +286,7 @@ async function loadState() {
   renderTrustedDirs(s.trustedDirs || []);
   s.paths.forEach((p) => addPath(p));
   renderRuleChecks(s.ruleFiles);
+  renderXKiroState(s.xkiro || {});
   document.getElementById('ruleChecks').onchange = buildPrompt;
   document.getElementById('loadRules').onchange = buildPrompt;
   document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
@@ -323,6 +324,27 @@ async function loadPostmanDaemon() {
   say('msgPmDaemon', s.running ? 'running (pid ' + s.pid + ')' : 'not running — click Launch above', s.running);
 }
 
+function renderXKiroState(state) {
+  const configured = state?.configured === true;
+  const dot = document.getElementById('xkiroDot');
+  dot.textContent = configured ? '✓' : '✕';
+  dot.className = 'dot ' + (configured ? 'ok' : 'err');
+  if (state?.model) document.getElementById('xkiroModel').value = state.model;
+  if (!configured) say('msgXKiro', 'not configured — paste an API key and Save', false);
+}
+
+async function checkXKiroQuota() {
+  const s = await api('GET', '/api/xkiro-status');
+  renderXKiroState(s);
+  if (!s.configured) return 'not configured';
+  if (s.error) throw new Error(s.error);
+  const free = s.usage?.free_tokens;
+  if (free && free.remaining !== null && free.remaining !== undefined) {
+    return 'ready · ' + s.model + ' · free tokens ' + free.remaining.toLocaleString() + ' / ' + free.limit_per_day.toLocaleString();
+  }
+  return 'ready · ' + s.model;
+}
+
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
@@ -337,6 +359,21 @@ const ACTIONS = {
     return s.message;
   }),
   newWindowPostman: (btn) => act(btn, 'msgPmDaemon', async () => (await api('POST', '/api/postman-new-window')).message),
+  saveXKiro: (btn) => act(btn, 'msgXKiro', async () => {
+    const apiKey = document.getElementById('xkiroKey').value.trim();
+    const model = document.getElementById('xkiroModel').value.trim();
+    const s = await api('POST', '/api/xkiro-config', { apiKey, model });
+    document.getElementById('xkiroKey').value = '';
+    renderXKiroState(s);
+    return s.message + ' · ' + s.model;
+  }),
+  checkXKiro: (btn) => act(btn, 'msgXKiro', checkXKiroQuota),
+  clearXKiro: (btn) => act(btn, 'msgXKiro', async () => {
+    const s = await api('POST', '/api/xkiro-clear');
+    document.getElementById('xkiroKey').value = '';
+    renderXKiroState(s);
+    return s.configured ? 'stored key cleared; env key still active' : s.message;
+  }),
   addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);

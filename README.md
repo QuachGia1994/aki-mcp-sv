@@ -1,6 +1,6 @@
 # aki-mcp-sv
 
-Give Claude on the **web** (claude.ai), **ChatGPT**, **Grok**, **Gemini Spark**, and **Antigravity 2.0** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. See [Connecting from Grok, Gemini Spark, and Antigravity 2.0](#connecting-from-grok-gemini-spark-and-antigravity-20); also connectable from Postman's AI Agent via [Connecting from Postman](#connecting-from-postman).
+Give Claude on the **web** (claude.ai), **ChatGPT**, **Grok**, **Gemini Spark**, and **Antigravity 2.0** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. See [Connecting from Grok, Gemini Spark, and Antigravity 2.0](#connecting-from-grok-gemini-spark-and-antigravity-20); also connectable from Postman's AI Agent via [Connecting from Postman](#connecting-from-postman). The fork can additionally use xKiro's free-tier API as a read-only local worker through [xKiro Free worker](#xkiro-free-worker).
 
 No desktop app. No device lock-in. No install needed if you use the standalone launcher below.
 
@@ -8,7 +8,7 @@ No desktop app. No device lock-in. No install needed if you use the standalone l
 
 [![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok, Gemini Spark, and Antigravity 2.0](#connecting-from-grok-gemini-spark-and-antigravity-20) · [Connecting from Postman](#connecting-from-postman) · [Kimi Web K3 via Cloudflare D1](#kimi-web-k3-via-cloudflare-d1) · [Qwen Coder Web via Worker + D1](#qwen-coder-web-via-worker--d1) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install](#install) · [Run](#run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok, Gemini Spark, and Antigravity 2.0](#connecting-from-grok-gemini-spark-and-antigravity-20) · [Connecting from Postman](#connecting-from-postman) · [xKiro Free worker](#xkiro-free-worker) · [Kimi Web K3 via Cloudflare D1](#kimi-web-k3-via-cloudflare-d1) · [Qwen Coder Web via Worker + D1](#qwen-coder-web-via-worker--d1) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -99,7 +99,7 @@ The generated section-3 Instructions also route two **host-native skills** autom
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__repo_snapshot` (one-call bounded tree + prioritized code/config/docs for broad codebase analysis), `local__run_cmd`, `local__agy_run`, `local__kiro_read`, optional read-only claude-mem lookup (`local__claude_mem_search`, `local__claude_mem_timeline`, `local__claude_mem_get_observations`), plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
+claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__repo_snapshot` (one-call bounded tree + prioritized code/config/docs for broad codebase analysis), `local__run_cmd`, `local__agy_run`, `local__kiro_read`, optional `local__xkiro_read` / `local__xkiro_status`, optional read-only claude-mem lookup (`local__claude_mem_search`, `local__claude_mem_timeline`, `local__claude_mem_get_observations`), plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
 
 **Note on the connector icon:** claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host: `https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32`. `<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
 
@@ -139,6 +139,14 @@ Postman's Agent Mode has no OAuth redirect for this third-party MCP server, so t
 Manual Agent Mode JSON is fallback only. The panel already fills the current `url`, `headers`, and issued bearer token; keep that direct shape and never use `command`/`args`.
 
 The fork's public `/mcp` endpoint supports all three relevant transport eras through the same in-process tool registry and policy: sessionful `2025-03-26`, stateless Streamable HTTP `2025-06-18` (the mode Postman v12 currently auto-detects), and stateless `2026-07-28` (`server/discover` + per-request metadata/headers).
+
+## xKiro Free worker
+
+This fork can spend xKiro's free-model allowance as a read-only repo worker without waiting for xkiro.com web chat to expose a custom-MCP connector. Configure it in **panel section 1 → xKiro** by pasting an xKiro API key and keeping the default free model (`minimax/minimax-m3:free`), or set `XKIRO_API_KEY` / optional `XKIRO_MODEL` in the server environment. The stored key lives only at `~/.aki/mcpsv/xkiro.json`; the panel never renders it back.
+
+`local__xkiro_read` uses xKiro's OpenAI-compatible tool-calling loop and gives the remote model only five scoped read primitives: repository snapshot, path search, content search, text-file read, and file metadata. Every path is hard-bounded to the requested `cwd`; write, edit, move, shell, Postman control, and other agent arms are not exposed inside the xKiro loop. `local__agent_read` automatically tries xKiro first when configured, then falls back to agy → Kiro → OpenCode if xKiro is unavailable.
+
+The integration is deliberately **free-only**: before a worker call Aki checks xKiro's live model catalog and rejects any model whose `access_tier` is not `free`; it also checks the account's free-token remainder, bounds tool-loop steps and output tokens, defaults reasoning to `none`, and refuses to start a turn whose conservative estimate could exceed the remaining free allowance. `local__xkiro_status` (or the panel's **Check quota** button) shows the current free-token counter without exposing the key. No OpenAI SDK dependency is added; Node 22's built-in `fetch` talks to `https://api.xkiro.com/v1` directly.
 
 ## Kimi Web K3 via Cloudflare D1
 

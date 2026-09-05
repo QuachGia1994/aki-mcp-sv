@@ -14,6 +14,7 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-high` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
+| `xkiro` | `xkiro_read`, `xkiro_status` | Use xKiro's free-tier API as a bounded read-only worker. The remote xKiro model receives only five scoped Aki read primitives inside the requested `cwd`; model selection is checked against the live catalog and must remain `access_tier=free`. | The remote model delegates; xKiro reasons and calls Aki's read-only primitives |
 | `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is the private lab `aiobox/labs/aki-pmcontrol`; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
 
 ## Native host skills — browser and ImageGen
@@ -34,13 +35,13 @@ Kimi Web K3 and Qwen Coder Web (`coder.qwen.ai`) are both live-verified through 
 
 **Direct primitives** (`filesystem`, `search`, `shell`) — the remote model calls them and does the reasoning itself.
 
-**Agent arms / "hands"** (`agy`, `kiro`) — the remote model hands off a *whole task* to a **local agent** that reasons and uses its own tools locally, then returns a conclusion.
+**Agent arms / "hands"** (`xkiro`, `agy`, `kiro`) — the remote model hands off a *whole task* to another model/agent that reasons and uses a tightly scoped tool surface, then returns a conclusion. `xkiro` is the network/free-quota arm; `agy` and `kiro` remain local CLI arms.
 
 An audit that only pattern-matches capabilities will call `kiro_read` "redundant — the model already has `find_path`/`search_content`/`run_cmd`." **That is a misclassification and the arms must not be removed on that basis.** An arm is not a file-reader; it is agent delegation, and it buys three things a direct primitive cannot:
 
-- **Offload multi-step local work** — a local model runs the investigate/read/synthesize loop against local files and returns a conclusion, instead of the remote model paying round-trips and context for every intermediate read.
+- **Offload multi-step repository work** — a delegated model/agent runs the investigate/read/synthesize loop against scoped local evidence and returns a conclusion, instead of the calling model paying round-trips and context for every intermediate read.
 - **Local trust scoping by mechanism** — the arm runs under its own locked tool set (`kiro` → `fs_read` only; `agy` → `plan` mode only), a boundary the remote model cannot widen from a prompt.
-- **Model/tier choice per task** — `agy` reaches a wide-context discovery tier; `kiro` is pinned to a specific Sonnet id for cost/behavior determinism.
+- **Model/tier choice per task** — `xkiro` consumes a free xKiro model only, `agy` reaches a wide-context discovery tier, and `kiro` is pinned to a specific Sonnet id for cost/behavior determinism.
 
 ## Search ladder — how the model should compose a hunt
 
@@ -56,7 +57,7 @@ An audit that only pattern-matches capabilities will call `kiro_read` "redundant
 
 ## Anchor — load-bearing, do not remove
 
-`agy` and `kiro` are anchored owner requirements ("hands, bắt buộc phải có"). They are **load-bearing** in the subtraction-audit sense: they carry real behavior (agent delegation) that no other tool provides. Any future audit finding proposing their removal is **rejected by this doc** unless the owner re-decides the anchor. The model lock on `kiro` (`claude-sonnet-4.5`) is a hard requirement — the model is not a tool parameter, so no prompt can escalate the tier (`scripts/kiro-mcp.js`).
+`xkiro`, `agy`, and `kiro` are anchored owner worker requirements. They are **load-bearing** in the subtraction-audit sense: they carry real behavior (free-quota or local agent delegation) that direct primitives do not provide. Any future audit finding proposing their removal is rejected unless the owner re-decides the anchor. `xkiro` must remain free-only by default; the model lock on `kiro` (`claude-sonnet-4.5`) remains a hard requirement.
 
 ## History
 

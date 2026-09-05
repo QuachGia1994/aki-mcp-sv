@@ -26,5 +26,5 @@ test('imagegen skill routes concepts and edits to host-native generation and ref
 });
 
 test('default Prompt Instructions route browser and imagegen skills through the Aki repo', () => {
-  assert.match(panelClient, /Aki skills ' \+ REPO_ROOT \+ '\/skills: web\/live=>browser; concept\/art\/image\/edit=>imagegen\. Read SKILL\.md; use host-native tools\./);
+  assert.match(panelClient, /Aki skills ' \+ REPO_ROOT \+ '\/skills: web\/live=>browser; visual\/edit=>imagegen; read SKILL\.md; use native tools\./);
 });

@@ -14,6 +14,7 @@ import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, re
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
+import { readXKiroConfig, writeXKiroConfig, getXKiroUsage } from './xkiro-mcp.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
@@ -216,10 +217,14 @@ export const ROUTES = {
     trustedDirs: trustedDirStatus(),
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
     ingressConfig: readIngressConfig(),
+    xkiro: (() => { const c = readXKiroConfig(); return { configured: c.configured, model: c.model, source: c.source }; })(),
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
   // Same function local__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
   'GET /api/postman-status': async () => getDaemonStatus(),
+  'GET /api/xkiro-status': async () => getXKiroUsage(),
+  'POST /api/xkiro-config': async (body) => ({ ok: true, message: 'saved xKiro worker config', ...writeXKiroConfig({ apiKey: body.apiKey, model: body.model }) }),
+  'POST /api/xkiro-clear': async () => ({ ok: true, message: 'cleared stored xKiro key', ...writeXKiroConfig({ clear: true }) }),
   // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".

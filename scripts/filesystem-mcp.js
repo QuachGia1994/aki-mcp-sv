@@ -79,6 +79,27 @@ async function headFile(filePath, numLines) {
   }
 }
 
+export async function readTextFile({ path: p, tail, head }) {
+  if (tail && head) throw new Error('cannot specify both head and tail');
+  const real = await resolveRealUnderRoot(p);
+  return tail ? tailFile(real, tail) : head ? headFile(real, head) : fs.readFile(real, 'utf-8');
+}
+
+export async function getFileInfoText(p) {
+  const real = await resolveRealUnderRoot(p);
+  const stats = await fs.stat(real);
+  const info = {
+    size: stats.size,
+    created: stats.birthtime,
+    modified: stats.mtime,
+    accessed: stats.atime,
+    isDirectory: stats.isDirectory(),
+    isFile: stats.isFile(),
+    permissions: stats.mode.toString(8).slice(-3),
+  };
+  return Object.entries(info).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
 // 'wx' fails if the target already exists (including as a symlink) — no silent follow-through a
 // pre-existing symlink. On EEXIST, write to a random temp path and atomically rename over the
 // target: rename replaces the destination without following it as a symlink, closing the TOCTOU gap
@@ -161,10 +182,7 @@ export function register(server) {
     },
     async ({ path: p, tail, head }) => {
       try {
-        if (tail && head) throw new Error('cannot specify both head and tail');
-        const real = await resolveRealUnderRoot(p);
-        const text = tail ? await tailFile(real, tail) : head ? await headFile(real, head) : await fs.readFile(real, 'utf-8');
-        return ok(text);
+        return ok(await readTextFile({ path: p, tail, head }));
       } catch (e) {
         return fail(e);
       }
@@ -257,18 +275,7 @@ export function register(server) {
     },
     async ({ path: p }) => {
       try {
-        const real = await resolveRealUnderRoot(p);
-        const stats = await fs.stat(real);
-        const info = {
-          size: stats.size,
-          created: stats.birthtime,
-          modified: stats.mtime,
-          accessed: stats.atime,
-          isDirectory: stats.isDirectory(),
-          isFile: stats.isFile(),
-          permissions: stats.mode.toString(8).slice(-3),
-        };
-        return ok(Object.entries(info).map(([k, v]) => `${k}: ${v}`).join('\n'));
+        return ok(await getFileInfoText(p));
       } catch (e) {
         return fail(e);
       }

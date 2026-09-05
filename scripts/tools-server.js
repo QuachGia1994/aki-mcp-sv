@@ -13,6 +13,7 @@ import { register as registerRepoSnapshot } from './repo-snapshot-mcp.js';
 import { register as registerClaudeMem } from './claude-mem-mcp.js';
 import { register as registerFilesystem } from './filesystem-mcp.js';
 import { register as registerPostman } from './postman-mcp.js';
+import { register as registerXKiro } from './xkiro-mcp.js';
 
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
@@ -34,7 +35,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'postman_status',
 ]);
 
-const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'agent_read']);
+const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'xkiro_read', 'xkiro_status', 'agent_read']);
 
 const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],
@@ -84,7 +85,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerAgent, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
+  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerXKiro, registerAgent, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on

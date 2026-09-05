@@ -46,7 +46,7 @@ function walk(base, matches) {
   }
 }
 
-function findPath(query, from, limit) {
+export function findPath(query, from, limit) {
   const base = resolveUnderRoot(from);
   const test = toMatcher(query);
   const found = [];
@@ -61,7 +61,7 @@ function findPath(query, from, limit) {
   return `${found.length} result(s) under ${base}:\n${head.join('\n')}${note}`;
 }
 
-function searchContent(query, from, glob, limit) {
+export function searchContent(query, from, glob, limit) {
   const base = resolveUnderRoot(from);
   const args = ['-rniIE', '--binary-files=without-match', ...[...SKIP_DIRS].map((d) => `--exclude-dir=${d}`)];
   if (glob) args.push(`--include=${glob}`);

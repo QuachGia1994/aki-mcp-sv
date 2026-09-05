@@ -179,7 +179,7 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </div>
 </section>
 
-<section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini, Postman</h2>
+<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro</h2>
 <p class="helptext">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
@@ -191,6 +191,7 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
+  <button class="tab" data-tab="xkiro">xKiro</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -262,6 +263,20 @@ ${field('Passphrase', passphrase)}
   <figure><img src="/img/aki-mcp-instruct-postman-1.png" alt="Postman MCP setup step 1" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
   <figure><img src="/img/aki-mcp-instruct-postman-2.png" alt="Postman MCP setup step 2" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
   <figure><img src="/img/aki-mcp-instruct-postman-3.png" alt="Postman MCP setup step 3" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
+</div>
+
+<div class="tabpane" id="tab-xkiro">
+  <h3 class="subh">xKiro Free read worker</h3>
+  <p class="helptext">Uses xKiro's OpenAI-compatible API as a read-only Aki worker. <span class="mono">local__agent_read</span> prefers xKiro first when configured, then falls back to agy → Kiro → OpenCode. The xKiro model receives only scoped Aki read tools — no write or shell capability.</p>
+  <p class="helptext">Free plan currently advertises 5M free-model tokens/day. The API key is stored only in <span class="mono">~/.aki/mcpsv/xkiro.json</span> (or use <span class="mono">XKIRO_API_KEY</span>); the panel never renders the saved key back.</p>
+  <div class="row"><label>API key</label><input type="password" id="xkiroKey" autocomplete="off" placeholder="sk-xt-… (leave blank to keep saved key)"></div>
+  <div class="row"><label>Free model</label><input type="text" id="xkiroModel" value="minimax/minimax-m3:free"></div>
+  <div class="acts">
+    <button class="primary" data-act="saveXKiro">Save</button>
+    <button data-act="checkXKiro">Check quota</button>
+    <button data-act="clearXKiro">Clear key</button>
+    <span class="dot" id="xkiroDot">…</span><span class="msg" id="msgXKiro"></span>
+  </div>
 </div>
 </section>
 

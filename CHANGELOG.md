@@ -5,9 +5,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ## [Unreleased]
 
 ### Added
+- **xKiro free-tier read worker.** `local__xkiro_read` uses xKiro's OpenAI-compatible tool-calling API as a bounded read-only repo worker, exposing only scoped Aki read primitives inside the requested `cwd`; `local__xkiro_status` reports configuration and the account's current free-token allowance without exposing the API key. The panel adds a local-only xKiro tab for saving a key/model, and `agent_read` prefers xKiro first when configured before falling back to agy → Kiro → OpenCode.
 - **Native Browser and ImageGen routing skills.** `skills/browser/SKILL.md` routes live/current web audits and visual comparisons to the connected AI host's native browser/web capability, while `skills/imagegen/SKILL.md` routes concept art, artwork, mockups, image generation, and image editing to the host's native image-generation capability. Live-site-to-concept work is explicitly browser-first, then ImageGen.
 
 ### Changed
+- **xKiro integration is free-only by policy.** Before a worker call, Aki verifies the selected model against xKiro's live public catalog and requires `access_tier=free`, reads the current free-token allowance, bounds tool-loop steps/output, disables reasoning by default, and refuses a turn whose conservative token estimate could consume more than the free remainder. This prevents automatic fallback into paid/premium models or wallet usage by model choice.
+- **Prompt Instructions now route deep semantic repo work through `agent_read`.** Broad repo orientation still starts with one `repo_snapshot`; deeper semantic work uses `agent_read`, which consumes xKiro's free quota first when configured, with granular reads as fallback.
 - **Prompt Instructions now load Browser/ImageGen skills automatically when needed.** Panel section 3 adds a locked Native Browser/ImageGen workflow rule, ships `skills/` in standalone payloads, and keeps the generated prompt below ChatGPT's 1500-character cap by compacting existing workflow wording without dropping its repo/plan/build constraints.
 
 ### Fixed
