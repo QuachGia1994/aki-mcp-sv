@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rankReadWorkers, runBudgetedRead, recordWorkerUsage, recordContextSavings } from '../scripts/budget-router.js';
+import { getWorkerHealthMatrix, normalizeLedgerEntry, rankReadWorkers, runBudgetedRead, recordWorkerUsage, recordContextSavings } from '../scripts/budget-router.js';
 
 const ok = (text) => ({ content: [{ type: 'text', text }] });
 const fail = (text) => ({ content: [{ type: 'text', text }], isError: true });
@@ -47,4 +47,15 @@ test('Cost Ledger keeps provider usage, context avoidance, and cache hits as sep
   assert.equal(state.entries[0].actualProviderTokens, null);
   assert.equal(state.entries[1].actualProviderTokens, 1200);
   assert.equal(state.entries[1].providerCacheHits, 50);
+  assert.equal(normalizeLedgerEntry({ actualProviderTokens: null }).actualProviderTokens, null);
+  assert.equal(normalizeLedgerEntry({ providerCacheHits: '' }).providerCacheHits, null);
+});
+
+test('worker health probes are time-bounded so one slow free provider cannot stall routing', async () => {
+  const never = () => new Promise(() => {});
+  const started = Date.now();
+  const matrix = await getWorkerHealthMatrix({ refresh: true, xkiroStatus: never, openCodeStatus: never, probeTimeoutMs: 20 });
+  assert.ok(Date.now() - started < 500);
+  assert.match(matrix.xkiro.reason, /timed out/);
+  assert.match(matrix.opencode.reason, /timed out/);
 });

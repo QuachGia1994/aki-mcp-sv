@@ -4,7 +4,7 @@
 // ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
 // Gemini/Grok: also RFC 7591 DCR; their redirect hosts are added to the whitelist below.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import {
   CLIENT_PATH as CLIENT_FILE,
@@ -33,6 +33,9 @@ const CODE_TTL_MS = 5 * 60 * 1000;
 const ACCESS_TTL_S = 365 * 24 * 3600;
 const OAUTH_BODY_MAX_BYTES = 64 * 1024;
 const MAX_DCR_CLIENTS = 128;
+const DCR_UNUSED_TTL_MS = 60 * 60 * 1000;
+const DCR_RATE_WINDOW_MS = 60 * 60 * 1000;
+const DCR_RATE_MAX = 16;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const PASSPHRASE_LENGTH = 10; // 32^10 = 2^50 — brute-force still infeasible over network
@@ -42,6 +45,13 @@ const PASSPHRASE_DISPLAY_PATH = PASSPHRASE_FILE.replace(os.homedir(), '~');
 const authCodes = new Map();
 const accessTokens = new Map();
 const refreshTokens = new Map();
+const dcrRegistrationTimes = [];
+
+function writePrivateFileAtomic(file, body) {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmp, body, { mode: 0o600 });
+  renameSync(tmp, file);
+}
 
 export function isAllowedRedirect(uri) {
   if (typeof uri !== 'string' || !uri) return false;
@@ -69,7 +79,7 @@ function saveTokens() {
   const now = Date.now();
   for (const [token, entry] of accessTokens) if (entry.expires < now) accessTokens.delete(token);
   const body = { access: Object.fromEntries(accessTokens), refresh: Object.fromEntries(refreshTokens) };
-  writeFileSync(TOKENS_FILE, JSON.stringify(body), { mode: 0o600 });
+  writePrivateFileAtomic(TOKENS_FILE, JSON.stringify(body));
 }
 
 loadTokens();
@@ -77,7 +87,7 @@ loadTokens();
 export function loadOrCreateClient() {
   if (existsSync(CLIENT_FILE)) return JSON.parse(readFileSync(CLIENT_FILE, 'utf8'));
   const creds = { clientId: randomBytes(16).toString('hex'), clientSecret: randomBytes(32).toString('hex') };
-  writeFileSync(CLIENT_FILE, JSON.stringify(creds), { mode: 0o600 });
+  writePrivateFileAtomic(CLIENT_FILE, JSON.stringify(creds));
   return creds;
 }
 
@@ -92,7 +102,7 @@ function loadDcrClients() {
 }
 
 function saveDcrClients(map) {
-  writeFileSync(DCR_FILE, JSON.stringify(map, null, 2), { mode: 0o600 });
+  writePrivateFileAtomic(DCR_FILE, JSON.stringify(map, null, 2));
 }
 
 /** Static Claude client + any clients ChatGPT (or Claude) registered via /register. */
@@ -120,7 +130,7 @@ export function loadOrCreatePassphrase() {
   if (existsSync(PASSPHRASE_FILE)) return readFileSync(PASSPHRASE_FILE, 'utf8').trim();
   const bytes = randomBytes(PASSPHRASE_LENGTH);
   const p = Array.from(bytes, (b) => PASSPHRASE_ALPHABET[b % PASSPHRASE_ALPHABET.length]).join('');
-  writeFileSync(PASSPHRASE_FILE, p, { mode: 0o600 });
+  writePrivateFileAtomic(PASSPHRASE_FILE, p);
   return p;
 }
 
@@ -173,7 +183,15 @@ export async function handleRegister(req, res) {
     return json(res, 400, { error: 'invalid_client_metadata' });
   }
 
+  const now = Date.now();
   const map = loadDcrClients();
+  const beforePrune = Object.keys(map).length;
+  const activeClientIds = new Set([...refreshTokens.values()].map((entry) => entry.clientId));
+  pruneUnusedDcrClients(map, { now, activeClientIds });
+  if (Object.keys(map).length !== beforePrune) saveDcrClients(map);
+  if (!dcrRateLimitAvailable(dcrRegistrationTimes, { now })) {
+    return json(res, 429, { error: 'temporarily_unavailable', error_description: 'dynamic client registration rate limit reached; retry later' });
+  }
   if (!dcrRegistrationAvailable(map)) {
     return json(res, 429, { error: 'temporarily_unavailable', error_description: `dynamic client registration limit (${MAX_DCR_CLIENTS}) reached` });
   }
@@ -186,8 +204,10 @@ export async function handleRegister(req, res) {
     redirectUris,
     tokenEndpointAuthMethod: authMethod,
     clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP client',
+    registeredAt: now,
   };
   map[clientId] = entry;
+  dcrRegistrationTimes.push(now);
   saveDcrClients(map);
 
   const resp = {
@@ -359,6 +379,24 @@ export async function handleToken(req, res) {
 
   log(`[oauth] token FAILED: unsupported_grant_type (${grantType})`);
   return json(res, 400, { error: 'unsupported_grant_type' });
+}
+
+export function pruneUnusedDcrClients(map, { now = Date.now(), activeClientIds = new Set(), ttlMs = DCR_UNUSED_TTL_MS } = {}) {
+  for (const [clientId, entry] of Object.entries(map ?? {})) {
+    let registeredAt = Number(entry?.registeredAt || 0);
+    if (!(registeredAt > 0)) {
+      entry.registeredAt = now;
+      registeredAt = now;
+    }
+    if (now - registeredAt > ttlMs && !activeClientIds.has(clientId)) delete map[clientId];
+  }
+  return map;
+}
+
+export function dcrRateLimitAvailable(events, { now = Date.now(), windowMs = DCR_RATE_WINDOW_MS, max = DCR_RATE_MAX } = {}) {
+  const cutoff = now - windowMs;
+  while (events.length && events[0] <= cutoff) events.shift();
+  return events.length < max;
 }
 
 export function dcrRegistrationAvailable(map, maxClients = MAX_DCR_CLIENTS) {

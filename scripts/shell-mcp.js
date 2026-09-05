@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { loadAllowlist, loadAllowlistDirs, readSettings } from './allowlist.js';
-import { getRoots, resolveUnderRoot, containedIn, overlaps } from './roots.js';
+import { getRoots, resolveRealUnderRootSync, containedIn, overlaps } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
 // Interpreters run a script file passed as an argument, so trust must follow the script's path, not the interpreter binary (which lives on PATH, outside the trusted zones). Shells (sh/bash/zsh) are excluded on purpose — their argument is arbitrary code, not a file to locate under a zone.
@@ -12,6 +12,10 @@ const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx',
 
 // ls-remote requires zero extra args — a repository/URL argument lets git's own ext:: transport helper spawn an arbitrary process before anything "read-only" happens; bare invocation only queries the configured remote.
 const GIT_NO_ARGS_SUBCOMMANDS = new Set(['ls-remote']);
+const GIT_SAFE_BRANCH_ARGS = new Set(['--list', '--show-current', '-a', '--all', '-r', '--remotes', '-v', '-vv', '--verbose', '--no-color', '--column', '--no-column']);
+const GIT_SAFE_REMOTE_ARGS = new Set(['-v', '--verbose']);
+const GIT_SAFE_TAG_ARGS = new Set(['-l', '--list', '-n', '--column', '--no-column']);
+const GIT_BLOCKED_READ_FLAGS = ['--output', '--ext-diff', '--textconv'];
 const NODE_CMD_SHIMS = new Map([
   ['npm', 'npm-cli.js'],
   ['npm.cmd', 'npm-cli.js'],
@@ -73,6 +77,43 @@ function preallowedByDir(bin, args) {
   return script ? underTrusted(script, dirs) : false;
 }
 
+function gitFlagAllowed(flag, safeSet, prefixes = []) {
+  return safeSet.has(flag) || prefixes.some((prefix) => flag.startsWith(prefix));
+}
+
+function validateGitReadOnlyArgs(args) {
+  const [subcommand, ...rest] = args;
+  if (GIT_NO_ARGS_SUBCOMMANDS.has(subcommand) && rest.length) throw new Error(`"git ${subcommand}" only allowed with no further arguments`);
+  if (rest.some((arg) => GIT_BLOCKED_READ_FLAGS.some((flag) => arg === flag || arg.startsWith(`${flag}=`)))) throw new Error('git option can execute helpers or write output and is blocked by the read-only policy');
+  if (subcommand === 'branch' && rest.some((arg) => !gitFlagAllowed(arg, GIT_SAFE_BRANCH_ARGS, ['--sort=', '--format=', '--contains=', '--no-contains=', '--merged=', '--no-merged=', '--points-at=', '--color=']))) throw new Error('git branch is restricted to listing/query flags in read-only mode');
+  if (subcommand === 'remote' && rest.some((arg) => !GIT_SAFE_REMOTE_ARGS.has(arg))) throw new Error('git remote is restricted to listing flags in read-only mode');
+  if (subcommand === 'tag' && rest.some((arg) => !gitFlagAllowed(arg, GIT_SAFE_TAG_ARGS, ['--sort=', '--format=', '--points-at=', '--contains=', '--no-contains=', '--merged=', '--no-merged=', '--color=']))) throw new Error('git tag is restricted to listing/query flags in read-only mode');
+}
+
+function candidateArgValue(arg) {
+  const eq = arg.indexOf('=');
+  if (eq > 0 && arg.startsWith('-')) return arg.slice(eq + 1);
+  const shortAttached = arg.match(/^-[A-Za-z](.+)$/)?.[1];
+  if (shortAttached && (path.isAbsolute(shortAttached) || /(^|[\\/])\.\.([\\/]|$)/.test(shortAttached))) return shortAttached;
+  return arg;
+}
+
+function validatePathArgument(value, cwd, roots) {
+  if (!value || value === '-' || /^(?:https?|ssh|git):\/\//i.test(value)) return;
+  const hasParent = /(^|[\\/])\.\.([\\/]|$)/.test(value);
+  const absolute = path.isAbsolute(value);
+  const candidate = absolute ? path.resolve(value) : path.resolve(cwd, value);
+  const exists = fs.existsSync(candidate);
+  if (!absolute && !hasParent && !exists) return;
+  if (!roots.some((root) => containedIn(candidate, path.resolve(root)))) throw new Error(`command argument escapes the allowed roots: ${value}`);
+  if (exists) resolveRealUnderRootSync(candidate, { roots });
+}
+
+export function validateAllowedCommandArgs(bin, args, cwd, { roots = getRoots() } = {}) {
+  if (path.basename(bin).toLowerCase() === 'git') validateGitReadOnlyArgs(args);
+  for (const raw of args) validatePathArgument(candidateArgValue(raw), cwd, roots);
+}
+
 class Shell {
   // Backslash is escape/chaining on Unix but the normal path separator on Windows — only treat it as dangerous off-Windows.
   // No backslash: `execFile` never spawns a shell, so it is an inert literal everywhere and a path separator on Windows.
@@ -118,18 +159,13 @@ class Shell {
   }
 
   checkPermission(bin, args) {
-    if (readSettings().shell?.allowAll === true) return;
+    if (readSettings().shell?.allowAll === true) return 'unrestricted';
     const allowlist = loadAllowlist();
     if (bin in allowlist) {
       const allowedSubcommands = allowlist[bin];
-      if (!Array.isArray(allowedSubcommands) || allowedSubcommands.includes(args[0])) {
-        if (bin === 'git' && GIT_NO_ARGS_SUBCOMMANDS.has(args[0]) && args.length > 1) {
-          throw new Error(`"git ${args[0]}" only allowed with no further arguments — a repository/URL argument can smuggle code execution via git's transport helpers (ext::, --upload-pack=)`);
-        }
-        return;
-      }
+      if (!Array.isArray(allowedSubcommands) || allowedSubcommands.includes(args[0])) return 'allowlist';
     }
-    if (preallowedByDir(bin, args)) return; // not named (or the named subcommand is blocked), but it targets a script under a trusted zone
+    if (preallowedByDir(bin, args)) return 'trusted';
     throw new Error(`"${bin}${args[0] ? ` ${args[0]}` : ''}" is not in the allowlist`);
   }
 
@@ -153,8 +189,9 @@ class Shell {
     let bin, args, dir;
     try {
       ({ bin, args } = this.parse(command));
-      this.checkPermission(bin, args);
-      dir = resolveUnderRoot(cwd);
+      dir = resolveRealUnderRootSync(cwd);
+      const permission = this.checkPermission(bin, args);
+      if (permission === 'allowlist') validateAllowedCommandArgs(bin, args, dir);
     } catch (e) {
       return fail(e);
     }

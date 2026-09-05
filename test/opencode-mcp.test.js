@@ -93,6 +93,20 @@ test('OpenCode refresh gets a longer timeout and falls back to the cached CLI ca
   assert.equal(calls[1].options.timeoutMs, 60_000);
 });
 
+test('OpenCode status exposes when a refresh used the local catalog fallback', async () => {
+  const freeCatalog = `opencode/muse-spark-1.3-contributor-free\n{\n  "id": "muse-spark-1.3-contributor-free",\n  "providerID": "opencode",\n  "name": "Muse Spark 1.3 Free",\n  "status": "active",\n  "cost": { "input": 0, "output": 0 },\n  "capabilities": { "toolcall": true }\n}`;
+  const runner = async (args) => {
+    if (args[0] === 'auth') return 'OpenCode Zen api';
+    if (args.includes('--refresh')) throw new Error('models.dev unavailable');
+    return freeCatalog;
+  };
+  const status = await getOpenCodeStatus({ refresh: true, runner });
+  assert.equal(status.configured, true);
+  assert.equal(status.catalogSource, 'local-fallback');
+  assert.match(status.refreshWarning, /models\.dev unavailable/);
+  assert.equal(status.freeModels.length, 1);
+});
+
 test('OpenCode model choice stays on selected free model and falls back only within free catalog', () => {
   const models = [
     { id: 'opencode/nemotron-3.5-lightning-free' },

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildGraphSearchIndex, extractArtifactEntities, searchGraphIndex, recordProjectOutcome } from '../scripts/project-graph.js';
+import { buildGraphSearchIndex, extractArtifactEntities, searchGraphIndex, recordProjectOutcome, syncProjectGraph } from '../scripts/project-graph.js';
 
 test('Project Graph extracts durable package/docs facts with provenance and rejects secret-like artifacts', () => {
   const artifacts = [
@@ -37,4 +37,32 @@ test('completed task outcome can be appended as compact graph knowledge without 
   assert.ok(project.entities.some((entity) => entity.type === 'outcome'));
   assert.ok(project.entities.some((entity) => entity.type === 'decision'));
   assert.equal(project.entities.some((entity) => /transcript/i.test(entity.summary || '')), false);
+});
+
+test('graph sync reports bounded coverage instead of silently hiding truncation limits', () => {
+  let state = { version: 1, projects: {} };
+  const result = syncProjectGraph({ cwd: process.cwd() }, { now: () => 500, load: () => structuredClone(state), save: (next) => { state = next; } });
+  assert.equal(result.coverage.maxFiles, 80);
+  assert.equal(result.coverage.maxTotalChars, 500000);
+  assert.equal(typeof result.coverage.fileCapTruncated, 'boolean');
+  assert.equal(typeof result.coverage.charBudgetTruncated, 'boolean');
+  assert.equal(result.coverage.sourceFiles, result.sourceCount);
+});
+
+test('task outcome ingestion drops common credential shapes before persistence', () => {
+  let state = { version: 1, projects: {} };
+  const load = () => structuredClone(state);
+  const save = (next) => { state = next; };
+  recordProjectOutcome({
+    cwd: process.cwd(),
+    taskKey: 'secret-filter',
+    summary: 'shipped ghp_1234567890abcdefghijklmnopqrstuvwxyz',
+    decisions: ['keep normal decision', 'Bearer abcdefghijklmnopqrstuvwxyz123456'],
+  }, { now: () => 789, load, save });
+  const project = Object.values(state.projects)[0];
+  const text = JSON.stringify(project);
+  assert.doesNotMatch(text, /ghp_1234567890/);
+  assert.doesNotMatch(text, /Bearer abcdefghijklmnopqrstuvwxyz123456/);
+  assert.match(text, /keep normal decision/);
+  assert.match(text, /sensitive summary omitted/);
 });

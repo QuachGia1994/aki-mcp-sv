@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node
 import path from 'node:path';
 import { z } from 'zod';
 import { USER_DIR } from './userdata.js';
-import { resolveOrFail } from './roots.js';
+import { pathIdentity, resolveOrFail } from './roots.js';
 import { readJsonObject, writeJsonAtomic } from './user-state.js';
 import { ok, err } from './mcp-tool.js';
 
@@ -14,12 +14,12 @@ const MAX_FILE_CHARS = 80_000;
 const MAX_ENTITIES = 1200;
 const MAX_RELATIONS = 2400;
 const SECRET_NAME_RE = /(^|[._-])(env|secret|secrets|credential|credentials|token|tokens|password|passwd|private[-_]?key|oauth)([._-]|$)|\.(pem|key|p12|pfx)$/i;
-const SECRET_VALUE_RE = /(?:sk-[A-Za-z0-9_-]{12,}|AKIA[A-Z0-9]{16}|Bearer\s+[A-Za-z0-9._-]{20,}|(?:token|secret|password|api[_ -]?key)\s*[:=]\s*\S{8,})/i;
+const SECRET_VALUE_RE = /(?:sk-[A-Za-z0-9_-]{12,}|sk_live_[A-Za-z0-9]{16,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{16,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{20,}|[a-z][a-z0-9+.-]*:\/\/[^\s/:]+:[^\s/@]+@|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:token|secret|password|api[_ -]?key)\s*[:=]\s*\S{8,})/i;
 const DURABLE_DIRS = ['docs/arch', 'docs/feat', 'docs/biz', 'docs/ref', 'docs/plan/done'];
 const TOP_LEVEL = ['README.md', 'CHANGELOG.md', 'package.json'];
 
 function projectKey(cwd) {
-  return createHash('sha256').update(path.resolve(cwd).toLowerCase()).digest('hex').slice(0, 20);
+  return createHash('sha256').update(pathIdentity(cwd)).digest('hex').slice(0, 20);
 }
 
 function fingerprint(text) {
@@ -73,6 +73,7 @@ function addRelation(relations, from, to, type, source) {
 
 function durableFiles(cwd) {
   const out = [];
+  let truncated = false;
   for (const name of TOP_LEVEL) {
     const absolute = path.join(cwd, name);
     if (existsSync(absolute)) {
@@ -81,32 +82,40 @@ function durableFiles(cwd) {
     }
   }
   const walk = (dir) => {
-    if (!existsSync(dir) || out.length >= MAX_FILES) return;
+    if (!existsSync(dir)) return;
+    if (out.length >= MAX_FILES) { truncated = true; return; }
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (out.length >= MAX_FILES) break;
+      if (out.length >= MAX_FILES) { truncated = true; break; }
       const absolute = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(absolute);
       else if (entry.isFile() && /\.(md|json)$/i.test(entry.name)) out.push(absolute);
     }
   };
   for (const rel of DURABLE_DIRS) walk(path.join(cwd, rel));
-  return out;
+  return { files: out, truncated };
 }
 
-export function collectDurableArtifacts(cwd) {
+function collectDurableArtifactsDetailed(cwd) {
   const artifacts = [];
   let total = 0;
-  for (const absolute of durableFiles(cwd)) {
+  let skippedLarge = 0;
+  let charBudgetTruncated = false;
+  const discovered = durableFiles(cwd);
+  for (const absolute of discovered.files) {
     const rel = path.relative(cwd, absolute).replace(/\\/g, '/');
     if (!safeRelative(rel)) continue;
     const size = statSync(absolute).size;
-    if (size > MAX_FILE_CHARS * 4) continue;
+    if (size > MAX_FILE_CHARS * 4) { skippedLarge += 1; continue; }
     const content = readFileSync(absolute, 'utf8').slice(0, MAX_FILE_CHARS);
-    if (total + content.length > MAX_TOTAL_CHARS) break;
+    if (total + content.length > MAX_TOTAL_CHARS) { charBudgetTruncated = true; break; }
     total += content.length;
     artifacts.push({ path: rel, content, fingerprint: fingerprint(content) });
   }
-  return artifacts;
+  return { artifacts, coverage: { fileCapTruncated: discovered.truncated, charBudgetTruncated, skippedLarge, sourceFiles: artifacts.length, maxFiles: MAX_FILES, maxTotalChars: MAX_TOTAL_CHARS } };
+}
+
+export function collectDurableArtifacts(cwd) {
+  return collectDurableArtifactsDetailed(cwd).artifacts;
 }
 
 function extractPackageJson(artifact, entities, relations, now) {
@@ -222,13 +231,14 @@ export function syncProjectGraph({ cwd }, { now = Date.now, load = readStore, sa
   const resolved = resolveOrFail(cwd);
   if (!resolved.ok) throw resolved.error;
   const started = now();
-  const artifacts = collectDurableArtifacts(resolved.dir);
+  const collected = collectDurableArtifactsDetailed(resolved.dir);
+  const artifacts = collected.artifacts;
   const extracted = extractArtifactEntities(resolved.dir, artifacts, { now: started });
   const state = load();
   const key = projectKey(resolved.dir);
-  state.projects[key] = { cwd: resolved.dir, lastIndexed: started, sourceFingerprint: fingerprint(artifacts.map((item) => `${item.path}:${item.fingerprint}`).join('\n')), entities: extracted.entities, relations: extracted.relations, sources: artifacts.map((item) => ({ path: item.path, fingerprint: item.fingerprint })) };
+  state.projects[key] = { cwd: resolved.dir, lastIndexed: started, sourceFingerprint: fingerprint(artifacts.map((item) => `${item.path}:${item.fingerprint}`).join('\n')), entities: extracted.entities, relations: extracted.relations, sources: artifacts.map((item) => ({ path: item.path, fingerprint: item.fingerprint })), coverage: collected.coverage };
   save(state);
-  return { project: resolved.dir, entityCount: extracted.entities.length, relationCount: extracted.relations.length, sourceCount: artifacts.length, durationMs: Math.max(0, now() - started) };
+  return { project: resolved.dir, entityCount: extracted.entities.length, relationCount: extracted.relations.length, sourceCount: artifacts.length, coverage: collected.coverage, durationMs: Math.max(0, now() - started) };
 }
 
 export function recordProjectOutcome({ cwd, taskKey, summary, decisions = [] }, { now = Date.now, load = readStore, save = (state) => writeJsonAtomic(GRAPH_STORE_PATH, state) } = {}) {
@@ -238,11 +248,13 @@ export function recordProjectOutcome({ cwd, taskKey, summary, decisions = [] }, 
   const key = projectKey(resolved.dir);
   const project = state.projects[key] || { cwd: resolved.dir, lastIndexed: 0, sourceFingerprint: '', entities: [], relations: [], sources: [] };
   const sourcePath = `task:${String(taskKey).slice(0, 120)}`;
-  const source = { path: sourcePath, fingerprint: fingerprint(`${summary}\n${decisions.join('\n')}`) };
+  const safeSummary = SECRET_VALUE_RE.test(String(summary || '')) ? `Task ${taskKey} completed; sensitive summary omitted` : String(summary || taskKey);
+  const safeDecisions = decisions.filter((decision) => !SECRET_VALUE_RE.test(String(decision))).slice(0, 32);
+  const source = { path: sourcePath, fingerprint: fingerprint(`${safeSummary}\n${safeDecisions.join('\n')}`) };
   const entities = new Map(project.entities.map((entity) => [entity.id, entity]));
   const relations = project.relations.map((item) => ({ ...item, key: `${item.from}|${item.type}|${item.to}` }));
-  const outcomeId = addEntity(entities, { type: 'outcome', label: String(summary || taskKey).slice(0, 320), summary: `task ${taskKey}`, keywords: tokenize(`${taskKey} ${summary}`), source, lastVerified: now(), confidence: 'high' });
-  for (const decision of decisions.slice(0, 32)) {
+  const outcomeId = addEntity(entities, { type: 'outcome', label: safeSummary.slice(0, 320), summary: `task ${taskKey}`, keywords: tokenize(`${taskKey} ${safeSummary}`), source, lastVerified: now(), confidence: 'high' });
+  for (const decision of safeDecisions) {
     const id = addEntity(entities, { type: 'decision', label: String(decision).slice(0, 320), summary: `task ${taskKey}`, keywords: tokenize(decision), source, lastVerified: now(), confidence: 'high' });
     addRelation(relations, outcomeId, id, 'records', sourcePath);
   }
@@ -261,7 +273,7 @@ export function getProjectGraphStatus(cwd) {
   const resolved = resolveOrFail(cwd);
   if (!resolved.ok) return { projectCount: projects.length, error: resolved.error.message };
   const project = store.projects[projectKey(resolved.dir)];
-  return { projectCount: projects.length, currentProject: project ? { cwd: project.cwd, entityCount: project.entities?.length || 0, relationCount: project.relations?.length || 0, sourceCount: project.sources?.length || 0, lastIndexed: project.lastIndexed || 0 } : null };
+  return { projectCount: projects.length, currentProject: project ? { cwd: project.cwd, entityCount: project.entities?.length || 0, relationCount: project.relations?.length || 0, sourceCount: project.sources?.length || 0, lastIndexed: project.lastIndexed || 0, coverage: project.coverage || null } : null };
 }
 
 export function runGraphQuery({ query, cwd, limit = 12, typeFilter = [] }) {

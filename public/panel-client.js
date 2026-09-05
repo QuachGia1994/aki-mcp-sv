@@ -396,7 +396,9 @@ async function checkOpenCodeStatus(refresh = false) {
   if (!s.configured) return 'not authenticated — run opencode auth login and choose OpenCode Zen';
   const fallback = s.fallback ? ' · fallback from ' + s.selectedModel : '';
   const exec = s.execEnabled ? ' · write worker ON' : ' · write worker off';
-  return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models' + exec;
+  const catalog = s.catalogSource ? ' · catalog ' + s.catalogSource : '';
+  const warning = s.refreshWarning ? ' · refresh warning: ' + s.refreshWarning : '';
+  return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models' + exec + catalog + warning;
 }
 
 function renderContextOptimizerState(state) {

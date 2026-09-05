@@ -49,7 +49,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'task_checkpoint_recover',
 ]);
 
-const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read', 'context_packet', 'budget_router_status', 'aki_doctor']);
+const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read', 'budget_router_status', 'aki_doctor']);
 
 const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],
@@ -62,6 +62,7 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['opencode_exec', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['budget_router_read', { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
+  ['context_packet', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   ['graph_sync', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
   ['task_checkpoint_save', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }],
 ]);

@@ -31,7 +31,7 @@ const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
 
 function writeJsonAtomic(file, data) {
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
+  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
   renameSync(tmp, file);
 }
 
@@ -76,7 +76,7 @@ function toStored(effective) {
 function setShellAllowlist(allowlist, allowAll = false) {
   const settings = readSettings();
   settings.shell = { ...settings.shell, allowlist: toStored(allowlist), allowAll: Boolean(allowAll) };
-  writeFileSync(SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
+  writeJsonAtomic(SETTINGS_PATH, settings);
 }
 
 function validateTrustedDirs(dirs) {
@@ -89,7 +89,7 @@ function validateTrustedDirs(dirs) {
 function setTrustedDirs(dirs) {
   const settings = readSettings();
   settings.shell = { ...settings.shell, allowlistDirs: dirs };
-  writeFileSync(SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`);
+  writeJsonAtomic(SETTINGS_PATH, settings);
 }
 
 // Mirrors the same TunnelID check start.js does at boot (spawnCloudflared), so a bad file is caught here instead of silently tearing down the stack on next `npm start`.

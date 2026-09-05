@@ -36,4 +36,5 @@ test('Task Checkpoint update keeps one task identity and bounded normalized list
   assert.equal(list.length, 1);
   assert.equal(list[0].status, 'paused');
   assert.equal(getTaskCheckpoint('same', process.cwd(), { load: store.load }).pendingSteps[0], 'B');
+  assert.equal(getTaskCheckpoint('same', undefined, { load: store.load }), null);
 });

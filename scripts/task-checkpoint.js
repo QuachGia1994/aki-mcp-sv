@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import { USER_DIR } from './userdata.js';
-import { resolveOrFail } from './roots.js';
+import { pathIdentity, resolveOrFail } from './roots.js';
 import { clampInt, readJsonObject, writeJsonAtomic } from './user-state.js';
 import { ok, err } from './mcp-tool.js';
 import { recordProjectOutcome } from './project-graph.js';
@@ -22,7 +22,7 @@ function normalizeList(value) {
 }
 
 function checkpointKey(cwd, taskKey) {
-  return createHash('sha256').update(`${path.resolve(cwd).toLowerCase()}\n${taskKey}`).digest('hex').slice(0, 24);
+  return createHash('sha256').update(`${pathIdentity(cwd)}\n${taskKey}`).digest('hex').slice(0, 24);
 }
 
 function normalizeContext(value = {}) {
@@ -80,14 +80,11 @@ export function saveTaskCheckpoint(input, { now = Date.now(), load = readTaskChe
 
 export function getTaskCheckpoint(taskKey, cwd, { load = readTaskCheckpoints } = {}) {
   const task = normalizeText(taskKey, 120);
-  if (!task) return null;
+  if (!task || !cwd) return null;
   const state = load();
-  if (cwd) {
-    const resolved = resolveOrFail(cwd);
-    if (!resolved.ok) return null;
-    return state.entries[checkpointKey(resolved.dir, task)] || null;
-  }
-  return Object.values(state.entries).find((entry) => entry.taskKey === task) || null;
+  const resolved = resolveOrFail(cwd);
+  if (!resolved.ok) return null;
+  return state.entries[checkpointKey(resolved.dir, task)] || null;
 }
 
 export function listTaskCheckpoints(cwd, { load = readTaskCheckpoints } = {}) {
@@ -95,10 +92,10 @@ export function listTaskCheckpoints(cwd, { load = readTaskCheckpoints } = {}) {
   if (cwd) {
     const resolved = resolveOrFail(cwd);
     if (!resolved.ok) return [];
-    root = path.resolve(resolved.dir).toLowerCase();
+    root = pathIdentity(resolved.dir);
   }
   return Object.values(load().entries)
-    .filter((entry) => !root || path.resolve(entry.cwd).toLowerCase() === root)
+    .filter((entry) => !root || pathIdentity(entry.cwd) === root)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .map((entry) => ({ taskKey: entry.taskKey, cwd: entry.cwd, status: entry.status, activeStep: entry.activeStep, updatedAt: entry.updatedAt, blockers: entry.blockers.length, pending: entry.pendingSteps.length }));
 }
@@ -169,7 +166,7 @@ export function register(server) {
       return ok(JSON.stringify(entry, null, 2));
     } catch (error) { return err(error.message || String(error)); }
   });
-  server.registerTool('task_checkpoint_get', { title: 'Aki Task Checkpoint Get', description: 'Read one durable task checkpoint.', inputSchema: { taskKey: z.string().min(1).max(120), cwd: z.string().optional() } }, async ({ taskKey, cwd }) => ok(JSON.stringify(getTaskCheckpoint(taskKey, cwd), null, 2)));
+  server.registerTool('task_checkpoint_get', { title: 'Aki Task Checkpoint Get', description: 'Read one durable task checkpoint scoped to an explicit project root.', inputSchema: { taskKey: z.string().min(1).max(120), cwd: z.string() } }, async ({ taskKey, cwd }) => ok(JSON.stringify(getTaskCheckpoint(taskKey, cwd), null, 2)));
   server.registerTool('task_checkpoint_list', { title: 'Aki Task Checkpoint List', description: 'List compact durable task checkpoints, optionally scoped to one project.', inputSchema: { cwd: z.string().optional() } }, async ({ cwd }) => ok(JSON.stringify(listTaskCheckpoints(cwd), null, 2)));
-  server.registerTool('task_checkpoint_recover', { title: 'Aki Task Checkpoint Recover', description: 'Return the compact recovery packet for a task after context compaction/restart/account handoff.', inputSchema: { taskKey: z.string().min(1).max(120), cwd: z.string().optional() } }, async (args) => ok(recoverTaskContext(args).contextText || 'checkpoint not found'));
+  server.registerTool('task_checkpoint_recover', { title: 'Aki Task Checkpoint Recover', description: 'Return the compact recovery packet for a task after context compaction/restart/account handoff, scoped to an explicit project root.', inputSchema: { taskKey: z.string().min(1).max(120), cwd: z.string() } }, async (args) => ok(recoverTaskContext(args).contextText || 'checkpoint not found'));
 }

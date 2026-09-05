@@ -3,6 +3,7 @@ import { callSharedTool } from './streamable-bridge.js';
 
 const TABLE = 'aki_bridge_tasks';
 const DEFAULT_POLL_MS = 2000;
+const DEFAULT_LEASE_SECONDS = 15 * 60;
 const REQUEST_TIMEOUT_MS = 15_000;
 const REQUIRED_ENV = ['AKI_D1_ACCOUNT_ID', 'AKI_D1_DATABASE_ID', 'AKI_D1_API_TOKEN'];
 
@@ -10,6 +11,7 @@ const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ${TABLE} (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'done', 'error')),
+  owner TEXT NOT NULL DEFAULT 'legacy',
   tool TEXT NOT NULL,
   arguments_json TEXT NOT NULL DEFAULT '{}',
   idempotency_key TEXT,
@@ -20,8 +22,11 @@ const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ${TABLE} (
 )`;
 const TABLE_INFO_SQL = `PRAGMA table_info(${TABLE})`;
 const ADD_IDEMPOTENCY_KEY_SQL = `ALTER TABLE ${TABLE} ADD COLUMN idempotency_key TEXT`;
+const ADD_OWNER_SQL = `ALTER TABLE ${TABLE} ADD COLUMN owner TEXT NOT NULL DEFAULT 'legacy'`;
 const CREATE_INDEX_SQL = `CREATE INDEX IF NOT EXISTS idx_${TABLE}_pending ON ${TABLE} (status, id)`;
-const CREATE_IDEMPOTENCY_INDEX_SQL = `CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE}_idempotency_key ON ${TABLE} (idempotency_key) WHERE idempotency_key IS NOT NULL`;
+const DROP_IDEMPOTENCY_INDEX_SQL = `DROP INDEX IF EXISTS idx_${TABLE}_idempotency_key`;
+const CREATE_IDEMPOTENCY_INDEX_SQL = `CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE}_owner_idempotency_key ON ${TABLE} (owner, idempotency_key) WHERE idempotency_key IS NOT NULL`;
+const REQUEUE_STALE_SQL = `UPDATE ${TABLE} SET status = 'pending', claimed_at = NULL WHERE status = 'running' AND claimed_at IS NOT NULL AND claimed_at < unixepoch() - ?`;
 const SELECT_PENDING_SQL = `SELECT id, tool, arguments_json FROM ${TABLE} WHERE status = 'pending' ORDER BY id LIMIT 1`;
 const CLAIM_SQL = `UPDATE ${TABLE} SET status = 'running', claimed_at = unixepoch() WHERE id = ? AND status = 'pending'`;
 const FINISH_SQL = `UPDATE ${TABLE} SET status = ?, result_json = ?, error = NULLIF(?, ''), finished_at = unixepoch() WHERE id = ? AND status = 'running'`;
@@ -46,12 +51,15 @@ export function readD1BridgeConfig(env = process.env) {
   if (missing.length) return { enabled: false, error: `incomplete D1 bridge config, missing ${missing.join(', ')}` };
   const pollMs = Number(env.AKI_D1_POLL_MS ?? DEFAULT_POLL_MS);
   if (!Number.isFinite(pollMs) || pollMs < 500) return { enabled: false, error: 'AKI_D1_POLL_MS must be a number >= 500' };
+  const leaseSeconds = Number(env.AKI_D1_LEASE_SECONDS ?? DEFAULT_LEASE_SECONDS);
+  if (!Number.isFinite(leaseSeconds) || leaseSeconds < 60) return { enabled: false, error: 'AKI_D1_LEASE_SECONDS must be a number >= 60' };
   return {
     enabled: true,
     accountId: env.AKI_D1_ACCOUNT_ID,
     databaseId: env.AKI_D1_DATABASE_ID,
     apiToken: env.AKI_D1_API_TOKEN,
     pollMs,
+    leaseSeconds: Math.floor(leaseSeconds),
   };
 }
 
@@ -99,9 +107,15 @@ export async function ensureD1BridgeSchema(client) {
     const alter = await client.query(ADD_IDEMPOTENCY_KEY_SQL);
     if (!alter.ok) return alter;
   }
+  if (!columns.some((column) => column?.name === 'owner')) {
+    const alter = await client.query(ADD_OWNER_SQL);
+    if (!alter.ok) return alter;
+  }
 
   const pendingIndex = await client.query(CREATE_INDEX_SQL);
   if (!pendingIndex.ok) return pendingIndex;
+  const dropLegacyIndex = await client.query(DROP_IDEMPOTENCY_INDEX_SQL);
+  if (!dropLegacyIndex.ok) return dropLegacyIndex;
   return client.query(CREATE_IDEMPOTENCY_INDEX_SQL);
 }
 
@@ -124,7 +138,9 @@ async function finishTask(client, id, status, result, error) {
   return client.query(FINISH_SQL, [status, serialized, error ?? '', String(id)]);
 }
 
-export async function processNextD1Task(client, callTool = callSharedTool) {
+export async function processNextD1Task(client, callTool = callSharedTool, { leaseSeconds = DEFAULT_LEASE_SECONDS } = {}) {
+  const reclaimed = await client.query(REQUEUE_STALE_SQL, [String(Math.max(60, Math.floor(Number(leaseSeconds) || DEFAULT_LEASE_SECONDS)))]);
+  if (!reclaimed.ok) return reclaimed;
   const pending = await client.query(SELECT_PENDING_SQL);
   if (!pending.ok) return pending;
   const row = pending.data.results?.[0];
@@ -178,7 +194,7 @@ export function startD1Bridge({ env = process.env, fetchImpl = fetch, callTool =
         log(`[d1-bridge] ready: account=${config.accountId}, database=${config.databaseId}, poll=${config.pollMs}ms`);
       }
     } else {
-      const result = await processNextD1Task(client, callTool);
+      const result = await processNextD1Task(client, callTool, { leaseSeconds: config.leaseSeconds });
       if (!result.ok) log(`[d1-bridge] poll failed: ${result.error}`);
       else if (result.data.processed) log(`[d1-bridge] task ${result.data.id} -> ${result.data.status}`);
     }

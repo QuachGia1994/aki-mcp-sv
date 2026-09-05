@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import http from 'node:http';
-import { handleStreamableMcp } from '../scripts/streamable-bridge.js';
+import { handleStreamableMcp, pruneExternalSessionIds } from '../scripts/streamable-bridge.js';
 
 const originalConsoleLog = console.log;
 const bridgeLogs = [];
@@ -86,6 +86,18 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${server.address().port}/mcp`;
 
   try {
+    const now = Date.now();
+    const ids = new Set([`${(now - 25 * 60 * 60 * 1000).toString(36)}.old`, `${now.toString(36)}.fresh`]);
+    assert.equal(pruneExternalSessionIds(ids, now), 1);
+    assert.equal([...ids][0].endsWith('.fresh'), true);
+
+    const oversized = await fetch(baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'x'.repeat(4 * 1024 * 1024 + 1),
+    });
+    assert.equal(oversized.status, 413);
+
     const statelessInit = await stateless2025Initialize(baseUrl, 'stateless-init');
     assert.equal(statelessInit.status, 200);
     assert.equal(statelessInit.headers.get('MCP-Session-Id'), null);
@@ -140,13 +152,13 @@ async function run() {
     const firstInitialize = await initialize(baseUrl, 1);
     assert.equal(firstInitialize.status, 200);
     const firstSessionId = firstInitialize.headers.get('MCP-Session-Id');
-    assert.match(firstSessionId, /^[0-9a-f]{32}$/);
+    assert.match(firstSessionId, /^[0-9a-z]+\.[0-9a-f]{32}$/);
     assert.equal((await firstInitialize.json()).id, 1);
 
     const secondInitialize = await initialize(baseUrl, 2);
     assert.equal(secondInitialize.status, 200);
     const secondSessionId = secondInitialize.headers.get('MCP-Session-Id');
-    assert.match(secondSessionId, /^[0-9a-f]{32}$/);
+    assert.match(secondSessionId, /^[0-9a-z]+\.[0-9a-f]{32}$/);
     assert.notEqual(secondSessionId, firstSessionId);
     assert.equal((await secondInitialize.json()).id, 2);
 

@@ -27,7 +27,7 @@ const MAX_EXEC_PROMPT_CHARS = 20_000;
 const MAX_PLAN_CHARS = 40_000;
 const MODEL_CACHE_MS = 5 * 60_000;
 const HIDDEN_LAUNCHER = fileURLToPath(new URL('./run-hidden-command.vbs', import.meta.url));
-let modelCache = { at: 0, models: [] };
+let modelCache = { at: 0, models: [], catalogSource: 'none', refreshWarning: '' };
 
 const serverArgs = (port) => ['serve', '--pure', '--hostname', SERVER_HOST, '--port', String(port)];
 
@@ -154,20 +154,24 @@ function parseFreeOpenCodeModels(output) {
   return parseOpenCodeVerboseModels(output).filter(isFreeOpenCodeModel).map((model) => ({ id: model.id, name: model.name || model.id, releaseDate: model.release_date || '', context: model.limit?.context || null, output: model.limit?.output || null })).sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || '') || a.name.localeCompare(b.name));
 }
 
-export async function listFreeOpenCodeModels({ refresh = false, runner = runOpenCodeCli } = {}) {
-  if (!refresh && runner === runOpenCodeCli && modelCache.models.length && Date.now() - modelCache.at < MODEL_CACHE_MS) return modelCache.models;
+async function loadFreeOpenCodeCatalog({ refresh = false, runner = runOpenCodeCli } = {}) {
+  if (!refresh && runner === runOpenCodeCli && modelCache.models.length && Date.now() - modelCache.at < MODEL_CACHE_MS) return modelCache;
   try {
     const output = await runner(['models', PROVIDER, ...(refresh ? ['--refresh'] : []), '--verbose'], { timeoutMs: refresh ? MODEL_REFRESH_TIMEOUT_MS : CLI_TIMEOUT_MS });
-    const models = parseFreeOpenCodeModels(output);
-    if (runner === runOpenCodeCli) modelCache = { at: Date.now(), models };
-    return models;
+    const value = { at: Date.now(), models: parseFreeOpenCodeModels(output), catalogSource: refresh ? 'live-refresh' : 'local-cli', refreshWarning: '' };
+    if (runner === runOpenCodeCli) modelCache = value;
+    return value;
   } catch (error) {
     if (!refresh) throw error;
     const output = await runner(['models', PROVIDER, '--verbose'], { timeoutMs: CLI_TIMEOUT_MS });
-    const models = parseFreeOpenCodeModels(output);
-    if (runner === runOpenCodeCli) modelCache = { at: Date.now(), models };
-    return models;
+    const value = { at: Date.now(), models: parseFreeOpenCodeModels(output), catalogSource: 'local-fallback', refreshWarning: error.message || String(error) };
+    if (runner === runOpenCodeCli) modelCache = value;
+    return value;
   }
+}
+
+export async function listFreeOpenCodeModels(options = {}) {
+  return (await loadFreeOpenCodeCatalog(options)).models;
 }
 
 export function chooseOpenCodeModel(requested, models) {
@@ -181,12 +185,13 @@ export function chooseOpenCodeModel(requested, models) {
 export async function getOpenCodeStatus({ refresh = false, runner = runOpenCodeCli } = {}) {
   const config = readOpenCodeConfig();
   try {
-    const [authText, freeModels] = await Promise.all([runner(['auth', 'list']), listFreeOpenCodeModels({ refresh, runner })]);
+    const [authText, catalog] = await Promise.all([runner(['auth', 'list']), loadFreeOpenCodeCatalog({ refresh, runner })]);
+    const freeModels = catalog.models;
     const configured = /OpenCode Zen/i.test(authText);
     const effectiveModel = chooseOpenCodeModel(config.model, freeModels);
-    return { configured, source: config.source, selectedModel: config.model, effectiveModel, fallback: effectiveModel !== config.model, execEnabled: config.execEnabled, freeModels };
+    return { configured, source: config.source, selectedModel: config.model, effectiveModel, fallback: effectiveModel !== config.model, execEnabled: config.execEnabled, freeModels, catalogSource: catalog.catalogSource, refreshWarning: catalog.refreshWarning };
   } catch (error) {
-    return { configured: false, source: config.source, selectedModel: config.model, effectiveModel: null, fallback: false, execEnabled: config.execEnabled, freeModels: [], error: error.message || String(error) };
+    return { configured: false, source: config.source, selectedModel: config.model, effectiveModel: null, fallback: false, execEnabled: config.execEnabled, freeModels: [], catalogSource: 'unavailable', refreshWarning: '', error: error.message || String(error) };
   }
 }
 

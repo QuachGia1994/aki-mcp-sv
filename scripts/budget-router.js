@@ -18,6 +18,7 @@ const KIRO_MODEL = 'claude-sonnet-4.5';
 const unhealthyUntil = new Map();
 let statusCache = { at: 0, value: null };
 const STATUS_CACHE_MS = 30_000;
+const HEALTH_PROBE_TIMEOUT_MS = 8_000;
 
 function textOf(result) {
   return result?.content?.find((item) => item.type === 'text')?.text || '';
@@ -41,7 +42,13 @@ function scopePrompt(prompt, cwd) {
   return `[AKI_SCOPE]\nAllowed root: ${cwd}\nUse only files physically under this absolute root. Resolve relative paths against it and ignore similarly named files elsewhere.\n[REQUEST]\n${prompt}`;
 }
 
-function normalizeLedgerEntry(value) {
+function finiteMetric(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function normalizeLedgerEntry(value) {
   return {
     at: Number(value.at || Date.now()),
     kind: value.kind === 'context' ? 'context' : 'worker',
@@ -51,10 +58,10 @@ function normalizeLedgerEntry(value) {
     taskType: String(value.taskType || '').slice(0, 80),
     success: value.success !== false,
     durationMs: Number(value.durationMs || 0),
-    actualProviderTokens: Number.isFinite(Number(value.actualProviderTokens)) ? Number(value.actualProviderTokens) : null,
-    estimatedInputTokens: Number.isFinite(Number(value.estimatedInputTokens)) ? Number(value.estimatedInputTokens) : null,
-    estimatedLeadContextAvoided: Number.isFinite(Number(value.estimatedLeadContextAvoided)) ? Number(value.estimatedLeadContextAvoided) : null,
-    providerCacheHits: Number.isFinite(Number(value.providerCacheHits)) ? Number(value.providerCacheHits) : null,
+    actualProviderTokens: finiteMetric(value.actualProviderTokens),
+    estimatedInputTokens: finiteMetric(value.estimatedInputTokens),
+    estimatedLeadContextAvoided: finiteMetric(value.estimatedLeadContextAvoided),
+    providerCacheHits: finiteMetric(value.providerCacheHits),
     error: value.error ? String(value.error).slice(0, 500) : '',
   };
 }
@@ -92,9 +99,16 @@ export function recordContextSavings(entry, { load = readCostLedger, save = (sta
   save({ version: 1, entries: state.entries.slice(0, DEFAULT_BUDGET_ROUTER_CONFIG.maxLedgerEntries) });
 }
 
-export async function getWorkerHealthMatrix({ refresh = false, now = Date.now } = {}) {
+async function statusWithin(promise, label, timeoutMs = HEALTH_PROBE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ configured: false, error: `${label} health probe timed out after ${timeoutMs}ms` }), timeoutMs); });
+  try { return await Promise.race([Promise.resolve(promise).catch((error) => ({ configured: false, error: error.message })), timeout]); }
+  finally { clearTimeout(timer); }
+}
+
+export async function getWorkerHealthMatrix({ refresh = false, now = Date.now, xkiroStatus = getXKiroUsage, openCodeStatus = getOpenCodeStatus, probeTimeoutMs = HEALTH_PROBE_TIMEOUT_MS } = {}) {
   if (!refresh && statusCache.value && now() - statusCache.at < STATUS_CACHE_MS) return statusCache.value;
-  const [xkiro, opencode] = await Promise.all([getXKiroUsage().catch((error) => ({ configured: false, error: error.message })), getOpenCodeStatus().catch((error) => ({ configured: false, error: error.message }))]);
+  const [xkiro, opencode] = await Promise.all([statusWithin(xkiroStatus(), 'xKiro', probeTimeoutMs), statusWithin(openCodeStatus(), 'OpenCode', probeTimeoutMs)]);
   const observed = readProviderStatuses({ now: now() });
   const agyQuota = quotaAvailability(observed.providers.agy, { now: now() });
   const kiroQuota = quotaAvailability(observed.providers.kiro, { now: now() });

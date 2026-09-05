@@ -1,5 +1,6 @@
 // Path containment shared by every MCP tool that touches the filesystem — one implementation, because a second copy of a security boundary is a second chance to get it subtly wrong.
 import { realpath } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadFolders } from './allowlist.js';
@@ -22,6 +23,11 @@ export function getRoots() {
   return roots.length ? roots : [path.resolve(os.homedir())];
 }
 
+export function pathIdentity(value, { platform = process.platform } = {}) {
+  const resolved = path.resolve(value);
+  return platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
 export function containedIn(abs, root) {
   // Windows paths are case-insensitive; drive letter casing from different APIs must not bypass the boundary.
   if (process.platform === 'win32') {
@@ -35,15 +41,35 @@ export function containedIn(abs, root) {
 // Either direction of containment counts as overlap: a trusted exec dir inside a writable root (or vice versa) is the write+exec = RCE composition the trusted-dir preallow must refuse.
 export const overlaps = (a, b) => containedIn(a, b) || containedIn(b, a);
 
-export function resolveUnderRoot(target) {
-  const roots = getRoots();
+function resolveUnderRoots(target, roots) {
   if (!target) return roots[0];
   const abs = path.isAbsolute(target) ? path.resolve(target) : path.resolve(roots[0], target);
   const allowed = roots.some((root) => containedIn(abs, root));
-  if (!allowed) {
-    throw new Error(`path is outside the allowed roots: ${roots.join(', ')}`);
-  }
+  if (!allowed) throw new Error(`path is outside the allowed roots: ${roots.join(', ')}`);
   return abs;
+}
+
+export function resolveUnderRoot(target) {
+  return resolveUnderRoots(target, getRoots());
+}
+
+function realRootsSync(roots) {
+  return roots.map((root) => {
+    try { return realpathSync.native?.(root) || realpathSync(root); } catch { return path.resolve(root); }
+  });
+}
+
+export function resolveRealUnderRootSync(target, { roots = getRoots() } = {}) {
+  const abs = resolveUnderRoots(target, roots);
+  let real;
+  try { real = realpathSync.native?.(abs) || realpathSync(abs); }
+  catch (e) {
+    if (e?.code === 'ENOENT') throw new Error(`path does not exist: ${abs}`);
+    throw e;
+  }
+  const canonicalRoots = realRootsSync(roots);
+  if (!canonicalRoots.some((root) => containedIn(real, root))) throw new Error(`symlink/junction target escapes the allowed roots: ${real}`);
+  return real;
 }
 
 // Symlink-safe variant for filesystem-mcp.js's read/write/edit tools: resolveUnderRoot only checks the requested path's string prefix, which a symlink can defeat (a link *inside* a root pointing *outside* it). Ported from @modelcontextprotocol/server-filesystem's validatePath() — realpath the target and re-check containment on the resolved path, not the requested one. A target that doesn't exist yet (new file) falls back to validating its parent directory's real path instead, so file creation still works.
@@ -74,7 +100,7 @@ export async function resolveRealUnderRoot(target) {
 // Non-throwing variant for CLI-arm handlers: returns { ok, dir } or { ok:false, error }, so a caller wraps the failure however its context needs (sync fail() vs async) without repeating the try/catch and its Promise-wrapping footgun.
 export function resolveOrFail(target) {
   try {
-    return { ok: true, dir: resolveUnderRoot(target) };
+    return { ok: true, dir: resolveRealUnderRootSync(target) };
   } catch (e) {
     return { ok: false, error: e };
   }

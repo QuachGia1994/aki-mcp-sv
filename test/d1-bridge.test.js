@@ -15,6 +15,7 @@ test('readD1BridgeConfig stays off until D1 config is complete', () => {
   });
   assert.equal(valid.enabled, true);
   assert.equal(valid.pollMs, 750);
+  assert.equal(valid.leaseSeconds, 900);
 });
 
 test('createD1Client unwraps Cloudflare query result', async () => {
@@ -51,7 +52,8 @@ test('ensureD1BridgeSchema migrates existing mailboxes for idempotency keys', as
   const result = await ensureD1BridgeSchema(client);
   assert.equal(result.ok, true);
   assert.equal(queries.some((sql) => sql.startsWith('ALTER TABLE') && sql.includes('idempotency_key')), true);
-  assert.equal(queries.some((sql) => sql.startsWith('CREATE UNIQUE INDEX') && sql.includes('idempotency_key')), true);
+  assert.equal(queries.some((sql) => sql.startsWith('ALTER TABLE') && sql.includes('owner')), true);
+  assert.equal(queries.some((sql) => sql.startsWith('CREATE UNIQUE INDEX') && sql.includes('(owner, idempotency_key)')), true);
 });
 
 test('ensureD1BridgeSchema does not re-add an existing idempotency column', async () => {
@@ -60,7 +62,7 @@ test('ensureD1BridgeSchema does not re-add an existing idempotency column', asyn
     async query(sql) {
       queries.push(sql);
       if (sql.startsWith('PRAGMA table_info')) {
-        return { ok: true, data: { results: [{ name: 'id' }, { name: 'idempotency_key' }] } };
+        return { ok: true, data: { results: [{ name: 'id' }, { name: 'idempotency_key' }, { name: 'owner' }] } };
       }
       return { ok: true, data: { results: [], meta: { changes: 0 } } };
     },
@@ -74,6 +76,22 @@ test('parseD1Task rejects malformed arguments before tool execution', () => {
   const result = parseD1Task({ id: 4, tool: 'local__run_cmd', arguments_json: '[]' });
   assert.equal(result.ok, false);
   assert.match(result.error, /object/);
+});
+
+test('processNextD1Task requeues stale running work before selecting the next task', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.startsWith('UPDATE') && sql.includes("SET status = 'pending'")) return { ok: true, data: { meta: { changes: 1 }, results: [] } };
+      if (sql.startsWith('SELECT')) return { ok: true, data: { results: [] } };
+      throw new Error(`unexpected SQL: ${sql}`);
+    },
+  };
+  const result = await processNextD1Task(client, async () => { throw new Error('must not run'); }, { leaseSeconds: 120 });
+  assert.deepEqual(result, { ok: true, data: { processed: false } });
+  assert.match(calls[0].sql, /claimed_at < unixepoch\(\) - \?/);
+  assert.deepEqual(calls[0].params, ['120']);
 });
 
 test('processNextD1Task claims once and stores a successful tool result', async () => {
@@ -95,12 +113,14 @@ test('processNextD1Task claims once and stores a successful tool result', async 
   assert.deepEqual(called, [{ tool: 'local__run_cmd', args: { command: 'git status' } }]);
   assert.equal(result.ok, true);
   assert.deepEqual(result.data, { processed: true, id: 7, status: 'done' });
-  assert.equal(writes.length, 2);
-  assert.deepEqual(writes[0].params, ['7']);
-  assert.equal(writes[1].params[0], 'done');
-  assert.match(writes[1].params[1], /clean/);
-  assert.equal(writes[1].params[2], '');
-  assert.equal(writes[1].params[3], '7');
+  assert.equal(writes.length, 3);
+  assert.match(writes[0].sql, /SET status = 'pending'/);
+  assert.deepEqual(writes[0].params, ['900']);
+  assert.deepEqual(writes[1].params, ['7']);
+  assert.equal(writes[2].params[0], 'done');
+  assert.match(writes[2].params[1], /clean/);
+  assert.equal(writes[2].params[2], '');
+  assert.equal(writes[2].params[3], '7');
 });
 
 test('processNextD1Task records tool failures without retrying the task', async () => {
@@ -117,6 +137,6 @@ test('processNextD1Task records tool failures without retrying the task', async 
   const result = await processNextD1Task(client, async () => ({ content: [{ type: 'text', text: 'rejected: bad path' }], isError: true }));
   assert.equal(result.ok, true);
   assert.deepEqual(result.data, { processed: true, id: 8, status: 'error' });
-  assert.equal(writes[1].params[0], 'error');
-  assert.equal(writes[1].params[2], 'rejected: bad path');
+  assert.equal(writes[2].params[0], 'error');
+  assert.equal(writes[2].params[2], 'rejected: bad path');
 });

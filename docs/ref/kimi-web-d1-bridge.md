@@ -1,8 +1,8 @@
 # Kimi Web K3 via Cloudflare D1
 
-Status: **Kimi Web K3 is end-to-end verified** on 2026-08-17 through `aki-bridge.oakgatekeeper.uk` -> Worker -> D1 -> local Aki -> `mcp-hub` -> result-by-ID. Live calls completed both `filesystem__read_text_file` (returning `commit=84894f9`) and `local__run_cmd` (`git status --short --branch`). Kimi's Cloudflare plugin direct-D1 route remains blocked by Cloudflare error 7500 on `/query`, and Kimi's IPython sandbox times out on `*.workers.dev`, so the custom-domain Worker route is the supported path.
+Status: **Kimi Web K3 is end-to-end verified** on 2026-08-17 through `aki-bridge.oakgatekeeper.uk` -> Worker -> D1 -> local Aki -> shared in-process tools session -> result-by-ID. Live calls completed both `filesystem__read_text_file` (returning `commit=84894f9`) and `local__run_cmd` (`git status --short --branch`). Kimi's Cloudflare plugin direct-D1 route remains blocked by Cloudflare error 7500 on `/query`, and Kimi's IPython sandbox times out on `*.workers.dev`, so the custom-domain Worker route is the supported path.
 
-Kimi Web does not need a custom-MCP slot for this path. Its preferred path is a narrow HTTPS bridge backed by the same D1 mailbox; direct Cloudflare-plugin D1 access remains an alternative only when the plugin is authorized to execute D1 queries. The local Aki process polls that database and calls the existing MCP tool through `mcp-hub`, then the caller reads the result back.
+Kimi Web does not need a custom-MCP slot for this path. Its preferred path is a narrow HTTPS bridge backed by the same D1 mailbox; direct Cloudflare-plugin D1 access remains an alternative only when the plugin is authorized to execute D1 queries. The local Aki process polls that database and calls the existing MCP tool through the shared in-process tools session, then the caller reads the result back.
 
 ## Preferred flow
 
@@ -12,8 +12,8 @@ Kimi Web K3 IPython
   -> shared Cloudflare Worker
   -> D1 aki_bridge_tasks
   -> scripts/d1-bridge.js (inside start.js)
-  -> scripts/streamable-bridge.js shared hub session
-  -> mcp-hub -> filesystem__* / local__*
+  -> scripts/streamable-bridge.js shared in-process session
+  -> filesystem__* / local__*
   -> D1 result row
   -> Worker result-by-ID endpoint
   -> Kimi Web K3
@@ -44,9 +44,10 @@ AKI_D1_ACCOUNT_ID=<account-id>
 AKI_D1_DATABASE_ID=<database-uuid>
 AKI_D1_API_TOKEN=<api-token>
 AKI_D1_POLL_MS=2000
+AKI_D1_LEASE_SECONDS=900
 ```
 
-`AKI_D1_POLL_MS` is optional and must be at least 500 ms. The bridge is completely disabled when none of the three required D1 variables is present. A partial configuration is rejected and logged without breaking the normal MCP server.
+`AKI_D1_POLL_MS` is optional and must be at least 500 ms. `AKI_D1_LEASE_SECONDS` defaults to 900 and requeues a task left `running` past its claim lease after a local crash/restart. The bridge is completely disabled when none of the three required D1 variables is present. A partial configuration is rejected and logged without breaking the normal MCP server.
 
 Restart `npm start`. A healthy bridge prints:
 

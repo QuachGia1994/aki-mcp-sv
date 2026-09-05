@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { USER_DIR } from './userdata.js';
 import { clampInt, readJsonObject, writeJsonAtomic } from './user-state.js';
-import { resolveOrFail } from './roots.js';
+import { pathIdentity, resolveOrFail } from './roots.js';
 import { runBudgetedRead, recordContextSavings } from './budget-router.js';
 import { getProjectGraphStatus, runGraphQuery, syncProjectGraph } from './project-graph.js';
 import { recoverTaskContext, saveTaskCheckpoint } from './task-checkpoint.js';
@@ -140,7 +140,7 @@ function parseWorkerTokens(text) {
 }
 
 function stateKey(dir, taskKey) {
-  return createHash('sha256').update(`${path.resolve(dir).toLowerCase()}\n${taskKey}`).digest('hex').slice(0, 24);
+  return createHash('sha256').update(`${pathIdentity(dir)}\n${taskKey}`).digest('hex').slice(0, 24);
 }
 
 function readState() {
@@ -161,6 +161,13 @@ function previousItems(entry) {
   if (!entry) return [];
   const sections = [entry.stable, entry.dynamic];
   return sections.flatMap((section) => Object.values(section || {}).flatMap((items) => Array.isArray(items) ? items : []));
+}
+
+function staleInvalidatesStable(previous, candidate) {
+  if (!previous?.stable) return false;
+  const stale = new Set(normalizeWorkerPacket(candidate).classify.stale);
+  if (!stale.size) return false;
+  return STABLE_KEYS.some((key) => (previous.stable[key] || []).some((item) => stale.has(item)));
 }
 
 export function buildOptimizerWorkerPrompt({ prompt, previous, cold, budgetTokens }) {
@@ -225,7 +232,7 @@ function fitDynamicToLockedPrefix(stableText, dynamic, budgetTokens) {
   return { dynamic: dynamicOut, truncated: `${stableText}\n${renderDynamicTail(dynamicOut)}`.length > maxChars };
 }
 
-export function applyWorkerPacket({ previous, candidate, cold, budgetTokens, workerText, provider, now, taskKey, dir, config }) {
+export function applyWorkerPacket({ previous, candidate, cold, budgetTokens, workerText, sourceContextText = '', provider, now, taskKey, dir, config }) {
   const normalized = normalizeWorkerPacket(candidate);
   let stable;
   let dynamic;
@@ -248,12 +255,13 @@ export function applyWorkerPacket({ previous, candidate, cold, budgetTokens, wor
   const rendered = `${stableText}\n${dynamicText}`;
   const workerTokens = parseWorkerTokens(workerText);
   const packetTokens = estimateTokens(rendered);
-  const sourceTokens = workerTokens ?? estimateTokens(workerText);
+  const sourceTokens = estimateTokens(sourceContextText);
   const savedTokens = Math.max(0, sourceTokens - packetTokens);
   const savedPct = sourceTokens > 0 ? Math.round((savedTokens / sourceTokens) * 1000) / 10 : 0;
   const stats = {
     sourceTokensEstimated: sourceTokens,
-    sourceUsageAuthoritative: workerTokens !== null,
+    sourceUsageAuthoritative: false,
+    workerProviderTokens: workerTokens,
     packetTokensEstimated: packetTokens,
     savedTokensEstimated: savedTokens,
     savedPctEstimated: savedPct,
@@ -295,15 +303,23 @@ export async function runContextPacket(
   let state = pruneState(loadState(), config, currentTime);
   const key = stateKey(dir, task);
   const previous = state.entries[key] || null;
-  const cold = Boolean(forceCold || !previous || currentTime >= Number(previous.hotUntil || 0));
+  let cold = Boolean(forceCold || !previous || currentTime >= Number(previous.hotUntil || 0));
   const durable = task !== 'default' ? durableContextForTask({ prompt, taskKey: task, cwd: dir, cold, now: currentTime }, { recoverCheckpoint, graphStatus, graphSync, graphQuery }) : '';
   const request = durable ? `${durable}\n\n[CURRENT_REQUEST]\n${prompt}` : prompt;
   const workerPrompt = buildOptimizerWorkerPrompt({ prompt: request, previous, cold, budgetTokens: budget });
   try {
-    const { provider, result } = await worker({ prompt: workerPrompt, cwd: dir, previous, cold, budgetTokens: budget });
-    const workerText = extractText(result);
-    const candidate = parseJsonObject(workerText);
-    const entry = applyWorkerPacket({ previous, candidate, cold, budgetTokens: budget, workerText, provider, now: currentTime, taskKey: task, dir, config });
+    let workerRun = await worker({ prompt: workerPrompt, cwd: dir, previous, cold, budgetTokens: budget });
+    let workerText = extractText(workerRun.result);
+    let candidate = parseJsonObject(workerText);
+    if (!cold && staleInvalidatesStable(previous, candidate)) {
+      cold = true;
+      const rebuildPrompt = buildOptimizerWorkerPrompt({ prompt: request, previous, cold: true, budgetTokens: budget });
+      workerRun = await worker({ prompt: rebuildPrompt, cwd: dir, previous, cold: true, budgetTokens: budget });
+      workerText = extractText(workerRun.result);
+      candidate = parseJsonObject(workerText);
+    }
+    const provider = workerRun.provider;
+    const entry = applyWorkerPacket({ previous, candidate, cold, budgetTokens: budget, workerText, sourceContextText: request, provider, now: currentTime, taskKey: task, dir, config });
     state.entries[key] = entry;
     state = pruneState(state, config, currentTime);
     saveState(state);
@@ -315,7 +331,6 @@ export async function runContextPacket(
         activeStep: entry.dynamic.changes[0] || '',
         pendingSteps: entry.stable.acceptance,
         blockers: entry.dynamic.blockers,
-        lastGreen: entry.dynamic.tests[0] || '',
         context: { stable: entry.stable, dynamic: entry.dynamic },
       });
     }
@@ -366,7 +381,7 @@ export function register(server) {
     'context_packet',
     {
       title: 'Aki Context Optimizer',
-      description: 'Use before expensive lead/Astra reasoning on a multi-step repo task. Aki delegates raw retrieval/compression to xKiro free first, then OpenCode Zen free, stores only a compact stable prefix plus dynamic tail, and preserves the stable prefix during the hot window. taskKey should be the shared plan/task id so follow-ups reuse the same packet. Read-only; does not control ChatGPT/Work provider caching.',
+      description: 'Use before expensive lead/Astra reasoning on a multi-step repo task. Aki delegates raw retrieval/compression to free workers, stores compact optimizer/checkpoint state under ~/.aki/mcpsv, and preserves the stable prefix only while it remains uncontradicted. taskKey should be the shared plan/task id so follow-ups reuse the same packet. Does not control ChatGPT/Work provider caching.',
       inputSchema: {
         prompt: z.string().min(1),
         cwd: z.string().describe('absolute project/repo root under an allowed Aki folder'),

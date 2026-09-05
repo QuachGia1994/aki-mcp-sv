@@ -88,7 +88,9 @@ export async function diagnoseSubsystems({ deep = false } = {}) {
 
 export async function runAkiDoctor({ deep = false } = {}) {
   const [transport, workers, subsystems] = await Promise.all([diagnoseMcpTransport(), diagnoseWorkers({ deep }), diagnoseSubsystems({ deep })]);
-  const security = diagnoseRootsAndSecurity();
+  let security;
+  try { security = diagnoseRootsAndSecurity(); }
+  catch (error) { security = { status: 'FAIL', reason: error.message || String(error), allowedRoots: [], shellAllowAll: false, trustedDirs: [], trustedWritableConflicts: [], rules: { path: RULES_DIR, files: 0, installed: false }, versions: getLocalVersions() }; }
   return { at: Date.now(), deep, status: worst(transport.status, security.status, workers.status, subsystems.status), transport, security, workers, subsystems };
 }
 

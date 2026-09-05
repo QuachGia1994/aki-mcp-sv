@@ -3,6 +3,7 @@ import { USER_DIR } from './userdata.js';
 import { readJsonObject, writeJsonAtomic } from './user-state.js';
 
 export const PROVIDER_STATUS_PATH = path.join(USER_DIR, 'provider-status.json');
+const NO_RESET_BLOCK_MS = 5 * 60 * 1000;
 
 function asFiniteNumber(value) {
   const number = Number(value);
@@ -43,8 +44,18 @@ export function parseProviderQuotaText(text, { now = Date.now() } = {}) {
   return normalizeQuotaStatus({ state: 'exhausted', resetAt: parseResetDuration(raw, now), source: 'provider-output', observedAt: now, detail: raw.trim().split('\n').find((line) => /(resource_exhausted|quota|rate.?limit)/i.test(line)) || 'quota exhausted' }, { now });
 }
 
-export function readProviderStatuses({ now = Date.now(), externalPath = process.env.AKI_PROVIDER_STATUS_FILE || '' } = {}) {
+function readStoredProviderStatuses({ now = Date.now() } = {}) {
   const raw = readJsonObject(PROVIDER_STATUS_PATH, { version: 1, providers: {} });
+  const providers = {};
+  for (const [name, value] of Object.entries(raw.providers || {})) {
+    const normalized = normalizeQuotaStatus(value, { now });
+    if (normalized) providers[name] = normalized;
+  }
+  return { version: 1, providers };
+}
+
+export function readProviderStatuses({ now = Date.now(), externalPath = process.env.AKI_PROVIDER_STATUS_FILE || '' } = {}) {
+  const raw = readStoredProviderStatuses({ now });
   const external = externalPath ? readJsonObject(externalPath, { version: 1, providers: {} }) : { providers: {} };
   const providers = {};
   for (const [name, value] of Object.entries({ ...(raw.providers || {}), ...(external.providers || {}) })) {
@@ -54,7 +65,7 @@ export function readProviderStatuses({ now = Date.now(), externalPath = process.
   return { version: 1, providers };
 }
 
-export function recordProviderStatus(provider, status, { now = Date.now(), load = readProviderStatuses, save = (state) => writeJsonAtomic(PROVIDER_STATUS_PATH, state) } = {}) {
+export function recordProviderStatus(provider, status, { now = Date.now(), load = readStoredProviderStatuses, save = (state) => writeJsonAtomic(PROVIDER_STATUS_PATH, state) } = {}) {
   const name = String(provider || '').trim().toLowerCase();
   if (!name) return null;
   const normalized = normalizeQuotaStatus(status, { now });
@@ -74,5 +85,6 @@ export function observeProviderResult(provider, result, { now = Date.now() } = {
 export function quotaAvailability(status, { now = Date.now() } = {}) {
   const quota = normalizeQuotaStatus(status, { now });
   if (!quota) return { blocked: false, quota: null };
-  return { blocked: quota.state === 'exhausted' && (quota.resetAt === null || quota.resetAt > now), quota };
+  const boundedNoResetBlock = quota.resetAt === null && now - quota.observedAt < NO_RESET_BLOCK_MS;
+  return { blocked: quota.state === 'exhausted' && (boundedNoResetBlock || quota.resetAt > now), quota };
 }

@@ -23,6 +23,8 @@ let shared = null;
 let sharedBoot = null; // in-flight boot promise — collapses concurrent first-initializes onto one session
 let nextUpstreamId = 1; // globally-unique id per forwarded request; the remap that lets clients share one session
 const externalIds = new Set(); // minted external session ids, for protocol-correct 404-on-stale (re-init is now cheap)
+const EXTERNAL_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const MCP_BODY_MAX_BYTES = 4 * 1024 * 1024;
 const INTERNAL_INIT_PARAMS = {
   protocolVersion: DEFAULT_NEGOTIATED_PROTOCOL_VERSION,
   capabilities: {},
@@ -33,6 +35,19 @@ const MODERN_PROTOCOL_VERSION = '2026-07-28';
 const MODERN_PROTOCOL_META = 'io.modelcontextprotocol/protocolVersion';
 const MODERN_SERVER_INFO_META = 'io.modelcontextprotocol/serverInfo';
 const MODERN_CACHE_HINT = { resultType: 'complete', ttlMs: 0, cacheScope: 'private' };
+
+export function pruneExternalSessionIds(ids = externalIds, now = Date.now()) {
+  for (const id of ids) {
+    const [stamp] = String(id).split('.', 1);
+    const createdAt = Number.parseInt(stamp, 36);
+    if (!Number.isFinite(createdAt) || now - createdAt > EXTERNAL_SESSION_TTL_MS) ids.delete(id);
+  }
+  return ids.size;
+}
+
+function mintExternalSessionId(now = Date.now()) {
+  return `${now.toString(36)}.${randomBytes(16).toString('hex')}`;
+}
 
 function negotiateExternalProtocolVersion(requestedVersion) {
   return SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion) ? requestedVersion : LATEST_PROTOCOL_VERSION;
@@ -174,8 +189,9 @@ export function warmToolsServer() {
 export async function handleStreamableMcp(req, res) {
   let message;
   try {
-    message = JSON.parse(await readBody(req));
-  } catch {
+    message = JSON.parse(await readBody(req, MCP_BODY_MAX_BYTES));
+  } catch (error) {
+    if (error?.code === 'BODY_TOO_LARGE') return jsonResponse(res, 413, { jsonrpc: '2.0', error: { code: -32030, message: error.message }, id: null });
     return jsonResponse(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null });
   }
 
@@ -298,7 +314,8 @@ export async function handleStreamableMcp(req, res) {
       log(`[bridge] failed to boot shared tools-server session: ${e.message}`);
       return jsonResponse(res, 502, { jsonrpc: '2.0', error: { code: -32000, message: `tools server unreachable: ${e.message}` }, id: message.id ?? null });
     }
-    const extId = randomBytes(16).toString('hex');
+    pruneExternalSessionIds();
+    const extId = mintExternalSessionId();
     externalIds.add(extId);
     const initResult = {
       ...s.initResult,
@@ -314,6 +331,7 @@ export async function handleStreamableMcp(req, res) {
 
   // Every other request must carry a session id we minted, and the shared session must still be alive.
   // Node normalizes incoming header names to lowercase, so this accepts every wire casing while rejecting duplicate/ambiguous values before they reach the shared in-process transport.
+  pruneExternalSessionIds();
   const rawExternalSessionId = req.headers['mcp-session-id'];
   const externalSessionId = typeof rawExternalSessionId === 'string' ? rawExternalSessionId : null;
   if (!externalSessionId || !externalIds.has(externalSessionId) || !shared) {

@@ -59,6 +59,57 @@ test('hot refresh preserves stable prefix byte-for-byte and cold refresh rebuild
       classify: { keep: [], stale: ['Ship guarded executor'], wasted: [] },
     }, 8000);
   };
+  const checkpoints = [];
+  const deps = {
+    worker,
+    now: () => now,
+    config,
+    loadState: () => state,
+    saveState: (next) => { state = structuredClone(next); },
+    recoverCheckpoint: () => ({ recovered: false, contextText: '' }),
+    graphStatus: () => ({ currentProject: { lastIndexed: now } }),
+    graphSync: () => ({}),
+    graphQuery: () => ({ content: [{ type: 'text', text: '[]' }] }),
+    checkpointSave: (entry) => { checkpoints.push(entry); return entry; },
+    recordSavings: () => {},
+  };
+  const cwd = 'D:\\LacViet\\aki-mcp-sv';
+  const first = await runContextPacket({ prompt: 'first', cwd, taskKey: 'task-1' }, deps);
+  assert.match(resultText(first), /Aki Context COLD · stable rebuilt/);
+  const firstEntry = Object.values(state.entries)[0];
+  const firstPrefix = firstEntry.stableText;
+  assert.equal(firstEntry.stats.workerProviderTokens, 12000);
+  assert.equal(firstEntry.stats.sourceUsageAuthoritative, false);
+  assert.equal(firstPrefix, renderStablePrefix(firstEntry.stable));
+
+  now += 60_000;
+  const second = await runContextPacket({ prompt: 'follow-up', cwd, taskKey: 'task-1' }, deps);
+  assert.match(resultText(second), /Aki Context HOT · stable reused/);
+  const secondEntry = Object.values(state.entries)[0];
+  assert.equal(secondEntry.stableText, firstPrefix);
+  assert.equal(secondEntry.stable.goal[0], 'Ship guarded executor');
+  assert.equal(secondEntry.stats.staleCount, 1);
+  assert.equal(secondEntry.stats.wastedCount, 1);
+  assert.equal('lastGreen' in checkpoints.at(-1), false);
+
+  now += 31 * 60_000;
+  const third = await runContextPacket({ prompt: 'after idle', cwd, taskKey: 'task-1' }, deps);
+  assert.match(resultText(third), /Aki Context COLD · stable rebuilt/);
+  const thirdEntry = Object.values(state.entries)[0];
+  assert.notEqual(thirdEntry.stableText, firstPrefix);
+  assert.equal(thirdEntry.stable.goal[0], 'Rebuilt goal after cold boundary');
+});
+
+test('HOT contradiction of a stable fact forces an immediate COLD rebuild', async () => {
+  let state = { version: 1, entries: {} };
+  let now = 2_000_000;
+  let calls = 0;
+  const worker = async ({ cold }) => {
+    calls++;
+    if (calls === 1) return workerResult({ stable: { goal: ['Old goal'] }, dynamic: {}, classify: {} }, 1000);
+    if (!cold) return workerResult({ stable: {}, dynamic: { evidence: ['goal changed'] }, classify: { stale: ['Old goal'] } }, 900);
+    return workerResult({ stable: { goal: ['New goal'] }, dynamic: { evidence: ['rebuilt'] }, classify: {} }, 800);
+  };
   const deps = {
     worker,
     now: () => now,
@@ -73,27 +124,12 @@ test('hot refresh preserves stable prefix byte-for-byte and cold refresh rebuild
     recordSavings: () => {},
   };
   const cwd = 'D:\\LacViet\\aki-mcp-sv';
-  const first = await runContextPacket({ prompt: 'first', cwd, taskKey: 'task-1' }, deps);
-  assert.match(resultText(first), /Aki Context COLD · stable rebuilt/);
-  const firstEntry = Object.values(state.entries)[0];
-  const firstPrefix = firstEntry.stableText;
-  assert.equal(firstPrefix, renderStablePrefix(firstEntry.stable));
-
+  await runContextPacket({ prompt: 'first', cwd, taskKey: 'contradiction' }, deps);
   now += 60_000;
-  const second = await runContextPacket({ prompt: 'follow-up', cwd, taskKey: 'task-1' }, deps);
-  assert.match(resultText(second), /Aki Context HOT · stable reused/);
-  const secondEntry = Object.values(state.entries)[0];
-  assert.equal(secondEntry.stableText, firstPrefix);
-  assert.equal(secondEntry.stable.goal[0], 'Ship guarded executor');
-  assert.equal(secondEntry.stats.staleCount, 1);
-  assert.equal(secondEntry.stats.wastedCount, 1);
-
-  now += 31 * 60_000;
-  const third = await runContextPacket({ prompt: 'after idle', cwd, taskKey: 'task-1' }, deps);
-  assert.match(resultText(third), /Aki Context COLD · stable rebuilt/);
-  const thirdEntry = Object.values(state.entries)[0];
-  assert.notEqual(thirdEntry.stableText, firstPrefix);
-  assert.equal(thirdEntry.stable.goal[0], 'Rebuilt goal after cold boundary');
+  const result = await runContextPacket({ prompt: 'changed', cwd, taskKey: 'contradiction' }, deps);
+  assert.equal(calls, 3);
+  assert.match(resultText(result), /Aki Context COLD · stable rebuilt/);
+  assert.equal(Object.values(state.entries)[0].stable.goal[0], 'New goal');
 });
 
 test('disabled optimizer fails closed before invoking a worker', async () => {

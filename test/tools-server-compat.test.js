@@ -81,7 +81,7 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__agent_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_status')?.annotations, remoteRead);
-    assert.deepEqual(tools.get('local__context_packet')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__context_packet')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
     assert.deepEqual(tools.get('local__context_optimizer_status')?.annotations, localRead);
     assert.deepEqual(tools.get('local__graph_query')?.annotations, localRead);
     assert.deepEqual(tools.get('local__graph_status')?.annotations, localRead);

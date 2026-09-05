@@ -11,7 +11,8 @@ function makeEnv({ rows = new Map(), activeCount = 0 } = {}) {
   const calls = [];
   const idempotency = new Map();
   for (const [id, row] of rows) {
-    if (row.idempotency_key) idempotency.set(row.idempotency_key, id);
+    if (!row.owner) row.owner = 'qwen';
+    if (row.idempotency_key) idempotency.set(`${row.owner}:${row.idempotency_key}`, id);
   }
   const DB = {
     prepare(sql) {
@@ -21,20 +22,24 @@ function makeEnv({ rows = new Map(), activeCount = 0 } = {}) {
             async first() {
               calls.push({ kind: 'first', sql, params });
               if (sql.startsWith('SELECT id, status, tool')) {
-                const id = idempotency.get(params[0]);
+                const id = idempotency.get(`${params[0]}:${params[1]}`);
                 return id === undefined ? null : { id, ...rows.get(id) };
               }
-              if (sql.startsWith('SELECT status')) return rows.get(Number(params[0])) ?? null;
+              if (sql.startsWith('SELECT status')) {
+                const row = rows.get(Number(params[0])) ?? null;
+                return row?.owner === params[1] ? row : null;
+              }
               throw new Error(`unexpected first SQL: ${sql}`);
             },
             async run() {
               calls.push({ kind: 'run', sql, params });
               if (!sql.startsWith('INSERT OR IGNORE INTO aki_bridge_tasks')) throw new Error(`unexpected run SQL: ${sql}`);
-              const [key, tool, argumentsJson, maxActive] = params;
-              if (idempotency.has(key) || activeCount >= maxActive) return { success: true, meta: { changes: 0, last_row_id: 0 } };
+              const [owner, key, tool, argumentsJson, maxActive] = params;
+              const scopedKey = `${owner}:${key}`;
+              if (idempotency.has(scopedKey) || activeCount >= maxActive) return { success: true, meta: { changes: 0, last_row_id: 0 } };
               const id = nextId++;
-              rows.set(id, { status: 'pending', result_json: null, error: null, tool, arguments_json: argumentsJson, idempotency_key: key });
-              idempotency.set(key, id);
+              rows.set(id, { owner, status: 'pending', result_json: null, error: null, tool, arguments_json: argumentsJson, idempotency_key: key });
+              idempotency.set(scopedKey, id);
               activeCount += 1;
               return { success: true, meta: { changes: 1, last_row_id: id } };
             },
@@ -108,7 +113,7 @@ test('POST /v1/tasks validates shape and inserts only tool plus arguments', asyn
   assert.equal(response.headers.get('idempotency-replayed'), 'false');
   const insert = state.calls.find((call) => call.kind === 'run');
   assert.match(insert.sql, /^INSERT OR IGNORE INTO aki_bridge_tasks/);
-  assert.deepEqual(insert.params, [IDEMPOTENCY_KEY, 'local__run_cmd', '{"command":"git status --short"}', 25]);
+  assert.deepEqual(insert.params, ['qwen', IDEMPOTENCY_KEY, 'local__run_cmd', '{"command":"git status --short"}', 25]);
   assert.match(insert.sql, /SELECT COUNT\(\*\).*status IN/s);
   assert.equal(state.calls.some((call) => call.kind === 'first' && call.sql.startsWith('SELECT COUNT')), false);
 });
@@ -142,6 +147,21 @@ test('POST /v1/tasks replays the same key without creating a duplicate', async (
   assert.deepEqual(await body(replay), { id: 10, status: 'pending' });
   assert.equal(replay.headers.get('idempotency-replayed'), 'true');
   assert.equal(state.calls.filter((call) => call.kind === 'run').length, 1);
+});
+
+test('Qwen and Kimi task ownership isolates ids and idempotency keys', async () => {
+  const state = makeEnv();
+  const payload = { tool: 'filesystem__read_text_file', arguments: { path: 'C:\\safe.txt' } };
+  const qwen = await handleRequest(request('/v1/tasks', { method: 'POST', body: payload, secret: SECRET }), state.env);
+  assert.equal(qwen.status, 202);
+  assert.equal((await body(qwen)).id, 10);
+  const kimi = await handleRequest(request('/v1/tasks', { method: 'POST', body: payload, secret: KIMI_SECRET }), state.env);
+  assert.equal(kimi.status, 202);
+  assert.equal((await body(kimi)).id, 11);
+  const qwenReadsKimi = await handleRequest(request('/v1/tasks/11', { secret: SECRET }), state.env);
+  assert.equal(qwenReadsKimi.status, 404);
+  const kimiOwn = await handleRequest(request('/v1/tasks/11', { secret: KIMI_SECRET }), state.env);
+  assert.equal(kimiOwn.status, 200);
 });
 
 test('POST /v1/tasks rejects reusing a key for a different payload', async () => {

@@ -6,7 +6,7 @@ Status: deployed and verified end to end with Qwen Coder Web on 2026-08-17. Qwen
 
 Qwen Coder Web (`coder.qwen.ai`) has no confirmed custom-MCP slot, but its code environment is live-verified against this Worker and completed real Aki filesystem and shell calls. Qwen Chat (`chat.qwen.ai`) is not the same execution environment: its Python sandbox could not reach the Worker for the task-submit path, while its web extraction tool could only read the public endpoint.
 
-Do not give Qwen a Cloudflare API token. The Worker uses a D1 binding internally and exposes only a purpose-built task API protected by revocable bearer secrets. `AKI_BRIDGE_SECRET` remains the Qwen Coder credential; optional `AKI_KIMI_SECRET` gives Kimi an independent credential without changing the API or D1 mailbox.
+Do not give Qwen a Cloudflare API token. The Worker uses a D1 binding internally and exposes only a purpose-built task API protected by revocable bearer secrets. `AKI_BRIDGE_SECRET` remains the Qwen Coder credential; optional `AKI_KIMI_SECRET` gives Kimi an independent credential and owner-scoped task namespace without changing the API or D1 mailbox.
 
 ## Runtime flow
 
@@ -17,7 +17,7 @@ Qwen Web code_interpreter
   -> D1 binding DB
   -> aki_bridge_tasks
   -> local scripts/d1-bridge.js polls D1
-  -> mcp-hub tools/list + tools/call
+  -> shared in-process tools/list + tools/call
   -> existing filesystem/local tools and policy
   -> D1 result
   -> GET /v1/tasks/<id>
@@ -74,13 +74,13 @@ First-create response:
 {"id":123,"status":"pending"}
 ```
 
-A retry with the same `Idempotency-Key` and byte-equivalent normalized payload returns the same task ID instead of inserting again. Reusing the key for different tool/arguments returns HTTP 409. The response header `Idempotency-Replayed` is `false` for a new row and `true` for a replay. This closes the ambiguous POST-timeout case without adding a task-list endpoint.
+A retry with the same `Idempotency-Key` and byte-equivalent normalized payload returns the same task ID instead of inserting again. Reusing the key for different tool/arguments returns HTTP 409. The uniqueness boundary is `(owner, idempotency_key)`, so Qwen and Kimi can safely use the same logical key without seeing or replaying each other's task. The response header `Idempotency-Replayed` is `false` for a new row and `true` for a replay. This closes the ambiguous POST-timeout case without adding a task-list endpoint.
 
 The Worker accepts a JSON-object `arguments`, a bounded MCP-style tool name, and a maximum request body of 32 KiB. It refuses new work once 25 tasks are already `pending`/`running`, but an already-known idempotency key is resolved before the queue-cap check.
 
 ### `GET /v1/tasks/<id>`
 
-Requires the same bearer secret. It returns only:
+Requires the same bearer secret that owns the task. A task ID created by the other bridge secret returns 404. It returns only:
 
 ```json
 {
@@ -107,7 +107,7 @@ The next stage must do these steps in order and verify each before continuing:
 
 1. Create/select one D1 database for the bridge and record its database UUID/account ID.
 2. Create a narrowly-scoped Cloudflare API token for local Aki with only the D1 read/write permissions required by `scripts/d1-bridge.js`.
-3. Put `AKI_D1_ACCOUNT_ID`, `AKI_D1_DATABASE_ID`, `AKI_D1_API_TOKEN`, and optional `AKI_D1_POLL_MS` into Aki's local `.env`, then restart Aki and wait for `[d1-bridge] ready` so the shared table exists.
+3. Put `AKI_D1_ACCOUNT_ID`, `AKI_D1_DATABASE_ID`, `AKI_D1_API_TOKEN`, optional `AKI_D1_POLL_MS`, and optional `AKI_D1_LEASE_SECONDS` (default 900) into Aki's local `.env`, then restart Aki and wait for `[d1-bridge] ready` so the shared table exists. The lease requeues a `running` row after a local crash instead of leaving it stuck forever.
 4. Copy `wrangler.example.jsonc` -> `wrangler.jsonc`, bind the same D1 database to `DB`, configure `AKI_BRIDGE_SECRET` as a separate >=32-character random secret, and deploy the Worker.
 5. Verify `/v1/health`, authenticated `/v1/ready`, unauthenticated task rejection, then authenticated task enqueue/read outside Qwen.
 6. Give Qwen only the Worker URL and `AKI_BRIDGE_SECRET`; never the Cloudflare account ID, database ID, D1 API token, or raw SQL.

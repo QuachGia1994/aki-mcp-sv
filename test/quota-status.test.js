@@ -19,6 +19,12 @@ test('expired quota block becomes unknown and eligible again', () => {
   assert.equal(quotaAvailability(normalized, { now }).blocked, false);
 });
 
+test('quota exhaustion without a reset gets only a bounded cooldown instead of a permanent ban', () => {
+  const status = normalizeQuotaStatus({ state: 'exhausted', observedAt: 1_000, source: 'provider-output' }, { now: 1_000 });
+  assert.equal(quotaAvailability(status, { now: 1_000 + 60_000 }).blocked, true);
+  assert.equal(quotaAvailability(status, { now: 1_000 + 6 * 60_000 }).blocked, false);
+});
+
 test('provider status storage stays generic for future Antigravity LS or Claude rate_limits collectors', () => {
   let state = { version: 1, providers: {} };
   const load = () => ({ version: 1, providers: { ...state.providers } });

@@ -18,7 +18,7 @@ const UNIX_DEFAULT = [
 ];
 
 // Per-OS extras, selected as data by process.platform (never a business-logic branch). open/sips/ffmpeg are macOS media helpers — not read-only, unlike the rest of the set.
-const MAC_EXTRA = ['vm_stat', ['sysctl', '-n'], ['top', '-l'], ['diskutil', 'list', 'info'], 'ifconfig', ['netstat', '-an'], 'sw_vers', 'system_profiler', 'sips', 'open', 'ffmpeg'];
+const MAC_EXTRA = ['vm_stat', ['sysctl', '-n'], ['top', '-l'], ['diskutil', 'list', 'info'], 'ifconfig', ['netstat', '-an'], 'sw_vers', 'system_profiler'];
 const LINUX_EXTRA = ['free', ['top', '-b'], 'nproc', 'lsblk', ['ip', 'addr'], ['ss', '-tuln']];
 const WIN_EXTRA = ['where', 'findstr', 'tasklist', 'hostname', 'systeminfo', 'Get-CimInstance', 'Get-Counter', 'Get-Process', 'Get-PSDrive', 'Get-Volume', 'Get-Service', 'Get-NetIPAddress', 'Get-NetTCPConnection', 'Test-Connection', 'Get-ComputerInfo'];
 
@@ -29,16 +29,22 @@ const PLATFORM_EXTRA =
 const toMap = (entries) => Object.fromEntries(entries.map((e) => (Array.isArray(e) ? [e[0], e.slice(1)] : [e, null])));
 export const DEFAULT_ALLOWLIST = toMap([...UNIX_DEFAULT, ...PLATFORM_EXTRA]);
 
-export function readSettings() {
-  try {
-    return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
-  } catch (e) {
-    if (e.code !== 'ENOENT') process.stderr.write(`[allowlist] ignoring malformed ${SETTINGS_PATH}: ${e.message}\n`);
-    return {};
-  }
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+export function parseSettingsText(text) {
+  const parsed = JSON.parse(text);
+  if (!isPlainObject(parsed)) throw new Error('settings root must be a JSON object');
+  return parsed;
 }
 
-const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+export function readSettings() {
+  try {
+    return parseSettingsText(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') return {};
+    throw new Error(`refusing malformed ${SETTINGS_PATH}: ${e.message}`);
+  }
+}
 
 // Normalizes three stored shapes to { overrides, revoked }: v3 { added:[entries], revoked }, v2 { overrides:{bin:null|array}, revoked }, v1 flat map. `revoked` records a removed default that an absent key cannot (the P0 bug). Format detail: docs/plan/done/shell-allowlist.md.
 function normalizeStored(stored) {

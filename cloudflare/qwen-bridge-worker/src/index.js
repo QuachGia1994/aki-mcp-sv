@@ -17,21 +17,24 @@ function json(data, status = 200, extraHeaders = {}) {
 }
 
 function configuredSecrets(env) {
-  return [env?.AKI_BRIDGE_SECRET, env?.AKI_KIMI_SECRET]
-    .filter((secret) => typeof secret === 'string' && secret.length >= 32);
+  return [
+    ['qwen', env?.AKI_BRIDGE_SECRET],
+    ['kimi', env?.AKI_KIMI_SECRET],
+  ].filter(([, secret]) => typeof secret === 'string' && secret.length >= 32);
 }
 
 function authorize(request, env) {
   const secrets = configuredSecrets(env);
   if (!secrets.length) return { ok: false, response: json({ error: 'bridge secret is not configured' }, 503) };
   const authorization = request.headers.get('authorization');
-  if (!secrets.some((secret) => authorization === `Bearer ${secret}`)) {
+  const matched = secrets.find(([, secret]) => authorization === `Bearer ${secret}`);
+  if (!matched) {
     return {
       ok: false,
       response: json({ error: 'unauthorized' }, 401, { 'www-authenticate': 'Bearer realm="aki-qwen-bridge"' }),
     };
   }
-  return { ok: true };
+  return { ok: true, owner: matched[0] };
 }
 
 async function readJsonObject(request) {
@@ -74,10 +77,10 @@ function readIdempotencyKey(request) {
   return { ok: true, key };
 }
 
-async function findTaskByIdempotencyKey(env, key) {
+async function findTaskByIdempotencyKey(env, owner, key) {
   return env.DB
-    .prepare('SELECT id, status, tool, arguments_json FROM aki_bridge_tasks WHERE idempotency_key = ?1')
-    .bind(key)
+    .prepare('SELECT id, status, tool, arguments_json FROM aki_bridge_tasks WHERE owner = ?1 AND idempotency_key = ?2')
+    .bind(owner, key)
     .first();
 }
 
@@ -89,7 +92,7 @@ function replayResponse(row, tool, argumentsJson) {
   return json({ id: Number(row.id), status: row.status }, 200, { 'idempotency-replayed': 'true' });
 }
 
-async function createTask(request, env) {
+async function createTask(request, env, owner) {
   const idempotency = readIdempotencyKey(request);
   if (!idempotency.ok) return idempotency.response;
 
@@ -99,16 +102,16 @@ async function createTask(request, env) {
   if (!validated.ok) return json({ error: validated.error }, 400);
   const argumentsJson = JSON.stringify(validated.args);
 
-  const existing = await findTaskByIdempotencyKey(env, idempotency.key);
+  const existing = await findTaskByIdempotencyKey(env, owner, idempotency.key);
   const replay = replayResponse(existing, validated.tool, argumentsJson);
   if (replay) return replay;
 
   // Admission and insert are one SQLite statement, so concurrent distinct keys cannot all observe the same pre-insert queue count and overfill the cap.
   const result = await env.DB
-    .prepare(`INSERT OR IGNORE INTO aki_bridge_tasks (idempotency_key, tool, arguments_json)
-      SELECT ?1, ?2, ?3
-      WHERE (SELECT COUNT(*) FROM aki_bridge_tasks WHERE status IN ('pending', 'running')) < ?4`)
-    .bind(idempotency.key, validated.tool, argumentsJson, MAX_ACTIVE_TASKS)
+    .prepare(`INSERT OR IGNORE INTO aki_bridge_tasks (owner, idempotency_key, tool, arguments_json)
+      SELECT ?1, ?2, ?3, ?4
+      WHERE (SELECT COUNT(*) FROM aki_bridge_tasks WHERE status IN ('pending', 'running')) < ?5`)
+    .bind(owner, idempotency.key, validated.tool, argumentsJson, MAX_ACTIVE_TASKS)
     .run();
   if (Number(result?.meta?.changes ?? 0) === 1) {
     const id = Number(result?.meta?.last_row_id);
@@ -116,7 +119,7 @@ async function createTask(request, env) {
     return json({ id, status: 'pending' }, 202, { 'idempotency-replayed': 'false' });
   }
 
-  const raced = await findTaskByIdempotencyKey(env, idempotency.key);
+  const raced = await findTaskByIdempotencyKey(env, owner, idempotency.key);
   return replayResponse(raced, validated.tool, argumentsJson)
     ?? json({ error: 'bridge queue is full; wait for an existing task to finish' }, 429, { 'retry-after': '5' });
 }
@@ -130,10 +133,10 @@ function parseStoredResult(row) {
   }
 }
 
-async function getTask(id, env) {
+async function getTask(id, env, owner) {
   const row = await env.DB
-    .prepare('SELECT status, result_json, error FROM aki_bridge_tasks WHERE id = ?1')
-    .bind(id)
+    .prepare('SELECT status, result_json, error FROM aki_bridge_tasks WHERE id = ?1 AND owner = ?2')
+    .bind(id, owner)
     .first();
   if (!row) return json({ error: 'task not found' }, 404);
   const parsed = parseStoredResult(row);
@@ -158,8 +161,9 @@ export async function handleRequest(request, env) {
 
   const taskMatch = url.pathname.match(TASK_PATH_RE);
   const isTaskEndpoint = url.pathname === '/v1/tasks' || url.pathname === '/v1/ready' || Boolean(taskMatch);
+  let auth = null;
   if (isTaskEndpoint) {
-    const auth = authorize(request, env);
+    auth = authorize(request, env);
     if (!auth.ok) return auth.response;
   }
 
@@ -170,14 +174,14 @@ export async function handleRequest(request, env) {
 
   if (url.pathname === '/v1/tasks') {
     if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405, { allow: 'POST' });
-    return createTask(request, env);
+    return createTask(request, env, auth.owner);
   }
 
   if (taskMatch) {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, { allow: 'GET' });
     const id = Number(taskMatch[1]);
     if (!Number.isSafeInteger(id) || id <= 0) return json({ error: 'invalid task id' }, 400);
-    return getTask(id, env);
+    return getTask(id, env, auth.owner);
   }
 
   return json({ error: 'not found' }, 404);
