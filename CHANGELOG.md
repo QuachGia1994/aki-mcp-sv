@@ -23,6 +23,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Prompt Instructions now load Browser/ImageGen skills automatically when needed.** Panel section 3 adds a locked Native Browser/ImageGen workflow rule, ships `skills/` in standalone payloads, and keeps the generated prompt below ChatGPT's 1500-character cap by compacting existing workflow wording without dropping its repo/plan/build constraints.
 
 ### Fixed
+- **OpenCode panel model refresh no longer drops a healthy worker on slow/transient catalog refreshes.** `models opencode --refresh --verbose` now gets a 180-second network-refresh budget; if the live models.dev refresh still fails, Aki immediately falls back to OpenCode's existing local catalog instead of marking the whole OpenCode worker unauthenticated/unavailable.
 - **Panel source updates now refresh npm dependencies when package metadata changes.** `Pull & restart` compares pre/post-pull commits and runs `npm ci` (or `npm install` without a lockfile) when `package.json` or `package-lock.json` changed, preventing the Postman control daemon from crashing with `MODULE_NOT_FOUND` after updating from an older checkout.
 
 ## [1.14.0] - 2026-09-05

@@ -22,6 +22,7 @@ let activeServerPort = null;
 const REQUEST_TIMEOUT_MS = 120_000;
 const EXEC_REQUEST_TIMEOUT_MS = 10 * 60_000;
 const CLI_TIMEOUT_MS = 60_000;
+const MODEL_REFRESH_TIMEOUT_MS = 180_000;
 const MAX_EXEC_PROMPT_CHARS = 20_000;
 const MAX_PLAN_CHARS = 40_000;
 const MODEL_CACHE_MS = 5 * 60_000;
@@ -140,21 +141,33 @@ export function isFreeOpenCodeModel(model) {
   return model?.providerID === PROVIDER && model?.status === 'active' && model?.capabilities?.toolcall === true && model?.cost && allNumbersZero(model.cost);
 }
 
-function runOpenCodeCli(args, { executable = resolveOpenCodeExecutable(), cwd = process.cwd() } = {}) {
+function runOpenCodeCli(args, { executable = resolveOpenCodeExecutable(), cwd = process.cwd(), timeoutMs = CLI_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
-    execFile(executable, args, { cwd, timeout: CLI_TIMEOUT_MS, maxBuffer: 12 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(executable, args, { cwd, timeout: timeoutMs, maxBuffer: 12 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (error) return reject(new Error(stripAnsi(stderr || error.message)));
       resolve(stripAnsi(stdout || stderr || ''));
     });
   });
 }
 
+function parseFreeOpenCodeModels(output) {
+  return parseOpenCodeVerboseModels(output).filter(isFreeOpenCodeModel).map((model) => ({ id: model.id, name: model.name || model.id, releaseDate: model.release_date || '', context: model.limit?.context || null, output: model.limit?.output || null })).sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || '') || a.name.localeCompare(b.name));
+}
+
 export async function listFreeOpenCodeModels({ refresh = false, runner = runOpenCodeCli } = {}) {
   if (!refresh && runner === runOpenCodeCli && modelCache.models.length && Date.now() - modelCache.at < MODEL_CACHE_MS) return modelCache.models;
-  const output = await runner(['models', PROVIDER, ...(refresh ? ['--refresh'] : []), '--verbose']);
-  const models = parseOpenCodeVerboseModels(output).filter(isFreeOpenCodeModel).map((model) => ({ id: model.id, name: model.name || model.id, releaseDate: model.release_date || '', context: model.limit?.context || null, output: model.limit?.output || null })).sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || '') || a.name.localeCompare(b.name));
-  if (runner === runOpenCodeCli) modelCache = { at: Date.now(), models };
-  return models;
+  try {
+    const output = await runner(['models', PROVIDER, ...(refresh ? ['--refresh'] : []), '--verbose'], { timeoutMs: refresh ? MODEL_REFRESH_TIMEOUT_MS : CLI_TIMEOUT_MS });
+    const models = parseFreeOpenCodeModels(output);
+    if (runner === runOpenCodeCli) modelCache = { at: Date.now(), models };
+    return models;
+  } catch (error) {
+    if (!refresh) throw error;
+    const output = await runner(['models', PROVIDER, '--verbose'], { timeoutMs: CLI_TIMEOUT_MS });
+    const models = parseFreeOpenCodeModels(output);
+    if (runner === runOpenCodeCli) modelCache = { at: Date.now(), models };
+    return models;
+  }
 }
 
 export function chooseOpenCodeModel(requested, models) {

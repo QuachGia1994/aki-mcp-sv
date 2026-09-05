@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildOpenCodeExecPrompt, buildOpenCodePromptBody, buildOpenCodeServerLaunch, chooseOpenCodeModel, DEFAULT_OPENCODE_MODEL, extractOpenCodeText, getOpenCodeStatus, isFreeOpenCodeModel, parseOpenCodeVerboseModels, resolveOpenCodeExecutable, validateOpenCodeExecRequest } from '../scripts/opencode-mcp.js';
+import { buildOpenCodeExecPrompt, buildOpenCodePromptBody, buildOpenCodeServerLaunch, chooseOpenCodeModel, DEFAULT_OPENCODE_MODEL, extractOpenCodeText, getOpenCodeStatus, isFreeOpenCodeModel, listFreeOpenCodeModels, parseOpenCodeVerboseModels, resolveOpenCodeExecutable, validateOpenCodeExecRequest } from '../scripts/opencode-mcp.js';
 
 test('OpenCode prompt body is locked to the read-only agent and selected Zen model', () => {
   assert.deepEqual(buildOpenCodePromptBody('inspect'), {
@@ -75,6 +75,22 @@ test('OpenCode verbose catalog parser keeps metadata and free policy requires ze
   assert.equal(models.length, 2);
   assert.equal(isFreeOpenCodeModel(models[0]), true);
   assert.equal(isFreeOpenCodeModel(models[1]), false);
+});
+
+test('OpenCode refresh gets a longer timeout and falls back to the cached CLI catalog when live refresh fails', async () => {
+  const calls = [];
+  const freeCatalog = `opencode/muse-spark-1.3-contributor-free\n{\n  "id": "muse-spark-1.3-contributor-free",\n  "providerID": "opencode",\n  "name": "Muse Spark 1.3 Free",\n  "status": "active",\n  "cost": { "input": 0, "output": 0, "cache": { "read": 0, "write": 0 } },\n  "capabilities": { "toolcall": true },\n  "release_date": "2026-09-02"\n}`;
+  const runner = async (args, options) => {
+    calls.push({ args, options });
+    if (args.includes('--refresh')) throw new Error('temporary models.dev refresh failure');
+    return freeCatalog;
+  };
+  const models = await listFreeOpenCodeModels({ refresh: true, runner });
+  assert.equal(models[0].id, DEFAULT_OPENCODE_MODEL);
+  assert.deepEqual(calls[0].args, ['models', 'opencode', '--refresh', '--verbose']);
+  assert.equal(calls[0].options.timeoutMs, 180_000);
+  assert.deepEqual(calls[1].args, ['models', 'opencode', '--verbose']);
+  assert.equal(calls[1].options.timeoutMs, 60_000);
 });
 
 test('OpenCode model choice stays on selected free model and falls back only within free catalog', () => {
