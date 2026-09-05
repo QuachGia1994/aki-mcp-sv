@@ -16,6 +16,11 @@ import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js'
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
 import { readXKiroConfig, writeXKiroConfig, getXKiroUsage, ensureFreeXKiroModel } from './xkiro-mcp.js';
 import { readOpenCodeConfig, getOpenCodeStatus, saveOpenCodeModel, runOpenCodeRead } from './opencode-mcp.js';
+import { getContextOptimizerStatus, writeContextOptimizerConfig } from './context-optimizer.js';
+import { getBudgetRouterStatus, readCostLedger } from './budget-router.js';
+import { getProjectGraphStatus, syncProjectGraph } from './project-graph.js';
+import { getTaskCheckpointStatus } from './task-checkpoint.js';
+import { runAkiDoctor } from './aki-doctor.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
@@ -220,6 +225,8 @@ export const ROUTES = {
     ingressConfig: readIngressConfig(),
     xkiro: (() => { const c = readXKiroConfig(); return { configured: c.configured, model: c.model, source: c.source }; })(),
     opencode: readOpenCodeConfig(),
+    contextOptimizer: getContextOptimizerStatus(),
+    freeFirst: { ledger: readCostLedger().totals, graph: getProjectGraphStatus(REPO_ROOT), checkpoints: getTaskCheckpointStatus() },
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
   // Same function local__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
@@ -240,6 +247,13 @@ export const ROUTES = {
     if (result?.isError) throw new Error(text || 'OpenCode worker test failed');
     return { ok: true, message: text };
   },
+  'GET /api/context-optimizer-status': async () => getContextOptimizerStatus(),
+  'POST /api/context-optimizer-config': async (body) => ({ ok: true, message: 'saved Aki Context Optimizer settings', ...writeContextOptimizerConfig({ enabled: body.enabled === true, budgetTokens: body.budgetTokens, hotWindowMinutes: body.hotWindowMinutes }) }),
+  'GET /api/budget-router-status': async () => getBudgetRouterStatus(),
+  'GET /api/project-graph-status': async () => getProjectGraphStatus(REPO_ROOT),
+  'POST /api/project-graph-sync': async () => ({ ok: true, ...syncProjectGraph({ cwd: REPO_ROOT }) }),
+  'GET /api/task-checkpoint-status': async () => getTaskCheckpointStatus(),
+  'POST /api/doctor': async (body) => runAkiDoctor({ deep: body.deep === true }),
   // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".

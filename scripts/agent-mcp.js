@@ -5,6 +5,7 @@ import { runOpenCodeRead } from './opencode-mcp.js';
 import { runXKiroRead, isXKiroConfigured } from './xkiro-mcp.js';
 import { resolveOrFail } from './roots.js';
 import { err } from './mcp-tool.js';
+import { runBudgetedRead } from './budget-router.js';
 
 const COOLDOWN_MS = 60_000;
 const unhealthyUntil = new Map();
@@ -20,13 +21,14 @@ export function scopeWorkerPrompt(prompt, dir) {
 export function buildDefaultAgentProviders(scopedPrompt, dir) {
   return [
     ...(isXKiroConfigured() ? [['xkiro', () => runXKiroRead({ prompt: scopedPrompt, cwd: dir, reasoning: 'none' })]] : []),
+    ['opencode', () => runOpenCodeRead({ prompt: scopedPrompt, cwd: dir })],
     ['agy', () => runAgy(buildAgyArgs({ prompt: scopedPrompt, mode: 'plan', model: 'gemini-3.7-flash-high', effort: 'low', outputFormat: 'text' }), dir)],
     ['kiro', () => runKiroRead({ prompt: scopedPrompt, effort: 'low', cwd: dir })],
-    ['opencode', () => runOpenCodeRead({ prompt: scopedPrompt, cwd: dir })],
   ];
 }
 
 export async function runAgentFallback({ prompt, cwd }, { providers, health = unhealthyUntil, now = Date.now } = {}) {
+  if (!providers) return runBudgetedRead({ prompt, cwd, taskType: 'deep_retrieval' });
   const r = resolveOrFail(cwd);
   if (!r.ok) return err(`rejected: ${r.error.message}`);
   const dir = r.dir;
@@ -54,7 +56,7 @@ export function register(server) {
     'agent_read',
     {
       title: 'Aki One-Call Read Worker',
-      description: 'Preferred for broad read-only repo/codebase/research tasks, especially in Gemini Spark where every MCP tool call needs a user click. Send the complete task plus cwd once; Aki performs multi-step retrieval server-side through xKiro free first when configured, then agy -> Kiro -> OpenCode. Use granular find/search/read tools only when this worker fails or the user asks for exact file-level retrieval.',
+      description: 'Preferred for broad semantic repo/codebase/research tasks after one repo_snapshot. Send the complete task plus cwd once; Aki Budget Router picks the cheapest healthy eligible read worker using observable free/quota health: xKiro/OpenCode zero-cost first, then AGY/Kiro quota fallback, with cooldown and local token/context ledger. Use granular find/search/read only when this worker fails or exact file-level retrieval is requested.',
       inputSchema: {
         prompt: z.string(),
         cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),

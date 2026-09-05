@@ -54,6 +54,27 @@ test('OpenCode panel reuses CLI auth and exposes only free-model controls', () =
   assert.match(client, /\/api\/opencode-test/);
 });
 
+test('Context Optimizer panel exposes bounded lead-packet controls without claiming provider cache hits', () => {
+  const html = render();
+  const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
+  assert.match(html, /id="tab-context"/);
+  assert.match(html, /id="contextOptimizerEnabled"/);
+  assert.match(html, /id="contextBudgetTokens" min="2000" max="32000"/);
+  assert.match(html, /id="contextHotWindow" min="5" max="120"/);
+  assert.match(html, /data-act="saveContextOptimizer"/);
+  assert.match(html, /does not claim or control ChatGPT\/Work provider cache hits/);
+  assert.match(html, /Aki Free-first Orchestrator/);
+  assert.match(html, /data-act="refreshFreeFirst"/);
+  assert.match(html, /data-act="syncProjectGraph"/);
+  assert.match(html, /data-act="runAkiDoctor"/);
+  assert.match(html, /Provider-reported tokens, Aki estimates, avoided lead context, and cache hits stay separate metrics/);
+  assert.match(client, /\/api\/context-optimizer-status/);
+  assert.match(client, /\/api\/budget-router-status/);
+  assert.match(client, /\/api\/project-graph-sync/);
+  assert.match(client, /\/api\/doctor/);
+  assert.match(client, /\/api\/context-optimizer-config/);
+});
+
 test('Gemini Spark panel documents one-call repo snapshot and unavoidable client-side approvals', () => {
   const html = render();
   assert.match(html, /Gemini custom MCP apps now run inside <strong>Gemini Spark<\/strong>/);
@@ -77,7 +98,8 @@ test('generated workflow orders research before shared plan and encodes direct-r
   assert.match(client, /checklist\/decisions\/evidence\/outcome current/);
   assert.match(client, /no sandbox\/temp copies unless asked/);
   assert.match(client, /no poll unless asked/);
-  assert.match(client, /Flow: snapshot once; deep=>agent_read\(xKiro free\); implement=>opencode_exec; tests=>run_cmd; review risky only; escalate after 2 free failures\/high-risk/);
+  assert.match(client, /multi=>context_packet\(taskKey=plan\); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails\/high-risk=>escalate/);
+  assert.match(client, /else lines\.push\('Flow: snapshot once; deep=>agent_read\(xKiro free\)/);
 });
 
 function promptForRuleSpec(ruleSpec) {
@@ -88,7 +110,7 @@ function promptForRuleSpec(ruleSpec) {
     'Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.',
     'Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.',
     'Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.',
-    'Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; review risky only; escalate after 2 free failures/high-risk.',
+    'Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.',
     'Skills D:\\LacViet\\aki-mcp-sv/skills: web=>browser; visual=>imagegen; read SKILL.md.',
     'Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.',
     'First session: if ~/.aki/mcpsv/intro.json absent, read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md; write {"seen":true}.',

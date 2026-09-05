@@ -27,11 +27,26 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__opencode_read'), true);
     assert.equal(names.has('local__opencode_exec'), true);
     assert.equal(names.has('local__opencode_status'), true);
+    assert.equal(names.has('local__context_packet'), true);
+    assert.equal(names.has('local__context_optimizer_status'), true);
+    assert.equal(names.has('local__budget_router_read'), true);
+    assert.equal(names.has('local__budget_router_status'), true);
+    assert.equal(names.has('local__graph_query'), true);
+    assert.equal(names.has('local__graph_sync'), true);
+    assert.equal(names.has('local__graph_status'), true);
+    assert.equal(names.has('local__task_checkpoint_save'), true);
+    assert.equal(names.has('local__task_checkpoint_recover'), true);
+    assert.equal(names.has('local__aki_doctor'), true);
     const instructions = client.getInstructions();
     assert.match(instructions, /Gemini Spark confirms every MCP tools\/call client-side/);
     assert.match(instructions, /call local__repo_snapshot exactly once/);
     assert.match(instructions, /Use local__agent_read only for semantic\/cross-source retrieval after repo_snapshot is insufficient/);
     assert.match(instructions, /do not decompose broad analysis into list_allowed_directories\/find_path\/search_content\/read_text_file/);
+    assert.match(instructions, /call local__context_packet with the shared plan\/task id before expensive lead\/Astra reasoning/);
+    assert.match(instructions, /Reuse the same taskKey on follow-ups/);
+    assert.match(instructions, /Use local__budget_router_read instead of choosing xKiro\/OpenCode\/agy\/Kiro manually/);
+    assert.match(instructions, /local__task_checkpoint_recover after compaction\/restart\/account handoff/);
+    assert.match(instructions, /local__aki_doctor for unified read-only health diagnosis/);
     assert.match(instructions, /prefer local__opencode_exec when its write-worker toggle is enabled/);
     assert.match(instructions, /run verification separately with local__run_cmd/);
   } finally {
@@ -66,6 +81,17 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__agent_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_status')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__context_packet')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__context_optimizer_status')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__graph_query')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__graph_status')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__task_checkpoint_get')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__task_checkpoint_recover')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__budget_router_status')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__aki_doctor')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__budget_router_read')?.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true });
+    assert.deepEqual(tools.get('local__graph_sync')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
+    assert.deepEqual(tools.get('local__task_checkpoint_save')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
     assert.deepEqual(tools.get('local__opencode_exec')?.annotations, {
       readOnlyHint: false,
       destructiveHint: true,

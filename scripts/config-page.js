@@ -179,7 +179,7 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </div>
 </section>
 
-<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro, OpenCode</h2>
+<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro, OpenCode, Free-first</h2>
 <p class="helptext">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
@@ -193,6 +193,7 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
   <button class="tab" data-tab="xkiro"><img src="/img/providers/xkiro.ico" class="provider-icon" alt="">xKiro</button>
   <button class="tab" data-tab="opencode"><img src="/img/providers/opencode.svg" class="provider-icon" alt="">OpenCode</button>
+  <button class="tab" data-tab="context">Free-first</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -293,6 +294,31 @@ ${field('Passphrase', passphrase)}
     <button data-act="testOpenCode">Test worker</button>
     <span class="dot" id="opencodeDot">…</span><span class="msg" id="msgOpenCode"></span>
   </div>
+</div>
+
+<div class="tabpane" id="tab-context">
+  <h3 class="subh">Aki Free-first Orchestrator</h3>
+  <p class="helptext">Durable Project Graph + task checkpoint feed the Context Optimizer; the Budget Router then chooses the cheapest healthy eligible read worker before Astra/Work sees the compact packet. OpenCode Zen remains the bounded implementation worker and Aki runs tests separately. Provider-reported tokens, Aki estimates, avoided lead context, and cache hits stay separate metrics.</p>
+  <h3 class="subh">Context Optimizer</h3>
+  <p class="helptext">Aki preserves the stable prefix during the hot window and applies stale/wasted cleanup to it only at the next cold boundary. This reduces Aki-to-lead context but does not claim or control ChatGPT/Work provider cache hits.</p>
+  <label style="display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="contextOptimizerEnabled"> <strong>Auto-optimize context</strong></label>
+  <div class="row"><label>Lead packet budget</label><input type="number" id="contextBudgetTokens" min="2000" max="32000" step="1000"></div>
+  <div class="row"><label>Hot window (minutes)</label><input type="number" id="contextHotWindow" min="5" max="120" step="5"></div>
+  <div class="acts">
+    <button class="primary" data-act="saveContextOptimizer">Save</button>
+    <button data-act="refreshContextOptimizer">Refresh stats</button>
+    <span class="dot" id="contextOptimizerDot">…</span><span class="msg" id="msgContextOptimizer"></span>
+  </div>
+  <p class="helptext" id="contextOptimizerStats">No packet statistics yet.</p>
+  <h3 class="subh">Router · ledger · graph · recovery</h3>
+  <p class="helptext" id="freeFirstStats">No free-first statistics yet.</p>
+  <div class="acts">
+    <button data-act="refreshFreeFirst">Refresh router</button>
+    <button data-act="syncProjectGraph">Sync this Aki repo graph</button>
+    <button class="primary" data-act="runAkiDoctor">Run Doctor</button>
+    <span class="msg" id="msgFreeFirst"></span>
+  </div>
+  <pre class="mono" id="akiDoctorOutput" style="white-space:pre-wrap;max-height:320px;overflow:auto"></pre>
 </div>
 </section>
 

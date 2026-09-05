@@ -94,9 +94,9 @@ test('xKiro read tools cannot escape the worker cwd', async () => {
   await assert.rejects(() => executeXKiroReadTool('read_text_file', { path: '..\\outside.txt' }, process.cwd()), /escapes worker cwd/);
 });
 
-test('agent_read prefers configured xKiro before local fallback workers', async () => withXKiroEnv(async () => {
+test('agent_read fallback order keeps zero-cost xKiro/OpenCode ahead of quota workers', async () => withXKiroEnv(async () => {
   const providers = buildDefaultAgentProviders('inspect', process.cwd()).map(([name]) => name);
-  assert.deepEqual(providers.slice(0, 4), ['xkiro', 'agy', 'kiro', 'opencode']);
+  assert.deepEqual(providers.slice(0, 4), ['xkiro', 'opencode', 'agy', 'kiro']);
 }));
 
 test('xKiro tab uses the bundled xKiro web favicon and a live free-model selector', () => {

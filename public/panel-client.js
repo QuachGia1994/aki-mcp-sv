@@ -89,7 +89,8 @@ function buildPrompt() {
   lines.push('Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.');
   lines.push('Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.');
   lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
-  lines.push('Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; review risky only; escalate after 2 free failures/high-risk.');
+  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
+  else lines.push('Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
   lines.push('Aki skills ' + REPO_ROOT + '/skills: web/live=>browser; visual/edit=>imagegen; read SKILL.md; use native tools.');
   lines.push('Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.');
   lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
@@ -288,6 +289,8 @@ async function loadState() {
   renderRuleChecks(s.ruleFiles);
   renderXKiroState(s.xkiro || {});
   renderOpenCodeState(s.opencode || {});
+  renderContextOptimizerState(s.contextOptimizer || {});
+  renderFreeFirstState(s.freeFirst || {});
   document.getElementById('ruleChecks').onchange = buildPrompt;
   document.getElementById('loadRules').onchange = buildPrompt;
   document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
@@ -396,6 +399,72 @@ async function checkOpenCodeStatus(refresh = false) {
   return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models' + exec;
 }
 
+function renderContextOptimizerState(state) {
+  const enabled = state?.enabled !== false;
+  const dot = document.getElementById('contextOptimizerDot');
+  dot.textContent = enabled ? '✓' : '✕';
+  dot.className = 'dot ' + (enabled ? 'ok' : 'err');
+  document.getElementById('contextOptimizerEnabled').checked = enabled;
+  document.getElementById('contextBudgetTokens').value = state?.budgetTokens || 12000;
+  document.getElementById('contextHotWindow').value = state?.hotWindowMinutes || 30;
+  const last = state?.last;
+  const stats = last?.stats;
+  const text = document.getElementById('contextOptimizerStats');
+  if (!stats) {
+    text.textContent = 'No packet statistics yet. First multi-step context_packet call will populate this.';
+    return;
+  }
+  const saved = Number(stats.savedTokensEstimated || 0).toLocaleString();
+  const pct = Number(stats.savedPctEstimated || 0);
+  const packet = Number(stats.packetTokensEstimated || 0).toLocaleString();
+  const mode = stats.coldBoundary ? 'COLD' : 'HOT';
+  const reuse = stats.stableReused ? 'stable reused' : 'stable rebuilt';
+  text.textContent = 'Last: ' + mode + ' · ' + reuse + ' · ' + stats.provider + ' · packet ≈' + packet + ' tok · avoided lead context ≈' + saved + ' tok (' + pct + '%) · KEEP/STALE/WASTED ' + stats.keepCount + '/' + stats.staleCount + '/' + stats.wastedCount + '. Estimates describe Aki compression, not provider cache hits.';
+}
+
+async function checkContextOptimizerStatus() {
+  const s = await api('GET', '/api/context-optimizer-status');
+  renderContextOptimizerState(s);
+  return (s.enabled ? 'ready' : 'disabled') + ' · budget ' + s.budgetTokens.toLocaleString() + ' tokens · hot window ' + s.hotWindowMinutes + 'm · ' + s.entries + ' cached task packet(s)';
+}
+
+function renderFreeFirstState(state) {
+  const ledger = state?.ledger || state?.totals || {};
+  const graphState = state?.graph || {};
+  const graph = graphState.currentProject || null;
+  const checkpoints = state?.checkpoints || {};
+  const calls = Number(ledger.calls || 0).toLocaleString();
+  const actual = Number(ledger.actualProviderTokens || 0).toLocaleString();
+  const avoided = Number(ledger.estimatedLeadContextAvoided || 0).toLocaleString();
+  const cache = Number(ledger.providerCacheHits || 0).toLocaleString();
+  const graphText = graph ? graph.entityCount + ' entities / ' + graph.relationCount + ' relations' : (graphState.projectCount || 0) + ' indexed project(s)';
+  document.getElementById('freeFirstStats').textContent = 'Ledger: ' + calls + ' worker calls · actual provider tokens ' + actual + ' · estimated lead context avoided ' + avoided + ' · provider-reported cache hits ' + cache + '. Graph: ' + graphText + '. Checkpoints: ' + (checkpoints.entries || 0) + ' total / ' + (checkpoints.active || 0) + ' active.';
+}
+
+async function checkFreeFirstStatus() {
+  const [router, graph, checkpoints] = await Promise.all([
+    api('GET', '/api/budget-router-status'),
+    api('GET', '/api/project-graph-status'),
+    api('GET', '/api/task-checkpoint-status'),
+  ]);
+  renderFreeFirstState({ ledger: router.totals, graph, checkpoints });
+  const available = Object.entries(router.health || {}).filter(([, value]) => value.available).map(([name]) => name).join(', ') || 'none';
+  return 'ready · eligible workers: ' + available + ' · graph projects ' + graph.projectCount + ' · checkpoints ' + checkpoints.entries;
+}
+
+function renderDoctor(report) {
+  const line = (name, item) => name + ': ' + item.status;
+  return [
+    'Aki Doctor ' + report.status,
+    line('MCP transport', report.transport),
+    line('Roots/rules', report.security),
+    line('Workers', report.workers),
+    line('Free-first subsystems', report.subsystems),
+    '',
+    JSON.stringify(report, null, 2),
+  ].join('\n');
+}
+
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
@@ -437,6 +506,28 @@ const ACTIONS = {
   }),
   refreshOpenCode: (btn) => act(btn, 'msgOpenCode', () => checkOpenCodeStatus(true)),
   testOpenCode: (btn) => act(btn, 'msgOpenCode', async () => (await api('POST', '/api/opencode-test')).message),
+  saveContextOptimizer: (btn) => act(btn, 'msgContextOptimizer', async () => {
+    const enabled = document.getElementById('contextOptimizerEnabled').checked;
+    const budgetTokens = Number(document.getElementById('contextBudgetTokens').value);
+    const hotWindowMinutes = Number(document.getElementById('contextHotWindow').value);
+    const s = await api('POST', '/api/context-optimizer-config', { enabled, budgetTokens, hotWindowMinutes });
+    renderContextOptimizerState(await api('GET', '/api/context-optimizer-status'));
+    buildPrompt();
+    return s.message + ' · budget ' + s.budgetTokens.toLocaleString() + ' · hot ' + s.hotWindowMinutes + 'm';
+  }),
+  refreshContextOptimizer: (btn) => act(btn, 'msgContextOptimizer', checkContextOptimizerStatus),
+  refreshFreeFirst: (btn) => act(btn, 'msgFreeFirst', checkFreeFirstStatus),
+  syncProjectGraph: (btn) => act(btn, 'msgFreeFirst', async () => {
+    const synced = await api('POST', '/api/project-graph-sync');
+    const graph = await api('GET', '/api/project-graph-status');
+    renderFreeFirstState({ ledger: (await api('GET', '/api/budget-router-status')).totals, graph, checkpoints: await api('GET', '/api/task-checkpoint-status') });
+    return 'graph synced · ' + synced.entityCount + ' entities · ' + synced.relationCount + ' relations · ' + synced.sourceCount + ' durable sources';
+  }),
+  runAkiDoctor: (btn) => act(btn, 'msgFreeFirst', async () => {
+    const report = await api('POST', '/api/doctor', { deep: true });
+    document.getElementById('akiDoctorOutput').textContent = renderDoctor(report);
+    return 'Doctor ' + report.status + ' · deep worker/status checks completed';
+  }),
   addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
@@ -553,3 +644,4 @@ loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) =>
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });
 checkXKiroQuota().then((m) => say('msgXKiro', m, m.startsWith('ready'))).catch((e) => say('msgXKiro', e.message, false));
 checkOpenCodeStatus().then((m) => say('msgOpenCode', m, m.startsWith('ready'))).catch((e) => say('msgOpenCode', e.message, false));
+checkContextOptimizerStatus().then((m) => say('msgContextOptimizer', m, m.startsWith('ready'))).catch((e) => say('msgContextOptimizer', e.message, false));

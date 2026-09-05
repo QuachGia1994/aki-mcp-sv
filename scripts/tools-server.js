@@ -14,11 +14,19 @@ import { register as registerClaudeMem } from './claude-mem-mcp.js';
 import { register as registerFilesystem } from './filesystem-mcp.js';
 import { register as registerPostman } from './postman-mcp.js';
 import { register as registerXKiro } from './xkiro-mcp.js';
+import { register as registerContextOptimizer } from './context-optimizer.js';
+import { register as registerBudgetRouter } from './budget-router.js';
+import { register as registerProjectGraph } from './project-graph.js';
+import { register as registerTaskCheckpoint } from './task-checkpoint.js';
+import { register as registerAkiDoctor } from './aki-doctor.js';
 
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
   'For broad local repo/codebase analysis, call local__repo_snapshot exactly once with the project path; it returns a bounded tree plus prioritized source/config/docs in one local read pass and is designed to finish within short client deadlines.',
   'Use local__agent_read only for semantic/cross-source retrieval after repo_snapshot is insufficient; do not decompose broad analysis into list_allowed_directories/find_path/search_content/read_text_file unless the one-call paths fail or the user requests granular reads.',
+  'For multi-step/deep work, call local__context_packet with the shared plan/task id before expensive lead/Astra reasoning; it recovers the task checkpoint, searches compact durable project knowledge, then uses the Budget Router so raw retrieval/compression stays in the cheapest healthy eligible worker. Reuse the same taskKey on follow-ups; force a cold rebuild only when stable assumptions changed.',
+  'Use local__budget_router_read instead of choosing xKiro/OpenCode/agy/Kiro manually; its ledger keeps actual provider tokens, estimates, avoided lead context, and reported cache hits as separate metrics.',
+  'Use local__task_checkpoint_recover after compaction/restart/account handoff, local__graph_query for durable project decisions/facts, and local__aki_doctor for unified read-only health diagnosis.',
   'For implementation, prefer local__opencode_exec when its write-worker toggle is enabled and the task has a settled scope/plan; run verification separately with local__run_cmd, then review only risky diffs or unresolved items. Fall back to normal write tools when the free executor is disabled/unavailable or the task is high-risk.',
 ].join(' ');
 
@@ -33,9 +41,15 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'claude_mem_timeline',
   'claude_mem_get_observations',
   'postman_status',
+  'context_optimizer_status',
+  'graph_query',
+  'graph_status',
+  'task_checkpoint_get',
+  'task_checkpoint_list',
+  'task_checkpoint_recover',
 ]);
 
-const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read']);
+const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read', 'context_packet', 'budget_router_status', 'aki_doctor']);
 
 const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],
@@ -47,6 +61,9 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['run_cmd', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['opencode_exec', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
+  ['budget_router_read', { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
+  ['graph_sync', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
+  ['task_checkpoint_save', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }],
 ]);
 
 function annotationsForTool(name) {
@@ -86,7 +103,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerXKiro, registerAgent, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
+  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on
