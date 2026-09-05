@@ -35,7 +35,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'postman_status',
 ]);
 
-const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'xkiro_read', 'xkiro_status', 'agent_read']);
+const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read']);
 
 const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],

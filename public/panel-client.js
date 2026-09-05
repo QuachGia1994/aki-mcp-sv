@@ -287,6 +287,7 @@ async function loadState() {
   s.paths.forEach((p) => addPath(p));
   renderRuleChecks(s.ruleFiles);
   renderXKiroState(s.xkiro || {});
+  renderOpenCodeState(s.opencode || {});
   document.getElementById('ruleChecks').onchange = buildPrompt;
   document.getElementById('loadRules').onchange = buildPrompt;
   document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
@@ -345,6 +346,38 @@ async function checkXKiroQuota() {
   return 'ready · ' + s.model;
 }
 
+function renderOpenCodeState(state) {
+  const configured = state?.configured === true;
+  const dot = document.getElementById('opencodeDot');
+  dot.textContent = configured ? '✓' : '✕';
+  dot.className = 'dot ' + (configured ? 'ok' : 'err');
+  const select = document.getElementById('opencodeModel');
+  const models = Array.isArray(state?.freeModels) ? state.freeModels : [];
+  if (models.length) {
+    select.innerHTML = '';
+    for (const model of models) {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.name + ' · ' + model.id;
+      select.append(option);
+    }
+  }
+  const selected = state?.selectedModel || state?.model || state?.effectiveModel;
+  if (selected && [...select.options].some((option) => option.value === selected)) select.value = selected;
+  else if (state?.effectiveModel && [...select.options].some((option) => option.value === state.effectiveModel)) select.value = state.effectiveModel;
+  if (!configured && state?.error) say('msgOpenCode', state.error, false);
+  else if (!configured) say('msgOpenCode', 'OpenCode Zen not authenticated — run opencode auth login', false);
+}
+
+async function checkOpenCodeStatus(refresh = false) {
+  const s = await api(refresh ? 'POST' : 'GET', refresh ? '/api/opencode-refresh' : '/api/opencode-status');
+  renderOpenCodeState(s);
+  if (s.error) throw new Error(s.error);
+  if (!s.configured) return 'not authenticated — run opencode auth login and choose OpenCode Zen';
+  const fallback = s.fallback ? ' · fallback from ' + s.selectedModel : '';
+  return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models';
+}
+
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
@@ -374,6 +407,15 @@ const ACTIONS = {
     renderXKiroState(s);
     return s.configured ? 'stored key cleared; env key still active' : s.message;
   }),
+  saveOpenCode: (btn) => act(btn, 'msgOpenCode', async () => {
+    const model = document.getElementById('opencodeModel').value;
+    const s = await api('POST', '/api/opencode-config', { model });
+    const status = await api('GET', '/api/opencode-status');
+    renderOpenCodeState(status);
+    return s.message + ' · ' + s.model;
+  }),
+  refreshOpenCode: (btn) => act(btn, 'msgOpenCode', () => checkOpenCodeStatus(true)),
+  testOpenCode: (btn) => act(btn, 'msgOpenCode', async () => (await api('POST', '/api/opencode-test')).message),
   addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
@@ -488,3 +530,4 @@ renderSavedIngress(SAVED_INGRESS);
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });
+checkOpenCodeStatus().then((m) => say('msgOpenCode', m, m.startsWith('ready'))).catch((e) => say('msgOpenCode', e.message, false));

@@ -38,6 +38,20 @@ test('xKiro panel config is local-only and never renders a saved secret', () => 
   assert.doesNotMatch(html, /value="sk-xt-/);
 });
 
+test('OpenCode panel reuses CLI auth and exposes only free-model controls', () => {
+  const html = render();
+  const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
+  assert.match(html, /id="tab-opencode"/);
+  assert.match(html, /opencode auth login/);
+  assert.match(html, /id="opencodeModel"/);
+  assert.match(html, /data-act="refreshOpenCode"/);
+  assert.match(html, /data-act="testOpenCode"/);
+  assert.doesNotMatch(html, /id="opencodeKey"/);
+  assert.match(client, /\/api\/opencode-status/);
+  assert.match(client, /\/api\/opencode-refresh/);
+  assert.match(client, /\/api\/opencode-test/);
+});
+
 test('Gemini Spark panel documents one-call repo snapshot and unavoidable client-side approvals', () => {
   const html = render();
   assert.match(html, /Gemini custom MCP apps now run inside <strong>Gemini Spark<\/strong>/);

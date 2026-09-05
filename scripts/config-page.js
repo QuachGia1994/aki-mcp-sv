@@ -179,7 +179,7 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </div>
 </section>
 
-<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro</h2>
+<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro, OpenCode</h2>
 <p class="helptext">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
@@ -192,6 +192,7 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
   <button class="tab" data-tab="xkiro"><img src="/img/providers/xkiro.ico" class="provider-icon" alt="">xKiro</button>
+  <button class="tab" data-tab="opencode">OpenCode</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -276,6 +277,19 @@ ${field('Passphrase', passphrase)}
     <button data-act="checkXKiro">Check quota</button>
     <button data-act="clearXKiro">Clear key</button>
     <span class="dot" id="xkiroDot">…</span><span class="msg" id="msgXKiro"></span>
+  </div>
+</div>
+
+<div class="tabpane" id="tab-opencode">
+  <h3 class="subh">OpenCode Zen free read worker</h3>
+  <p class="helptext">Uses the OpenCode Zen credential already managed by the OpenCode CLI; Aki never copies or stores that API key. Authenticate once with ${copyEl('opencode auth login')} and choose <strong>OpenCode Zen</strong>.</p>
+  <p class="helptext">Only active zero-cost Zen models with tool calling are selectable. Aki stores only the chosen model in <span class="mono">~/.aki/mcpsv/opencode.json</span>; if that model disappears from the live catalog, the worker falls back only to another zero-cost Zen model.</p>
+  <div class="row"><label>Free model</label><select id="opencodeModel"><option value="opencode/muse-spark-1.3-contributor-free">Muse Spark 1.3 Free</option></select></div>
+  <div class="acts">
+    <button class="primary" data-act="saveOpenCode">Save model</button>
+    <button data-act="refreshOpenCode">Refresh models</button>
+    <button data-act="testOpenCode">Test worker</button>
+    <span class="dot" id="opencodeDot">…</span><span class="msg" id="msgOpenCode"></span>
   </div>
 </div>
 </section>

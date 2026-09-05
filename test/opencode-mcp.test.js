@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOpenCodePromptBody, buildOpenCodeServerLaunch, extractOpenCodeText, resolveOpenCodeExecutable } from '../scripts/opencode-mcp.js';
+import { buildOpenCodePromptBody, buildOpenCodeServerLaunch, chooseOpenCodeModel, DEFAULT_OPENCODE_MODEL, extractOpenCodeText, getOpenCodeStatus, isFreeOpenCodeModel, parseOpenCodeVerboseModels, resolveOpenCodeExecutable } from '../scripts/opencode-mcp.js';
 
-test('OpenCode prompt body is locked to the read-only agent and model', () => {
+test('OpenCode prompt body is locked to the read-only agent and selected Zen model', () => {
   assert.deepEqual(buildOpenCodePromptBody('inspect'), {
-    model: { providerID: 'opencode-go', modelID: 'muse-spark-1.2-contributor' },
+    model: { providerID: 'opencode', modelID: 'muse-spark-1.3-contributor-free' },
     agent: 'Aki-readonly',
     parts: [{ type: 'text', text: 'inspect' }],
   });
+  assert.deepEqual(buildOpenCodePromptBody('inspect', 'opencode/nemotron-3-ultra-free').model, { providerID: 'opencode', modelID: 'nemotron-3-ultra-free' });
 });
 
 test('OpenCode response extraction returns only text parts', () => {
@@ -27,18 +28,47 @@ test('OpenCode executable supports explicit override and native Windows Bun path
 });
 
 test('Windows OpenCode server launch uses WScript hidden launcher without changing serve contract', () => {
-  const launch = buildOpenCodeServerLaunch({
-    executable: 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe',
-    cwd: 'D:\\Repo',
-    platform: 'win32',
-    env: { SystemRoot: 'C:\\Windows' },
-    launcherPath: 'D:\\Aki\\scripts\\run-hidden-command.vbs',
-  });
+  const launch = buildOpenCodeServerLaunch({ executable: 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe', cwd: 'D:\\Repo', platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, launcherPath: 'D:\\Aki\\scripts\\run-hidden-command.vbs' });
   assert.equal(launch.command, 'C:\\Windows\\System32\\wscript.exe');
-  assert.deepEqual(launch.args, [
-    'D:\\Aki\\scripts\\run-hidden-command.vbs',
-    'C:\\Users\\Tester\\.bun\\bin\\opencode.exe',
-    'serve', '--pure', '--hostname', '127.0.0.1', '--port', '4097',
-  ]);
+  assert.deepEqual(launch.args, ['D:\\Aki\\scripts\\run-hidden-command.vbs', 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe', 'serve', '--pure', '--hostname', '127.0.0.1', '--port', '4097']);
   assert.deepEqual(launch.options, { cwd: 'D:\\Repo', detached: true, stdio: 'ignore', windowsHide: true });
+});
+
+test('OpenCode verbose catalog parser keeps metadata and free policy requires zero cost plus tool calling', () => {
+  const output = `opencode/muse-spark-1.3-contributor-free\n{\n  "id": "muse-spark-1.3-contributor-free",\n  "providerID": "opencode",\n  "name": "Muse Spark 1.3 Free",\n  "status": "active",\n  "cost": { "input": 0, "output": 0, "cache": { "read": 0, "write": 0 } },\n  "capabilities": { "toolcall": true },\n  "release_date": "2026-09-02"\n}\nopencode/gemini-3.8-flash\n{\n  "id": "gemini-3.8-flash",\n  "providerID": "opencode",\n  "name": "Gemini 3.8 Flash",\n  "status": "active",\n  "cost": { "input": 1.5, "output": 7.5 },\n  "capabilities": { "toolcall": true },\n  "release_date": "2026-09-02"\n}`;
+  const models = parseOpenCodeVerboseModels(output);
+  assert.equal(models.length, 2);
+  assert.equal(isFreeOpenCodeModel(models[0]), true);
+  assert.equal(isFreeOpenCodeModel(models[1]), false);
+});
+
+test('OpenCode model choice stays on selected free model and falls back only within free catalog', () => {
+  const models = [
+    { id: 'opencode/nemotron-3.5-lightning-free' },
+    { id: DEFAULT_OPENCODE_MODEL },
+  ];
+  assert.equal(chooseOpenCodeModel('opencode/nemotron-3.5-lightning-free', models), 'opencode/nemotron-3.5-lightning-free');
+  assert.equal(chooseOpenCodeModel('opencode/removed-model', models), DEFAULT_OPENCODE_MODEL);
+  assert.equal(chooseOpenCodeModel('opencode/removed-model', [{ id: 'opencode/nemotron-3-ultra-free' }]), 'opencode/nemotron-3-ultra-free');
+  assert.throws(() => chooseOpenCodeModel('opencode/removed-model', []), /no active zero-cost/);
+});
+
+test('OpenCode status uses CLI credential presence and reports free fallback without exposing a key', async () => {
+  const previous = process.env.AKI_OPENCODE_MODEL;
+  process.env.AKI_OPENCODE_MODEL = 'opencode/removed-free';
+  const runner = async (args) => {
+    if (args[0] === 'auth') return 'OpenCode Zen api\nGitHub Copilot oauth';
+    return `opencode/muse-spark-1.3-contributor-free\n{\n  "id": "muse-spark-1.3-contributor-free",\n  "providerID": "opencode",\n  "name": "Muse Spark 1.3 Free",\n  "status": "active",\n  "cost": { "input": 0, "output": 0, "cache": { "read": 0, "write": 0 } },\n  "capabilities": { "toolcall": true },\n  "release_date": "2026-09-02",\n  "limit": { "context": 1048576, "output": 131072 }\n}`;
+  };
+  try {
+    const status = await getOpenCodeStatus({ runner });
+    assert.equal(status.configured, true);
+    assert.equal(status.selectedModel, 'opencode/removed-free');
+    assert.equal(status.effectiveModel, DEFAULT_OPENCODE_MODEL);
+    assert.equal(status.fallback, true);
+    assert.equal(status.freeModels.length, 1);
+    assert.equal('apiKey' in status, false);
+  } finally {
+    if (previous === undefined) delete process.env.AKI_OPENCODE_MODEL; else process.env.AKI_OPENCODE_MODEL = previous;
+  }
 });

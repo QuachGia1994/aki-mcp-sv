@@ -15,6 +15,7 @@ import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
 import { readXKiroConfig, writeXKiroConfig, getXKiroUsage } from './xkiro-mcp.js';
+import { readOpenCodeConfig, getOpenCodeStatus, saveOpenCodeModel, runOpenCodeRead } from './opencode-mcp.js';
 
 const IS_WIN = process.platform === 'win32';
 const REPO_ROOT = process.cwd();
@@ -218,6 +219,7 @@ export const ROUTES = {
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
     ingressConfig: readIngressConfig(),
     xkiro: (() => { const c = readXKiroConfig(); return { configured: c.configured, model: c.model, source: c.source }; })(),
+    opencode: readOpenCodeConfig(),
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
   // Same function local__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
@@ -225,6 +227,15 @@ export const ROUTES = {
   'GET /api/xkiro-status': async () => getXKiroUsage(),
   'POST /api/xkiro-config': async (body) => ({ ok: true, message: 'saved xKiro worker config', ...writeXKiroConfig({ apiKey: body.apiKey, model: body.model }) }),
   'POST /api/xkiro-clear': async () => ({ ok: true, message: 'cleared stored xKiro key', ...writeXKiroConfig({ clear: true }) }),
+  'GET /api/opencode-status': async () => getOpenCodeStatus(),
+  'POST /api/opencode-refresh': async () => getOpenCodeStatus({ refresh: true }),
+  'POST /api/opencode-config': async (body) => ({ ok: true, message: 'saved OpenCode Zen free model', ...(await saveOpenCodeModel(body.model)) }),
+  'POST /api/opencode-test': async () => {
+    const result = await runOpenCodeRead({ prompt: 'Read package.json and return exactly NAME=<name> VERSION=<version>.', cwd: REPO_ROOT });
+    const text = result?.content?.map((part) => part?.text || '').join('\n').trim() || '';
+    if (result?.isError) throw new Error(text || 'OpenCode worker test failed');
+    return { ok: true, message: text };
+  },
   // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".

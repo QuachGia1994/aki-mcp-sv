@@ -25,6 +25,7 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__agent_read'), true);
     assert.equal(names.has('local__repo_snapshot'), true);
     assert.equal(names.has('local__opencode_read'), true);
+    assert.equal(names.has('local__opencode_status'), true);
     const instructions = client.getInstructions();
     assert.match(instructions, /Gemini Spark confirms every MCP tools\/call client-side/);
     assert.match(instructions, /call local__repo_snapshot exactly once/);
@@ -61,6 +62,7 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('filesystem__read_text_file')?.annotations, localRead);
     assert.deepEqual(tools.get('local__agent_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_read')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__opencode_status')?.annotations, remoteRead);
 
     assert.deepEqual(tools.get('local__write_file')?.annotations, {
       readOnlyHint: false,
