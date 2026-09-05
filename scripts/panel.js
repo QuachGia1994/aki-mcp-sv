@@ -28,6 +28,7 @@ const RULES_DIR = path.join(os.homedir(), '.aki', 'akidevrule');
 const SOURCE_REPO_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
+const PANEL_BODY_MAX_BYTES = 1024 * 1024;
 
 function writeJsonAtomic(file, data) {
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
@@ -313,9 +314,9 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
     if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
 
     try {
-      json(res, 200, await handler(JSON.parse((await readBody(req)) || '{}'), { updateInfo }));
+      json(res, 200, await handler(JSON.parse((await readBody(req, PANEL_BODY_MAX_BYTES)) || '{}'), { updateInfo }));
     } catch (e) {
-      json(res, 400, { error: e.message });
+      json(res, e?.code === 'BODY_TOO_LARGE' ? 413 : 400, { error: e.message });
     }
   });
 

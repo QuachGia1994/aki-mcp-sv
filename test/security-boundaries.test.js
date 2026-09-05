@@ -7,7 +7,7 @@ import path from 'node:path';
 import { readBody } from '../scripts/http.js';
 import { dcrRateLimitAvailable, dcrRegistrationAvailable, handleRegister, isAllowedRedirect, pruneUnusedDcrClients, shouldRotateRefresh, rotateRefreshGrant } from '../scripts/oauth.js';
 import { DEFAULT_ALLOWLIST, parseSettingsText } from '../scripts/allowlist.js';
-import { pathIdentity, resolveRealUnderRootSync } from '../scripts/roots.js';
+import { containedIn, pathIdentity, resolveRealUnderRoot, resolveRealUnderRootSync } from '../scripts/roots.js';
 import { resolveExecFileTarget, trustedInterpreterScriptArg, validateAllowedCommandArgs } from '../scripts/shell-mcp.js';
 
 test('readBody rejects declared and streamed bodies above the configured cap', async () => {
@@ -59,6 +59,12 @@ test('path identity lowercases only on Windows-like filesystems', () => {
   assert.equal(pathIdentity(mixed, { platform: 'win32' }), mixed.toLowerCase());
 });
 
+test('filesystem-root containment accepts descendants without duplicating the root separator', () => {
+  const filesystemRoot = path.parse(process.execPath).root;
+  assert.equal(containedIn(process.execPath, filesystemRoot), true);
+  assert.doesNotThrow(() => resolveRealUnderRootSync(process.execPath, { roots: [filesystemRoot] }));
+});
+
 test('real-root resolver rejects a symlink or junction whose target leaves the allowed root', () => {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'aki-root-boundary-'));
   const root = path.join(temp, 'root');
@@ -70,6 +76,24 @@ test('real-root resolver rejects a symlink or junction whose target leaves the a
     symlinkSync(outside, escape, process.platform === 'win32' ? 'junction' : 'dir');
     assert.equal(pathIdentity(resolveRealUnderRootSync(root, { roots: [root] })), pathIdentity(root));
     assert.throws(() => resolveRealUnderRootSync(escape, { roots: [root] }), /escapes the allowed roots/);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('async real-root resolver canonicalizes an allowed symlink or junction root', async () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'aki-async-root-'));
+  const realRoot = path.join(temp, 'real-root');
+  const linkedRoot = path.join(temp, 'linked-root');
+  const file = path.join(realRoot, 'file.txt');
+  mkdirSync(realRoot);
+  try {
+    symlinkSync(realRoot, linkedRoot, process.platform === 'win32' ? 'junction' : 'dir');
+    await import('node:fs/promises').then(({ writeFile }) => writeFile(file, 'ok'));
+    const resolved = await resolveRealUnderRoot(path.join(linkedRoot, 'file.txt'), { roots: [linkedRoot] });
+    assert.equal(pathIdentity(resolved), pathIdentity(file));
+    const newFile = path.join(linkedRoot, 'new.txt');
+    assert.equal(pathIdentity(await resolveRealUnderRoot(newFile, { roots: [linkedRoot] })), pathIdentity(newFile));
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }

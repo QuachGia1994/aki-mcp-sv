@@ -29,13 +29,17 @@ export function pathIdentity(value, { platform = process.platform } = {}) {
 }
 
 export function containedIn(abs, root) {
-  // Windows paths are case-insensitive; drive letter casing from different APIs must not bypass the boundary.
+  const resolvedAbs = path.resolve(abs);
+  const resolvedRoot = path.resolve(root);
+  // Filesystem roots already end in a separator (`C:\\`, `/`); never append a second one or every child becomes a false negative.
   if (process.platform === 'win32') {
-    const a = abs.toLowerCase();
-    const r = root.toLowerCase();
-    return a === r || a.startsWith(r + path.sep.toLowerCase());
+    const a = resolvedAbs.toLowerCase();
+    const r = resolvedRoot.toLowerCase();
+    const prefix = r.endsWith(path.sep) ? r : r + path.sep;
+    return a === r || a.startsWith(prefix);
   }
-  return abs === root || abs.startsWith(root + path.sep);
+  const prefix = resolvedRoot.endsWith(path.sep) ? resolvedRoot : resolvedRoot + path.sep;
+  return resolvedAbs === resolvedRoot || resolvedAbs.startsWith(prefix);
 }
 
 // Either direction of containment counts as overlap: a trusted exec dir inside a writable root (or vice versa) is the write+exec = RCE composition the trusted-dir preallow must refuse.
@@ -59,6 +63,12 @@ function realRootsSync(roots) {
   });
 }
 
+async function realRoots(roots) {
+  return Promise.all(roots.map(async (root) => {
+    try { return await realpath(root); } catch { return path.resolve(root); }
+  }));
+}
+
 export function resolveRealUnderRootSync(target, { roots = getRoots() } = {}) {
   const abs = resolveUnderRoots(target, roots);
   let real;
@@ -73,11 +83,12 @@ export function resolveRealUnderRootSync(target, { roots = getRoots() } = {}) {
 }
 
 // Symlink-safe variant for filesystem-mcp.js's read/write/edit tools: resolveUnderRoot only checks the requested path's string prefix, which a symlink can defeat (a link *inside* a root pointing *outside* it). Ported from @modelcontextprotocol/server-filesystem's validatePath() — realpath the target and re-check containment on the resolved path, not the requested one. A target that doesn't exist yet (new file) falls back to validating its parent directory's real path instead, so file creation still works.
-export async function resolveRealUnderRoot(target) {
-  const abs = resolveUnderRoot(target);
+export async function resolveRealUnderRoot(target, { roots = getRoots() } = {}) {
+  const abs = resolveUnderRoots(target, roots);
+  const canonicalRoots = await realRoots(roots);
   try {
     const real = await realpath(abs);
-    if (!getRoots().some((root) => containedIn(real, root))) {
+    if (!canonicalRoots.some((root) => containedIn(real, root))) {
       throw new Error(`symlink target escapes the allowed roots: ${real}`);
     }
     return real;
@@ -90,7 +101,7 @@ export async function resolveRealUnderRoot(target) {
     } catch {
       throw new Error(`parent directory does not exist: ${parent}`);
     }
-    if (!getRoots().some((root) => containedIn(realParent, root))) {
+    if (!canonicalRoots.some((root) => containedIn(realParent, root))) {
       throw new Error(`parent directory escapes the allowed roots: ${realParent}`);
     }
     return abs;
