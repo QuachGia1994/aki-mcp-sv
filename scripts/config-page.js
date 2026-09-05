@@ -292,6 +292,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
   <label><input type="checkbox" id="sharedLivePlan" checked disabled> One shared live plan across all AI agents; report completion back into the same file 🔒 custom</label>
   <label><input type="checkbox" id="realRepoOnly" checked disabled> Work directly in the user-specified real repo; no sandbox/virtual-copy edits 🔒 custom</label>
   <label><input type="checkbox" id="triggerBuildOnly" checked disabled> Build/CI: trigger only; do not wait or monitor unless asked 🔒 custom</label>
+  <label><input type="checkbox" id="nativeVisualTools" checked disabled> Native Browser/ImageGen: auto-use host web + image tools when the task needs them 🔒 custom</label>
 </div>
 ${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste these Instructions into the custom-instructions setting of each AI (Claude / Grok / ChatGPT / Gemini).</div>` : ''}
 <div class="checks" id="ruleChecks"></div>

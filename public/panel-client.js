@@ -85,14 +85,15 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  lines.push('Before plan: research relevant GitHub repo/upstream; use repo/docs/issues/releases evidence.');
-  lines.push('Mutate/multi-step: scope; ONE shared plan. Given plan path=>use it; else ~/.aki/mcpsv/task/<id>/plan.md. Read on handoff/resume; update checklist/decisions/evidence; done=>write outcome for next AI. Reply path on create. Q&A: no plan.');
-  lines.push('Real repo only via Aki MCP: use user-specified path; no sandbox/virtual/temp copies unless asked. Read back writes.');
+  lines.push('Before plan: research GitHub repo/upstream; cite repo/docs/issues/releases.');
+  lines.push('Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.');
+  lines.push('Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.');
   lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
   lines.push('Broad repo analysis: repo_snapshot once; granular reads only fallback.');
-  lines.push('Build/CI: trigger only; no wait/poll/monitor unless asked. User monitors; reported failure=>inspect/fix/retrigger.');
+  lines.push('Aki skills ' + REPO_ROOT + '/skills: web/live=>browser; concept/art/image/edit=>imagegen. Read SKILL.md; use host-native tools.');
+  lines.push("Build/CI: trigger only; don't poll unless asked; failure=>inspect/fix/retrigger.");
   lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
-  lines.push('Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions to each AI.');
+  lines.push('Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions.');
   const value = lines.join('\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;

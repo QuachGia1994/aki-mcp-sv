@@ -22,6 +22,7 @@ export const LAUNCHERS = {
 // App payload files (platform-neutral while NATIVE_FILE_EXTS finds nothing, see payload.js). public/* is curated to what http.js serves at runtime, not the whole dir (CHANGELOG 1.9.1).
 export const APP_ENTRIES = [
   'scripts',
+  'skills',
   'cloudflare',
   'public/panel.css',
   'public/panel-client.js',

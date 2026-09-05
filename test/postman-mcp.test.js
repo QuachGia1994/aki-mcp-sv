@@ -2,8 +2,14 @@
 import assert from 'node:assert/strict';
 import { mock } from 'node:test';
 import cp from 'node:child_process';
+import daemonPid from '../scripts/aki-pmcontrol/scripts/daemon-pid.js';
 import { register, getDaemonStatus } from '../scripts/postman-mcp.js';
 import { ROUTES } from '../scripts/panel.js';
+
+// Isolate the unit test from a real user-launched Postman daemon. Production status intentionally
+// reads ~/.aki/cdp-postman/daemon.pid, but a live daemon outside the test process must not change
+// whether importing/registering this module is classified as spawning/assuming one.
+mock.method(daemonPid, 'read', () => null);
 
 // Read-only by default: importing/registering the tool must never spawn or assume a daemon.
 let handler;

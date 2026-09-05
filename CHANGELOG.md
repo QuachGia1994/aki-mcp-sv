@@ -4,6 +4,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- **Native Browser and ImageGen routing skills.** `skills/browser/SKILL.md` routes live/current web audits and visual comparisons to the connected AI host's native browser/web capability, while `skills/imagegen/SKILL.md` routes concept art, artwork, mockups, image generation, and image editing to the host's native image-generation capability. Live-site-to-concept work is explicitly browser-first, then ImageGen.
+
+### Changed
+- **Prompt Instructions now load Browser/ImageGen skills automatically when needed.** Panel section 3 adds a locked Native Browser/ImageGen workflow rule, ships `skills/` in standalone payloads, and keeps the generated prompt below ChatGPT's 1500-character cap by compacting existing workflow wording without dropping its repo/plan/build constraints.
+
+### Fixed
+- **Panel source updates now refresh npm dependencies when package metadata changes.** `Pull & restart` compares pre/post-pull commits and runs `npm ci` (or `npm install` without a lockfile) when `package.json` or `package-lock.json` changed, preventing the Postman control daemon from crashing with `MODULE_NOT_FOUND` after updating from an older checkout.
+
 ## [1.14.0] - 2026-09-05
 
 ### Added
@@ -22,7 +31,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Upstream 1.12 worker changes reconciled without weakening fork defaults.** The fork already used the `agy_run` contract and intentionally keeps `gemini-3.7-flash-high` plus its Windows executable/permission hardening instead of taking upstream's lower default tier.
 
 ### Fixed
-- **Panel source updates now refresh npm dependencies when package metadata changes.** `Pull & restart` compares pre/post-pull commits and runs `npm ci` (or `npm install` without a lockfile) when `package.json` or `package-lock.json` changed, preventing the Postman control daemon from crashing with `MODULE_NOT_FOUND` after updating from an older checkout.
 - **ChatGPT connector setup restores the required Developer mode step.** Panel, README, and connector reference now point to Settings → Security and login before creating a custom MCP connector; Advanced OAuth and Registration URL remain unnecessary because DCR metadata is still auto-discovered.
 - **Fork OpenCode read arm no longer opens Windows Terminal when starting its local serve process.** On Windows, the fork-specific `opencode_read` launcher now routes `opencode serve --pure --hostname 127.0.0.1 --port 4097` through a hidden `wscript.exe` seam while preserving the same detached/local-only/read-only contract; macOS/Linux keep direct `spawn()`. A regression test locks the exact Windows launch spec, and the hidden launcher is included automatically because standalone payloads already package the full `scripts/` tree.
 - **Postman v12 stateless MCP 2025-06-18 now works without external sessions.** Aki no longer forces `Mcp-Session-Id` when a client initializes with `2025-06-18`; subsequent requests carrying `MCP-Protocol-Version: 2025-06-18` can run statelessly through the same shared in-process tool policy. Older `2025-03-26` clients keep the existing sessionful path, while the separate `2026-07-28` stateless compatibility path remains available.

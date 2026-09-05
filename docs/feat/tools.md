@@ -16,6 +16,12 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
 | `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is the private lab `aiobox/labs/aki-pmcontrol`; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
 
+## Native host skills — browser and ImageGen
+
+`skills/browser/SKILL.md` and `skills/imagegen/SKILL.md` are routing skills, not MCP tools. The panel's default Instructions tell every connected AI to load them when the task needs live web evidence or visual generation/editing. Browser work prefers the current host's native web/browser capability; ImageGen work prefers the current host's native image-generation/editing capability. Aki MCP remains responsible for local repo/files/shell context, so these skills compose host-native capabilities with Aki rather than pretending Aki exposes another provider's browser or image engine.
+
+For a live-site-to-concept workflow, the order is fixed: inspect the live/current target with the browser skill, read the local implementation through Aki MCP, then use the ImageGen skill for the requested concept/artwork. If a host lacks the needed native capability, the skill reports the limitation instead of inventing a tool or substituting unrelated web images. The `skills/` directory is included in standalone payloads so the same routing works from source and packaged installs.
+
 On Windows, both arms resolve their native per-user executables instead of relying only on the parent process PATH. `agy` plan mode also auto-approves CLI confirmation prompts because `--mode plan` remains the read-only enforcement boundary; non-plan modes do not receive that bypass. Kiro CLI 2.x is natively supported on Windows and the standard MSI installs per-user under `%LOCALAPPDATA%\\Kiro-Cli`.
 
 ## Web transports without custom MCP

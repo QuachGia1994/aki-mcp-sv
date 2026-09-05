@@ -88,6 +88,8 @@ Beyond `$MCP_DATA_DIR`, the filesystem tools are also granted `~/.aki` (where ak
 
 `npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
+The generated section-3 Instructions also route two **host-native skills** automatically: `skills/browser/SKILL.md` for live/current web audits and visual comparisons, and `skills/imagegen/SKILL.md` for concept art, artwork, mockups, image generation, and image editing. They tell the connected AI to use its own native browser/web or image-generation capability when available; Aki MCP still supplies the local repo/files/shell context. For a live-site-to-concept task, browser evidence comes first, then ImageGen. These skills do not proxy another provider's image engine through MCP and require no separate ImageGen API key.
+
 ## Connecting from Claude web
 
 1. Go to **claude.ai → Settings → Connectors → Add custom connector**
@@ -220,6 +222,7 @@ OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Clien
 ```
 aki-mcp-sv/
 ├── package.json
+├── skills/                       # host-native routing skills: browser + imagegen
 ├── cloudflare/
 │   └── qwen-bridge-worker/      # narrow HTTPS ingress: Qwen Coder/Kimi -> Worker -> D1 mailbox
 ├── scripts/
