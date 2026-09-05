@@ -330,20 +330,36 @@ function renderXKiroState(state) {
   const dot = document.getElementById('xkiroDot');
   dot.textContent = configured ? '✓' : '✕';
   dot.className = 'dot ' + (configured ? 'ok' : 'err');
-  if (state?.model) document.getElementById('xkiroModel').value = state.model;
+  const select = document.getElementById('xkiroModel');
+  const models = Array.isArray(state?.freeModels) ? state.freeModels : [];
+  if (models.length) {
+    select.innerHTML = '';
+    for (const model of models) {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.name + ' · ' + model.id;
+      select.append(option);
+    }
+  }
+  const selected = state?.selectedModel || state?.model || state?.effectiveModel;
+  if (selected && [...select.options].some((option) => option.value === selected)) select.value = selected;
+  else if (state?.effectiveModel && [...select.options].some((option) => option.value === state.effectiveModel)) select.value = state.effectiveModel;
   if (!configured) say('msgXKiro', 'not configured — paste an API key and Save', false);
 }
 
-async function checkXKiroQuota() {
-  const s = await api('GET', '/api/xkiro-status');
+async function checkXKiroQuota(refresh = false) {
+  const s = await api(refresh ? 'POST' : 'GET', refresh ? '/api/xkiro-refresh' : '/api/xkiro-status');
   renderXKiroState(s);
-  if (!s.configured) return 'not configured';
+  if (s.catalogError && !s.freeModels?.length) throw new Error(s.catalogError);
+  if (!s.configured) return 'not configured · ' + (s.freeModels?.length || 0) + ' free models available';
   if (s.error) throw new Error(s.error);
   const free = s.usage?.free_tokens;
+  const model = s.effectiveModel || s.model;
+  const fallback = s.fallback ? ' · fallback from ' + s.selectedModel : '';
   if (free && free.remaining !== null && free.remaining !== undefined) {
-    return 'ready · ' + s.model + ' · free tokens ' + free.remaining.toLocaleString() + ' / ' + free.limit_per_day.toLocaleString();
+    return 'ready · ' + model + fallback + ' · ' + s.freeModels.length + ' free models · free tokens ' + free.remaining.toLocaleString() + ' / ' + free.limit_per_day.toLocaleString();
   }
-  return 'ready · ' + s.model;
+  return 'ready · ' + model + fallback + ' · ' + s.freeModels.length + ' free models';
 }
 
 function renderOpenCodeState(state) {
@@ -394,12 +410,14 @@ const ACTIONS = {
   newWindowPostman: (btn) => act(btn, 'msgPmDaemon', async () => (await api('POST', '/api/postman-new-window')).message),
   saveXKiro: (btn) => act(btn, 'msgXKiro', async () => {
     const apiKey = document.getElementById('xkiroKey').value.trim();
-    const model = document.getElementById('xkiroModel').value.trim();
+    const model = document.getElementById('xkiroModel').value;
     const s = await api('POST', '/api/xkiro-config', { apiKey, model });
     document.getElementById('xkiroKey').value = '';
-    renderXKiroState(s);
-    return s.message + ' · ' + s.model;
+    const status = await api('GET', '/api/xkiro-status');
+    renderXKiroState(status);
+    return s.message + ' · ' + status.effectiveModel;
   }),
+  refreshXKiro: (btn) => act(btn, 'msgXKiro', () => checkXKiroQuota(true)),
   checkXKiro: (btn) => act(btn, 'msgXKiro', checkXKiroQuota),
   clearXKiro: (btn) => act(btn, 'msgXKiro', async () => {
     const s = await api('POST', '/api/xkiro-clear');
@@ -530,4 +548,5 @@ renderSavedIngress(SAVED_INGRESS);
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });
+checkXKiroQuota().then((m) => say('msgXKiro', m, m.startsWith('ready'))).catch((e) => say('msgXKiro', e.message, false));
 checkOpenCodeStatus().then((m) => say('msgOpenCode', m, m.startsWith('ready'))).catch((e) => say('msgOpenCode', e.message, false));

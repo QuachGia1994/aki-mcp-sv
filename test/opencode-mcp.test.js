@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { buildOpenCodePromptBody, buildOpenCodeServerLaunch, chooseOpenCodeModel, DEFAULT_OPENCODE_MODEL, extractOpenCodeText, getOpenCodeStatus, isFreeOpenCodeModel, parseOpenCodeVerboseModels, resolveOpenCodeExecutable } from '../scripts/opencode-mcp.js';
 
 test('OpenCode prompt body is locked to the read-only agent and selected Zen model', () => {
@@ -51,6 +52,14 @@ test('OpenCode model choice stays on selected free model and falls back only wit
   assert.equal(chooseOpenCodeModel('opencode/removed-model', models), DEFAULT_OPENCODE_MODEL);
   assert.equal(chooseOpenCodeModel('opencode/removed-model', [{ id: 'opencode/nemotron-3-ultra-free' }]), 'opencode/nemotron-3-ultra-free');
   assert.throws(() => chooseOpenCodeModel('opencode/removed-model', []), /no active zero-cost/);
+});
+
+test('OpenCode tab uses the bundled official brand SVG with shared provider styling', () => {
+  const panelSource = fs.readFileSync(new URL('../scripts/config-page.js', import.meta.url), 'utf8');
+  const icon = fs.readFileSync(new URL('../public/img/providers/opencode.svg', import.meta.url), 'utf8');
+  assert.match(panelSource, /data-tab="opencode"><img src="\/img\/providers\/opencode\.svg" class="provider-icon" alt="">OpenCode<\/button>/);
+  assert.match(icon, /<svg[^>]+viewBox="0 0 24 24"/);
+  assert.match(icon, /linearGradient/);
 });
 
 test('OpenCode status uses CLI credential presence and reports free fallback without exposing a key', async () => {

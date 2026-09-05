@@ -192,7 +192,7 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
   <button class="tab" data-tab="xkiro"><img src="/img/providers/xkiro.ico" class="provider-icon" alt="">xKiro</button>
-  <button class="tab" data-tab="opencode">OpenCode</button>
+  <button class="tab" data-tab="opencode"><img src="/img/providers/opencode.svg" class="provider-icon" alt="">OpenCode</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -271,9 +271,10 @@ ${field('Passphrase', passphrase)}
   <p class="helptext">Uses xKiro's OpenAI-compatible API as a read-only Aki worker. <span class="mono">local__agent_read</span> prefers xKiro first when configured, then falls back to agy → Kiro → OpenCode. The xKiro model receives only scoped Aki read tools — no write or shell capability.</p>
   <p class="helptext">Free plan currently advertises 5M free-model tokens/day. The API key is stored only in <span class="mono">~/.aki/mcpsv/xkiro.json</span> (or use <span class="mono">XKIRO_API_KEY</span>); the panel never renders the saved key back.</p>
   <div class="row"><label>API key</label><input type="password" id="xkiroKey" autocomplete="off" placeholder="sk-xt-… (leave blank to keep saved key)"></div>
-  <div class="row"><label>Free model</label><input type="text" id="xkiroModel" value="minimax/minimax-m3:free"></div>
+  <div class="row"><label>Free model</label><select id="xkiroModel"><option value="minimax/minimax-m3:free">MiniMax M3</option></select></div>
   <div class="acts">
     <button class="primary" data-act="saveXKiro">Save</button>
+    <button data-act="refreshXKiro">Refresh models</button>
     <button data-act="checkXKiro">Check quota</button>
     <button data-act="clearXKiro">Clear key</button>
     <span class="dot" id="xkiroDot">…</span><span class="msg" id="msgXKiro"></span>

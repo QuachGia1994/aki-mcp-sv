@@ -14,7 +14,7 @@ import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, re
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
-import { readXKiroConfig, writeXKiroConfig, getXKiroUsage } from './xkiro-mcp.js';
+import { readXKiroConfig, writeXKiroConfig, getXKiroUsage, ensureFreeXKiroModel } from './xkiro-mcp.js';
 import { readOpenCodeConfig, getOpenCodeStatus, saveOpenCodeModel, runOpenCodeRead } from './opencode-mcp.js';
 
 const IS_WIN = process.platform === 'win32';
@@ -225,7 +225,11 @@ export const ROUTES = {
   // Same function local__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
   'GET /api/postman-status': async () => getDaemonStatus(),
   'GET /api/xkiro-status': async () => getXKiroUsage(),
-  'POST /api/xkiro-config': async (body) => ({ ok: true, message: 'saved xKiro worker config', ...writeXKiroConfig({ apiKey: body.apiKey, model: body.model }) }),
+  'POST /api/xkiro-refresh': async () => getXKiroUsage(),
+  'POST /api/xkiro-config': async (body) => {
+    await ensureFreeXKiroModel(body.model);
+    return { ok: true, message: 'saved xKiro worker config', ...writeXKiroConfig({ apiKey: body.apiKey, model: body.model }) };
+  },
   'POST /api/xkiro-clear': async () => ({ ok: true, message: 'cleared stored xKiro key', ...writeXKiroConfig({ clear: true }) }),
   'GET /api/opencode-status': async () => getOpenCodeStatus(),
   'POST /api/opencode-refresh': async () => getOpenCodeStatus({ refresh: true }),

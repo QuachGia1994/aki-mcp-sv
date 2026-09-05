@@ -88,14 +88,51 @@ async function requestJson(url, { method = 'GET', apiKey, body, fetchImpl = fetc
   }
 }
 
+function xKiroModelSummary(entry) {
+  return {
+    id: entry.id,
+    name: entry.display_name || entry.id,
+    provider: entry.owned_by || '',
+    context: entry.context_length || null,
+    output: entry.max_output_tokens || null,
+    reasoning: entry.capabilities?.reasoning === true,
+    vision: entry.capabilities?.vision === true,
+  };
+}
+
+export async function listFreeXKiroModels({ fetchImpl = fetch } = {}) {
+  const catalog = await requestJson(`${XKIRO_API_BASE}/models`, { fetchImpl, timeoutMs: 20_000 });
+  return (Array.isArray(catalog?.data) ? catalog.data : [])
+    .filter((entry) => entry?.access_tier === 'free' && entry?.capabilities?.tools === true)
+    .map(xKiroModelSummary)
+    .sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
+}
+
+export function chooseXKiroModel(requested, models) {
+  const wanted = String(requested || DEFAULT_XKIRO_MODEL).trim() || DEFAULT_XKIRO_MODEL;
+  if (models.some((entry) => entry.id === wanted)) return wanted;
+  if (models.some((entry) => entry.id === DEFAULT_XKIRO_MODEL)) return DEFAULT_XKIRO_MODEL;
+  if (models[0]?.id) return models[0].id;
+  throw new Error('xKiro has no free tool-calling model in the current catalog');
+}
+
 export async function getXKiroUsage({ fetchImpl = fetch } = {}) {
   const config = readXKiroConfig();
-  if (!config.configured) return { configured: false, model: config.model, source: config.source };
+  let freeModels = [];
+  let catalogError = '';
+  try {
+    freeModels = await listFreeXKiroModels({ fetchImpl });
+  } catch (e) {
+    catalogError = e.message;
+  }
+  const effectiveModel = freeModels.length ? chooseXKiroModel(config.model, freeModels) : config.model;
+  const base = { configured: config.configured, model: config.model, selectedModel: config.model, effectiveModel, fallback: effectiveModel !== config.model, source: config.source, freeModels };
+  if (!config.configured) return { ...base, ...(catalogError ? { catalogError } : {}) };
   try {
     const usage = await requestJson(`${XKIRO_API_BASE}/usage`, { apiKey: config.apiKey, fetchImpl, timeoutMs: 20_000 });
-    return { configured: true, model: config.model, source: config.source, usage };
+    return { ...base, usage, ...(catalogError ? { catalogError } : {}) };
   } catch (e) {
-    return { configured: true, model: config.model, source: config.source, error: e.message };
+    return { ...base, error: e.message, ...(catalogError ? { catalogError } : {}) };
   }
 }
 
@@ -104,6 +141,7 @@ export async function ensureFreeXKiroModel(model, { fetchImpl = fetch } = {}) {
   const entry = Array.isArray(catalog?.data) ? catalog.data.find((item) => item?.id === model) : null;
   if (!entry) throw new Error(`xKiro model not found in live catalog: ${model}`);
   if (entry.access_tier !== 'free') throw new Error(`xKiro model blocked by Aki free-only policy: ${model} has access_tier=${entry.access_tier ?? 'unknown'}`);
+  if (entry.capabilities?.tools !== true) throw new Error(`xKiro model blocked by Aki worker policy: ${model} does not support tool calling`);
   return entry;
 }
 
@@ -236,12 +274,13 @@ export async function runXKiroRead(
   if (!config.configured) return err(`xKiro is not configured — set XKIRO_API_KEY or save a key in ${XKIRO_CONFIG_PATH}`);
   if (prompt.length > MAX_PROMPT_CHARS) return err(`xKiro prompt too large (${prompt.length} chars > ${MAX_PROMPT_CHARS})`);
 
-  const selectedModel = model?.trim() || config.model;
+  const requestedModel = model?.trim() || config.model;
+  let selectedModel = requestedModel;
   const steps = Math.max(1, Math.min(Number(maxSteps) || DEFAULT_MAX_STEPS, 10));
   const outputCap = Math.max(64, Math.min(Number(maxTokens) || DEFAULT_MAX_TOKENS, 12000));
   let freeRemaining = null;
   try {
-    await ensureFreeXKiroModel(selectedModel, { fetchImpl });
+    selectedModel = chooseXKiroModel(requestedModel, await listFreeXKiroModels({ fetchImpl }));
     const usage = await requestJson(`${XKIRO_API_BASE}/usage`, { apiKey: config.apiKey, fetchImpl, timeoutMs: 20_000 });
     const remaining = usage?.free_tokens?.remaining;
     freeRemaining = remaining === null || remaining === undefined ? null : Number(remaining);
@@ -285,7 +324,7 @@ export async function runXKiroRead(
       const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
       if (!calls.length) {
         const text = typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? '');
-        return ok(`${text}\n\n[xKiro ${selectedModel} · ${totalTokens} tokens · ${toolCalls} tool calls]`);
+        return ok(`${text}\n\n[xKiro ${selectedModel}${selectedModel !== requestedModel ? ` · fallback from ${requestedModel}` : ''} · ${totalTokens} tokens · ${toolCalls} tool calls]`);
       }
 
       for (const call of calls) {
