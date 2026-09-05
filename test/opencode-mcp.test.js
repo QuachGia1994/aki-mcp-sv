@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { buildOpenCodePromptBody, buildOpenCodeServerLaunch, chooseOpenCodeModel, DEFAULT_OPENCODE_MODEL, extractOpenCodeText, getOpenCodeStatus, isFreeOpenCodeModel, parseOpenCodeVerboseModels, resolveOpenCodeExecutable } from '../scripts/opencode-mcp.js';
+import { buildOpenCodeExecPrompt, buildOpenCodePromptBody, buildOpenCodeServerLaunch, chooseOpenCodeModel, DEFAULT_OPENCODE_MODEL, extractOpenCodeText, getOpenCodeStatus, isFreeOpenCodeModel, parseOpenCodeVerboseModels, resolveOpenCodeExecutable, validateOpenCodeExecRequest } from '../scripts/opencode-mcp.js';
 
 test('OpenCode prompt body is locked to the read-only agent and selected Zen model', () => {
   assert.deepEqual(buildOpenCodePromptBody('inspect'), {
@@ -10,6 +10,35 @@ test('OpenCode prompt body is locked to the read-only agent and selected Zen mod
     parts: [{ type: 'text', text: 'inspect' }],
   });
   assert.deepEqual(buildOpenCodePromptBody('inspect', 'opencode/nemotron-3-ultra-free').model, { providerID: 'opencode', modelID: 'nemotron-3-ultra-free' });
+  assert.equal(buildOpenCodePromptBody('implement', DEFAULT_OPENCODE_MODEL, 'Aki-exec').agent, 'Aki-exec');
+});
+
+test('OpenCode exec gate is opt-in and keeps task instructions compact', () => {
+  assert.match(validateOpenCodeExecRequest({ prompt: 'implement', config: { execEnabled: false } }).error, /disabled/);
+  assert.match(validateOpenCodeExecRequest({ prompt: '   ', config: { execEnabled: true } }).error, /non-empty/);
+  assert.equal(validateOpenCodeExecRequest({ prompt: '  implement  ', config: { execEnabled: true } }).task, 'implement');
+  assert.match(validateOpenCodeExecRequest({ prompt: 'x'.repeat(20_001), config: { execEnabled: true } }).error, /too large/);
+});
+
+test('OpenCode exec prompt carries shared plan and pre-existing worktree state without granting plan-file access', () => {
+  const prompt = buildOpenCodeExecPrompt({ prompt: 'Implement stage 2', cwd: 'D:\\Repo', planText: '# Shared plan\n- stage 2', worktreeBefore: ' M src/a.js' });
+  assert.match(prompt, /Project root: D:\\Repo/);
+  assert.match(prompt, /\[WORKTREE_BEFORE\]\n M src\/a\.js/);
+  assert.match(prompt, /\[SHARED_PLAN\]\n# Shared plan/);
+  assert.match(prompt, /\[TASK\]\nImplement stage 2/);
+  assert.doesNotMatch(prompt, /planPath/);
+});
+
+test('Aki-exec agent allows project edits but denies shell, external directories, self-edit, web, and delegation', () => {
+  const agent = fs.readFileSync(new URL('../.opencode/agents/Aki-exec.md', import.meta.url), 'utf8');
+  assert.match(agent, /edit:\n    "\*": allow/);
+  assert.match(agent, /"\.opencode\/\*\*": deny/);
+  assert.match(agent, /external_directory: deny/);
+  assert.match(agent, /bash: deny/);
+  assert.match(agent, /webfetch: deny/);
+  assert.match(agent, /websearch: deny/);
+  assert.match(agent, /task: deny/);
+  assert.match(agent, /skill: deny/);
 });
 
 test('OpenCode response extraction returns only text parts', () => {
@@ -29,10 +58,15 @@ test('OpenCode executable supports explicit override and native Windows Bun path
 });
 
 test('Windows OpenCode server launch uses WScript hidden launcher without changing serve contract', () => {
-  const launch = buildOpenCodeServerLaunch({ executable: 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe', cwd: 'D:\\Repo', platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, launcherPath: 'D:\\Aki\\scripts\\run-hidden-command.vbs' });
+  const launch = buildOpenCodeServerLaunch({ executable: 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe', cwd: 'D:\\Repo', port: 4098, platform: 'win32', env: { SystemRoot: 'C:\\Windows', KEEP_ME: 'yes' }, launcherPath: 'D:\\Aki\\scripts\\run-hidden-command.vbs', configDir: 'D:\\Aki\\.opencode' });
   assert.equal(launch.command, 'C:\\Windows\\System32\\wscript.exe');
-  assert.deepEqual(launch.args, ['D:\\Aki\\scripts\\run-hidden-command.vbs', 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe', 'serve', '--pure', '--hostname', '127.0.0.1', '--port', '4097']);
-  assert.deepEqual(launch.options, { cwd: 'D:\\Repo', detached: true, stdio: 'ignore', windowsHide: true });
+  assert.deepEqual(launch.args, ['D:\\Aki\\scripts\\run-hidden-command.vbs', 'C:\\Users\\Tester\\.bun\\bin\\opencode.exe', 'serve', '--pure', '--hostname', '127.0.0.1', '--port', '4098']);
+  assert.equal(launch.options.cwd, 'D:\\Repo');
+  assert.equal(launch.options.detached, true);
+  assert.equal(launch.options.stdio, 'ignore');
+  assert.equal(launch.options.windowsHide, true);
+  assert.equal(launch.options.env.KEEP_ME, 'yes');
+  assert.equal(launch.options.env.OPENCODE_CONFIG_DIR, 'D:\\Aki\\.opencode');
 });
 
 test('OpenCode verbose catalog parser keeps metadata and free policy requires zero cost plus tool calling', () => {

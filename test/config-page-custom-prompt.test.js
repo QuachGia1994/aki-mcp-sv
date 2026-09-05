@@ -44,6 +44,8 @@ test('OpenCode panel reuses CLI auth and exposes only free-model controls', () =
   assert.match(html, /id="tab-opencode"/);
   assert.match(html, /opencode auth login/);
   assert.match(html, /id="opencodeModel"/);
+  assert.match(html, /id="opencodeExecEnabled"/);
+  assert.match(html, /local__opencode_exec/);
   assert.match(html, /data-act="refreshOpenCode"/);
   assert.match(html, /data-act="testOpenCode"/);
   assert.doesNotMatch(html, /id="opencodeKey"/);
@@ -74,8 +76,8 @@ test('generated workflow orders research before shared plan and encodes direct-r
   assert.match(client, /ONE shared plan at given path else/);
   assert.match(client, /checklist\/decisions\/evidence\/outcome current/);
   assert.match(client, /no sandbox\/temp copies unless asked/);
-  assert.match(client, /don't poll unless asked/);
-  assert.match(client, /Broad repo: repo_snapshot once; deep=>agent_read \(xKiro free first if set\); granular fallback/);
+  assert.match(client, /no poll unless asked/);
+  assert.match(client, /Flow: snapshot once; deep=>agent_read\(xKiro free\); implement=>opencode_exec; tests=>run_cmd; review risky only; escalate after 2 free failures\/high-risk/);
 });
 
 function promptForRuleSpec(ruleSpec) {
@@ -86,11 +88,11 @@ function promptForRuleSpec(ruleSpec) {
     'Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.',
     'Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.',
     'Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.',
-    'Broad repo: repo_snapshot once; deep=>agent_read (xKiro free first if set); granular fallback.',
-    'Aki skills D:\\LacViet\\aki-mcp-sv/skills: web/live=>browser; visual/edit=>imagegen; read SKILL.md; use native tools.',
-    "Build/CI: trigger only; don't poll unless asked; failure=>inspect/fix/retrigger.",
+    'Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; review risky only; escalate after 2 free failures/high-risk.',
+    'Skills D:\\LacViet\\aki-mcp-sv/skills: web=>browser; visual=>imagegen; read SKILL.md.',
+    'Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.',
     'First session: if ~/.aki/mcpsv/intro.json absent, read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md; write {"seen":true}.',
-    'Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions.',
+    'Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.',
   ].join('\n');
 }
 

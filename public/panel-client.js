@@ -89,11 +89,11 @@ function buildPrompt() {
   lines.push('Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.');
   lines.push('Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.');
   lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
-  lines.push('Broad repo: repo_snapshot once; deep=>agent_read (xKiro free first if set); granular fallback.');
+  lines.push('Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; review risky only; escalate after 2 free failures/high-risk.');
   lines.push('Aki skills ' + REPO_ROOT + '/skills: web/live=>browser; visual/edit=>imagegen; read SKILL.md; use native tools.');
-  lines.push("Build/CI: trigger only; don't poll unless asked; failure=>inspect/fix/retrigger.");
+  lines.push('Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.');
   lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
-  lines.push('Update: read ~/.aki/mcpsv/aki-mcp-status.json; mismatch/updateAvailable=>tell user update panel + re-paste Instructions.');
+  lines.push('Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.');
   const value = lines.join('\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
@@ -381,6 +381,7 @@ function renderOpenCodeState(state) {
   const selected = state?.selectedModel || state?.model || state?.effectiveModel;
   if (selected && [...select.options].some((option) => option.value === selected)) select.value = selected;
   else if (state?.effectiveModel && [...select.options].some((option) => option.value === state.effectiveModel)) select.value = state.effectiveModel;
+  document.getElementById('opencodeExecEnabled').checked = state?.execEnabled === true;
   if (!configured && state?.error) say('msgOpenCode', state.error, false);
   else if (!configured) say('msgOpenCode', 'OpenCode Zen not authenticated — run opencode auth login', false);
 }
@@ -391,7 +392,8 @@ async function checkOpenCodeStatus(refresh = false) {
   if (s.error) throw new Error(s.error);
   if (!s.configured) return 'not authenticated — run opencode auth login and choose OpenCode Zen';
   const fallback = s.fallback ? ' · fallback from ' + s.selectedModel : '';
-  return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models';
+  const exec = s.execEnabled ? ' · write worker ON' : ' · write worker off';
+  return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models' + exec;
 }
 
 const ACTIONS = {
@@ -427,10 +429,11 @@ const ACTIONS = {
   }),
   saveOpenCode: (btn) => act(btn, 'msgOpenCode', async () => {
     const model = document.getElementById('opencodeModel').value;
-    const s = await api('POST', '/api/opencode-config', { model });
+    const execEnabled = document.getElementById('opencodeExecEnabled').checked;
+    const s = await api('POST', '/api/opencode-config', { model, execEnabled });
     const status = await api('GET', '/api/opencode-status');
     renderOpenCodeState(status);
-    return s.message + ' · ' + s.model;
+    return s.message + ' · ' + s.model + (status.execEnabled ? ' · write worker ON' : ' · write worker off');
   }),
   refreshOpenCode: (btn) => act(btn, 'msgOpenCode', () => checkOpenCodeStatus(true)),
   testOpenCode: (btn) => act(btn, 'msgOpenCode', async () => (await api('POST', '/api/opencode-test')).message),

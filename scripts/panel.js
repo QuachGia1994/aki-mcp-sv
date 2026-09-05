@@ -233,7 +233,7 @@ export const ROUTES = {
   'POST /api/xkiro-clear': async () => ({ ok: true, message: 'cleared stored xKiro key', ...writeXKiroConfig({ clear: true }) }),
   'GET /api/opencode-status': async () => getOpenCodeStatus(),
   'POST /api/opencode-refresh': async () => getOpenCodeStatus({ refresh: true }),
-  'POST /api/opencode-config': async (body) => ({ ok: true, message: 'saved OpenCode Zen free model', ...(await saveOpenCodeModel(body.model)) }),
+  'POST /api/opencode-config': async (body) => ({ ok: true, message: 'saved OpenCode Zen free model and executor setting', ...(await saveOpenCodeModel(body.model, { execEnabled: body.execEnabled === true })) }),
   'POST /api/opencode-test': async () => {
     const result = await runOpenCodeRead({ prompt: 'Read package.json and return exactly NAME=<name> VERSION=<version>.', cwd: REPO_ROOT });
     const text = result?.content?.map((part) => part?.text || '').join('\n').trim() || '';

@@ -25,12 +25,15 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__agent_read'), true);
     assert.equal(names.has('local__repo_snapshot'), true);
     assert.equal(names.has('local__opencode_read'), true);
+    assert.equal(names.has('local__opencode_exec'), true);
     assert.equal(names.has('local__opencode_status'), true);
     const instructions = client.getInstructions();
     assert.match(instructions, /Gemini Spark confirms every MCP tools\/call client-side/);
     assert.match(instructions, /call local__repo_snapshot exactly once/);
     assert.match(instructions, /Use local__agent_read only for semantic\/cross-source retrieval after repo_snapshot is insufficient/);
     assert.match(instructions, /do not decompose broad analysis into list_allowed_directories\/find_path\/search_content\/read_text_file/);
+    assert.match(instructions, /prefer local__opencode_exec when its write-worker toggle is enabled/);
+    assert.match(instructions, /run verification separately with local__run_cmd/);
   } finally {
     await client.close();
     await server.close();
@@ -63,6 +66,12 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__agent_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_read')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__opencode_status')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__opencode_exec')?.annotations, {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    });
 
     assert.deepEqual(tools.get('local__write_file')?.annotations, {
       readOnlyHint: false,

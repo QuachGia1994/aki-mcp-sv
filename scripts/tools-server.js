@@ -19,7 +19,7 @@ const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
   'For broad local repo/codebase analysis, call local__repo_snapshot exactly once with the project path; it returns a bounded tree plus prioritized source/config/docs in one local read pass and is designed to finish within short client deadlines.',
   'Use local__agent_read only for semantic/cross-source retrieval after repo_snapshot is insufficient; do not decompose broad analysis into list_allowed_directories/find_path/search_content/read_text_file unless the one-call paths fail or the user requests granular reads.',
-  'For mutations use the normal write/shell tools; Spark may still require confirmation for each call.',
+  'For implementation, prefer local__opencode_exec when its write-worker toggle is enabled and the task has a settled scope/plan; run verification separately with local__run_cmd, then review only risky diffs or unresolved items. Fall back to normal write tools when the free executor is disabled/unavailable or the task is high-risk.',
 ].join(' ');
 
 const LOCAL_READ_ONLY_TOOLS = new Set([
@@ -46,6 +46,7 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   // default policy is read-only/plan-mode. A future wider allowlist must not inherit a false safety claim.
   ['run_cmd', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
+  ['opencode_exec', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
 ]);
 
 function annotationsForTool(name) {

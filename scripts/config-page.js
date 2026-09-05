@@ -282,10 +282,11 @@ ${field('Passphrase', passphrase)}
 </div>
 
 <div class="tabpane" id="tab-opencode">
-  <h3 class="subh">OpenCode Zen free read worker</h3>
+  <h3 class="subh">OpenCode Zen free workers</h3>
   <p class="helptext">Uses the OpenCode Zen credential already managed by the OpenCode CLI; Aki never copies or stores that API key. Authenticate once with ${copyEl('opencode auth login')} and choose <strong>OpenCode Zen</strong>.</p>
-  <p class="helptext">Only active zero-cost Zen models with tool calling are selectable. Aki stores only the chosen model in <span class="mono">~/.aki/mcpsv/opencode.json</span>; if that model disappears from the live catalog, the worker falls back only to another zero-cost Zen model.</p>
+  <p class="helptext">Only active zero-cost Zen models with tool calling are selectable. Aki stores only the chosen model and local executor toggle in <span class="mono">~/.aki/mcpsv/opencode.json</span>; if that model disappears from the live catalog, the worker falls back only to another zero-cost Zen model.</p>
   <div class="row"><label>Free model</label><select id="opencodeModel"><option value="opencode/muse-spark-1.3-contributor-free">Muse Spark 1.3 Free</option></select></div>
+  <label style="display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="opencodeExecEnabled"> <strong>Enable write worker</strong> — allows <span class="mono">local__opencode_exec</span> to edit only inside the selected project; shell, web, delegation, skills, and external-directory access stay denied.</label>
   <div class="acts">
     <button class="primary" data-act="saveOpenCode">Save model</button>
     <button data-act="refreshOpenCode">Refresh models</button>
