@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { DEFAULT_XKIRO_MODEL, runXKiroRead, executeXKiroReadTool, ensureFreeXKiroModel } from '../scripts/xkiro-mcp.js';
 import { buildDefaultAgentProviders } from '../scripts/agent-mcp.js';
 
@@ -76,3 +77,11 @@ test('agent_read prefers configured xKiro before local fallback workers', async 
   const providers = buildDefaultAgentProviders('inspect', process.cwd()).map(([name]) => name);
   assert.deepEqual(providers.slice(0, 4), ['xkiro', 'agy', 'kiro', 'opencode']);
 }));
+
+test('xKiro tab uses the bundled xKiro web favicon with shared provider styling', () => {
+  const panelSource = fs.readFileSync(new URL('../scripts/config-page.js', import.meta.url), 'utf8');
+  assert.match(panelSource, /data-tab="xkiro"><img src="\/img\/providers\/xkiro\.ico" class="provider-icon" alt="">xKiro<\/button>/);
+  const icon = fs.readFileSync(new URL('../public/img/providers/xkiro.ico', import.meta.url));
+  assert.ok(icon.length > 1000, 'xKiro favicon should be a real bundled asset');
+  assert.deepEqual([...icon.subarray(0, 4)], [0, 0, 1, 0], 'asset should have a valid ICO header');
+});

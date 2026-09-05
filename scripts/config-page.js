@@ -191,7 +191,7 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
-  <button class="tab" data-tab="xkiro">xKiro</button>
+  <button class="tab" data-tab="xkiro"><img src="/img/providers/xkiro.ico" class="provider-icon" alt="">xKiro</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
