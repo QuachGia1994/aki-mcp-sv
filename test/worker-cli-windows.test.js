@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAgyArgs, resolveAgyExecutable } from '../scripts/agy-mcp.js';
+import { AGY_JOB_PROCESS_TIMEOUT_MS, AGY_SYNC_PROCESS_TIMEOUT_MS, buildAgyArgs, register as registerAgy, resolveAgyExecutable } from '../scripts/agy-mcp.js';
 import { resolveOpenCodeExecutable } from '../scripts/opencode-mcp.js';
 import { classifyKiroOutput, resolveKiroExecutable, stripAnsi } from '../scripts/kiro-mcp.js';
 
@@ -15,7 +15,9 @@ test('agy plan mode auto-approves confirmations while remaining plan-mode read-o
   assert.equal(args[0], '--dangerously-skip-permissions');
   assert.deepEqual(args.slice(1, 5), ['--mode', 'plan', '--model', 'gemini-3.7-flash-high']);
   assert.equal(args.includes('--effort'), false, 'model already encodes the effort tier');
-  assert.deepEqual(args.slice(-2), ['-p', 'inspect']);
+  assert.deepEqual(args.slice(-4), ['--print-timeout', '85s', '-p', 'inspect']);
+  assert.equal(AGY_SYNC_PROCESS_TIMEOUT_MS, 100_000, 'synchronous agy must finish below the connector request deadline');
+  assert.equal(AGY_JOB_PROCESS_TIMEOUT_MS, 330_000, 'background agy jobs may outlive one MCP round-trip');
 });
 
 test('agy non-plan modes do not bypass permission confirmation', () => {
@@ -27,6 +29,22 @@ test('agy non-plan modes do not bypass permission confirmation', () => {
   });
   assert.equal(args.includes('--dangerously-skip-permissions'), false);
   assert.deepEqual(args.slice(0, 6), ['--mode', 'default', '--model', 'claude-sonnet-4-6', '--effort', 'low']);
+});
+
+test('agy background jobs can request the full five-minute print window without changing prompt position', () => {
+  const args = buildAgyArgs({
+    prompt: 'wide audit',
+    mode: 'plan',
+    model: 'gemini-3.7-flash-high',
+    printTimeout: '5m',
+  });
+  assert.deepEqual(args.slice(-4), ['--print-timeout', '5m', '-p', 'wide audit']);
+});
+
+test('agy registers short and background job tools together', () => {
+  const names = [];
+  registerAgy({ registerTool: (name) => names.push(name) });
+  assert.deepEqual(names, ['agy_run', 'agy_start', 'agy_status', 'agy_result']);
 });
 
 test('agy resolves the native Windows installation before PATH fallback', () => {
