@@ -88,7 +88,7 @@ Beyond `$MCP_DATA_DIR`, the filesystem tools are also granted `~/.aki` (where ak
 
 `npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
-The generated section-3 Instructions also route two **host-native skills** automatically: `skills/browser/SKILL.md` for live/current web audits and visual comparisons, and `skills/imagegen/SKILL.md` for concept art, artwork, mockups, image generation, and image editing. They tell the connected AI to use its own native browser/web or image-generation capability when available; Aki MCP still supplies the local repo/files/shell context. For a live-site-to-concept task, browser evidence comes first, then ImageGen. These skills do not proxy another provider's image engine through MCP and require no separate ImageGen API key.
+The generated section-3 Instructions route Aki's skill pack automatically: `skills/browser/SKILL.md` for live/current web evidence, `skills/imagegen/SKILL.md` for host-native visual generation/editing, `skills/ponytail/SKILL.md` for minimal/YAGNI coding, `skills/mobile-native/SKILL.md` for SwiftUI iOS 27+ system tabs plus Expo Router NativeTabs and Tauri v2 mobile/React boundaries, and `skills/strix/SKILL.md` for evidence-first GitHub repo security/risk audits with authorized Strix validation when available. Aki MCP still supplies local repo/files/shell context; the skills never fake a missing host capability, silently migrate a mobile stack, install scanners without need, or actively probe third-party infrastructure without authorization.
 
 ## Connecting from Claude web
 

@@ -85,15 +85,15 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  lines.push('Before plan: research GitHub repo/upstream; cite repo/docs/issues/releases.');
-  lines.push('Mutate/multi-step: ONE shared plan at given path else ~/.aki/mcpsv/task/<id>/plan.md; read on resume/handoff; keep checklist/decisions/evidence/outcome current; reply path on create. Q&A:no plan.');
-  lines.push('Real repo via Aki MCP only; use user path; no sandbox/temp copies unless asked; read back writes.');
-  lines.push('Files: find_path first; text=search_content; git/ls/grep=run_cmd cwd=real repo; no cd/-C.');
+  lines.push('Before plan: research GitHub/upstream; cite repo/docs/issues/releases.');
+  lines.push('Mutate/multi: ONE shared plan: given path else ~/.aki/mcpsv/task/<id>/plan.md; read resume/handoff; keep checklist/decisions/evidence/outcome; reply path when created. Q&A:no plan.');
+  lines.push('Repo via Aki MCP only; user path; no sandbox/temp copies unless asked; read back writes.');
+  lines.push('Files: find_path; text=search_content; git/ls/grep=run_cmd cwd=repo; no cd/-C.');
   if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
   else lines.push('Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
-  lines.push('Aki skills ' + REPO_ROOT + '/skills: web/live=>browser; visual/edit=>imagegen; read SKILL.md; use native tools.');
+  lines.push('Skills ' + REPO_ROOT + '/skills: web=browser;img=imagegen;code=ponytail;mobile=mobile-native;risk=strix; read SKILL.md.');
   lines.push('Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.');
-  lines.push('First session: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
+  lines.push('First: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
   lines.push('Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.');
   const value = lines.join('\n');
   document.getElementById('prompt').value = value;
