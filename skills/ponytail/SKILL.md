@@ -37,4 +37,4 @@ For an existing diff, identify only concrete simplifications that preserve behav
 
 ## Handoff
 
-If the task is mobile UI/navigation, also load `../mobile-native/SKILL.md`. If the task is security/risk review, `../strix/SKILL.md` owns the evidence and exploit-validation workflow; Ponytail may simplify the eventual fix but never lower the security floor.
+For any nontrivial implementation or repeated bug-fix loop, also load `../anti-vibecoding/SKILL.md` so minimal code still has an explicit contract and executed verification. If the task is mobile UI/navigation, also load `../mobile-native/SKILL.md`. If it touches app icons/launcher artwork, load `../icon-silhouette/SKILL.md`. If the task is security/risk review, `../strix/SKILL.md` owns the evidence and exploit-validation workflow; Ponytail may simplify the eventual fix but never lower the security floor.

@@ -9,7 +9,7 @@ Use this skill when the user asks to create, draw, design, render, visualize, ge
 
 ## Trigger
 
-Load/apply for requests containing intent such as concept, artwork, mockup, visual, image, picture, generate image, edit image, redesign image, logo, icon, splash, poster, render, draw, or visualize. If the concept must be based on a current/live site, first apply `../browser/SKILL.md` and use its verified evidence as the visual brief.
+Load/apply for requests containing intent such as concept, artwork, mockup, visual, image, picture, generate image, edit image, redesign image, logo, icon, splash, poster, render, draw, or visualize. If the concept must be based on a current/live site, first apply `../browser/SKILL.md` and use its verified evidence as the visual brief. For an app/launcher icon, also apply `../icon-silhouette/SKILL.md` before generation/export so the source mark is a clean silhouette rather than a padded white-square bitmap.
 
 ## Tool order
 

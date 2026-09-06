@@ -57,4 +57,4 @@ If the repo is native Kotlin/Compose, use current Android navigation/Material co
 
 Share domain logic and design tokens when useful; do not force identical navigation implementation across Apple native, React Native, and Tauri. The user experience can be consistent while each platform keeps its real navigation contract.
 
-If the task also asks for the smallest implementation, load `../ponytail/SKILL.md`. For a visual concept, use `../imagegen/SKILL.md` only after the platform/navigation constraints above are fixed.
+If the task also asks for the smallest implementation, load `../ponytail/SKILL.md`. For any nontrivial mobile implementation, apply `../anti-vibecoding/SKILL.md` before declaring it converged. For app icons, launcher assets, splash marks, or square-white-corner bugs, load `../icon-silhouette/SKILL.md`. For a visual concept, use `../imagegen/SKILL.md` only after the platform/navigation constraints above are fixed.
