@@ -179,6 +179,14 @@ async def async_main() -> int:
 
 
 def main() -> int:
+    # Emit UTF-8 regardless of the Windows console/pipe codepage (e.g. cp1258/cp1252):
+    # the JSON line protocol and dialog listings carry non-ASCII text that those codecs
+    # cannot encode, and the Node reader already decodes stdout as UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     try:
         return asyncio.run(async_main())
     except KeyboardInterrupt:
