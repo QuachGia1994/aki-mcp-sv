@@ -19,6 +19,7 @@ import { register as registerBudgetRouter } from './budget-router.js';
 import { register as registerProjectGraph } from './project-graph.js';
 import { register as registerTaskCheckpoint } from './task-checkpoint.js';
 import { register as registerAkiDoctor } from './aki-doctor.js';
+import { register as registerImageInbox } from './image-inbox.js';
 
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
@@ -27,6 +28,7 @@ const SERVER_INSTRUCTIONS = [
   'For multi-step/deep work, call local__context_packet with the shared plan/task id before expensive lead/Astra reasoning; it recovers the task checkpoint, searches compact durable project knowledge, then uses the Budget Router so raw retrieval/compression stays in the cheapest healthy eligible worker. Reuse the same taskKey on follow-ups; force a cold rebuild only when stable assumptions changed.',
   'Use local__budget_router_read instead of choosing xKiro/OpenCode/agy/Kiro manually; its ledger keeps actual provider tokens, estimates, avoided lead context, and reported cache hits as separate metrics.',
   'Use local__task_checkpoint_recover after compaction/restart/account handoff, local__graph_query for durable project decisions/facts, and local__aki_doctor for unified read-only health diagnosis.',
+  'When the owner asks to inspect a screenshot/photo they placed in the local Postman image inbox, call local__image_inbox with action=latest by default, action=list when the filename is ambiguous, or action=read with the exact basename. The tool returns MCP-native image content for visual analysis.',
   'For implementation, prefer local__opencode_exec when its write-worker toggle is enabled and the task has a settled scope/plan; run verification separately with local__run_cmd, then review only risky diffs or unresolved items. Fall back to normal write tools when the free executor is disabled/unavailable or the task is high-risk.',
 ].join(' ');
 
@@ -47,6 +49,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'task_checkpoint_get',
   'task_checkpoint_list',
   'task_checkpoint_recover',
+  'image_inbox',
 ]);
 
 const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read', 'budget_router_status', 'aki_doctor']);
@@ -104,7 +107,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
+  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on

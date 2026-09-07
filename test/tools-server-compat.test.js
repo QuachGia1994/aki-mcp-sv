@@ -37,6 +37,7 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__task_checkpoint_save'), true);
     assert.equal(names.has('local__task_checkpoint_recover'), true);
     assert.equal(names.has('local__aki_doctor'), true);
+    assert.equal(names.has('local__image_inbox'), true);
     const instructions = client.getInstructions();
     assert.match(instructions, /Gemini Spark confirms every MCP tools\/call client-side/);
     assert.match(instructions, /call local__repo_snapshot exactly once/);
@@ -47,6 +48,7 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.match(instructions, /Use local__budget_router_read instead of choosing xKiro\/OpenCode\/agy\/Kiro manually/);
     assert.match(instructions, /local__task_checkpoint_recover after compaction\/restart\/account handoff/);
     assert.match(instructions, /local__aki_doctor for unified read-only health diagnosis/);
+    assert.match(instructions, /local__image_inbox with action=latest by default/);
     assert.match(instructions, /prefer local__opencode_exec when its write-worker toggle is enabled/);
     assert.match(instructions, /run verification separately with local__run_cmd/);
   } finally {
@@ -87,6 +89,7 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__graph_status')?.annotations, localRead);
     assert.deepEqual(tools.get('local__task_checkpoint_get')?.annotations, localRead);
     assert.deepEqual(tools.get('local__task_checkpoint_recover')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__image_inbox')?.annotations, localRead);
     assert.deepEqual(tools.get('local__budget_router_status')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__aki_doctor')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__budget_router_read')?.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true });

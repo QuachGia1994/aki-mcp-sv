@@ -41,6 +41,9 @@ test('Postman prompt uses the same durable long-chat protocol as the controller'
   assert.match(instruction, /Never store full chat transcripts/);
   assert.match(instruction, /SUMMARY CURRENT SESSION AS PROMPT TO COPY INTO NEW CHAT/);
   assert.match(instruction, /treat it exactly as HANDOFF/);
+  assert.match(instruction, /images=image_inbox/);
+  assert.match(instruction, /xem ảnh mới nhất/);
+  assert.match(instruction, /Do not OCR unless I explicitly ask/);
   assert.match(html, /ONE shared plan and one stable taskKey/);
   assert.match(html, /task_checkpoint_save\/recover/);
 });
