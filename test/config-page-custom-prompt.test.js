@@ -29,6 +29,22 @@ test('fork workflow instructions are checked and locked in section 3', () => {
   assert.match(html, /Aki Skills: Browser\/ImageGen \+ Ponytail\/Anti-Vibe \+ Mobile Native \+ Icon Silhouette \+ Strix \+ Postman Remote .*custom/);
 });
 
+test('Postman prompt uses the same durable long-chat protocol as the controller', () => {
+  const html = render();
+  const source = readFileSync(new URL('../scripts/config-page.js', import.meta.url), 'utf8');
+  const instruction = readFileSync(new URL('../scripts/aki-pmcontrol/data/aki-postman-instruction.md', import.meta.url), 'utf8');
+  assert.match(source, /aki-pmcontrol\/data\/aki-postman-instruction\.md/);
+  assert.match(instruction, /ONE shared plan and one stable taskKey/);
+  assert.match(instruction, /context_packet/);
+  assert.match(instruction, /task_checkpoint_save\/recover/);
+  assert.match(instruction, /task_checkpoint_recover first/);
+  assert.match(instruction, /Never store full chat transcripts/);
+  assert.match(instruction, /SUMMARY CURRENT SESSION AS PROMPT TO COPY INTO NEW CHAT/);
+  assert.match(instruction, /treat it exactly as HANDOFF/);
+  assert.match(html, /ONE shared plan and one stable taskKey/);
+  assert.match(html, /task_checkpoint_save\/recover/);
+});
+
 test('xKiro panel config is local-only and never renders a saved secret', () => {
   const html = render();
   assert.match(html, /id="tab-xkiro"/);

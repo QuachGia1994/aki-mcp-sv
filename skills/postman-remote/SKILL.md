@@ -13,7 +13,7 @@ The phone is only a remote-control surface. The execution chain remains:
 
 `iPhone → remote Windows session → Postman Desktop → AI Chat → Aki MCP or subagent shell → Windows repo/files/shell/build/test`.
 
-Do not move the workflow into Postman Web, Cloud Agent, linked folders, synced workspaces, or another cloud execution host unless the user explicitly asks for that migration. Multiple Postman Desktop windows/chats are valid. When a chat becomes long or laggy, summarize the current session into a compact handoff prompt and continue in a new Desktop chat.
+Do not move the workflow into Postman Web, Cloud Agent, linked folders, synced workspaces, or another cloud execution host unless the user explicitly asks for that migration. Multiple Postman Desktop windows/chats are valid. For multi-step work, keep durable state in one shared Aki plan/taskKey; when a chat becomes long or laggy, use the controller HANDOFF flow to sync `task_checkpoint_save`, return one compact resume prompt, then recover with `task_checkpoint_recover` + the same taskKey/`context_packet` in a fresh Desktop chat instead of replaying the old transcript.
 
 ## Postman behavior
 

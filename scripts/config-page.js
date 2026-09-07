@@ -1,4 +1,5 @@
 // Renders the control panel page. Served only by panel.js on loopback; credentials never travel over the Funnel.
+import { readFileSync } from 'node:fs';
 import { esc } from './html.js';
 const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
@@ -7,12 +8,7 @@ const CHATGPT_SETTINGS_URL = 'https://chatgpt.com/#settings/Personalization';
 const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/#settings/Security';
 const GEMINI_SETTINGS_URL = 'https://gemini.google.com/saved-info';
 const POSTMAN_SETTINGS_URL = 'https://go.postman.co/settings/me/connected-accounts';
-const POSTMAN_PROMPT = `Desktop-only: use Postman Desktop AI Chat; multiple windows/chats are OK; do not switch to Postman Web/Cloud Agent, link project folders, or depend on cloud workspace state.
-MCP Tools: Files=find_path. Content=search_content. Agents=agy_run/kiro_read. Use Aki MCP for local repo/files/shell; if I explicitly say "dùng subagent shell", use the native/subagent shell path.
-Remote rule: iPhone only controls this Windows desktop; Postman, Aki MCP, repo, shell, build, and test stay on Windows. Preserve existing Postman windows/session.
-Rules: Read ~/.aki/akidevrule/RULE-agent-behavior.md, RULE-coding.md, RULE-pattern-core.md, index.md. Router: ~/.claude/skills/akirule/SKILL.md.
-Behavior: DON'T YAPPING. Questions=read-only; tasks=execute in scope. Never trigger native OS file-pickers. Warn before sensitive non-whitelisted native-shell commands.
-When chat becomes long/laggy, summarize goal/decisions/changes/tests/blockers/next step into a compact prompt for a fresh Postman Desktop chat.`;
+const POSTMAN_PROMPT = readFileSync(new URL('./aki-pmcontrol/data/aki-postman-instruction.md', import.meta.url), 'utf8').trim();
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
 const CHATGPT_CONNECTOR_URL = 'https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins';
 const GEMINI_CONNECTOR_URL = 'https://support.google.com/g/answer/17106276';

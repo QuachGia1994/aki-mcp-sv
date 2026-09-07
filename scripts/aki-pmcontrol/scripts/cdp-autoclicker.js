@@ -17,6 +17,7 @@
   // New Window = newRequesterWindow. New Browser Tab is NOT that — it is
   // NavigationService.transitionTo('build.browser-tab') via rspack module.g.
   const PM_EVENT_NEW_REQUESTER_WINDOW = 'newRequesterWindow';
+  const HANDOFF_PROMPT = 'Prepare a durable Aki handoff now. First sync the ONE shared plan, then call task_checkpoint_save with the current taskKey, cwd, planPath, active/completed/pending steps, blockers, and lastGreen verification; never store the full chat transcript or secrets. Then reply with ONLY one compact prompt for a fresh Postman Desktop chat containing taskKey, cwd, planPath, current step, open blockers, and any still-unverified runtime check, and instruct the fresh chat to call task_checkpoint_recover, read the plan and current git state, call context_packet with the same taskKey, then continue the first unfinished checklist item.';
 
   // Prompt + procedure: docs/ref/postman-permission-popup-test.md
   const PERMISSION_CARD_ROOT = '.tool-approval-wrapper, .tool-approval-single-item';
@@ -1232,6 +1233,7 @@
         <div class="aki-stack aki-rule">
           <div class="aki-row">
             <span class="aki-section-label">PROMPT INSTRUCTION</span>
+            <button type="button" id="aki-btn-handoff" class="aki-btn" title="Checkpoint this task and return a compact resume prompt for a fresh chat">HANDOFF</button>
             <button type="button" id="aki-btn-send-instruction" class="aki-btn">SEND NOW</button>
           </div>
           <div class="aki-row">
@@ -1325,6 +1327,14 @@
       };
     }
 
+    const handoffBtn = panel.querySelector('#aki-btn-handoff');
+    if (handoffBtn && !window.__pmSendInFlight) {
+      handoffBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        sendAiPrompt(HANDOFF_PROMPT);
+      };
+    }
     const sendBtn = panel.querySelector('#aki-btn-send-instruction');
     if (sendBtn && !window.__pmSendInFlight) {
       sendBtn.onclick = (e) => {

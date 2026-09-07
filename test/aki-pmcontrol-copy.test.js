@@ -54,6 +54,12 @@ assert.equal(
 );
 assert.match(mcpSrc, /function openNewBrowserTab/);
 assert.match(mcpSrc, /build\.browser-tab/);
+assert.match(mcpSrc, /const HANDOFF_PROMPT =/);
+assert.match(mcpSrc, /id="aki-btn-handoff"/);
+assert.match(mcpSrc, /sendAiPrompt\(HANDOFF_PROMPT\)/);
+assert.match(mcpSrc, /task_checkpoint_save/);
+assert.match(mcpSrc, /task_checkpoint_recover/);
+assert.match(mcpSrc, /context_packet/);
 assert.match(mcpSrc, /openNewBrowserTab\(\)/);
 assert.match(mcpSrc, /mod\.g\('about:blank', \{ forceNew: true \}\)/);
 

@@ -1,5 +1,7 @@
 node_modules/
 data/
+!scripts/aki-pmcontrol/data/
+!scripts/aki-pmcontrol/data/aki-postman-instruction.md
 dev/
 .akidevsync/
 .DS_Store

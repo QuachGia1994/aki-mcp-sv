@@ -92,7 +92,7 @@ If the remote desktop looks like a different/new Windows session, verify the log
 - AI Chat is the primary Postman feature; project files remain reachable through Aki MCP or the explicitly requested `dùng subagent shell` path.
 - Do not link project folders merely to give AI access to local code, and do not make the workflow depend on a Postman team/workspace that may change.
 - Multiple Desktop windows/chats may run in parallel.
-- When a chat becomes long/laggy, ask it to summarize the current goal, decisions, changes, tests, blockers, and next step into a new-chat prompt, then continue in a fresh Desktop chat.
+- For every multi-step task, keep durable state in one shared Aki plan/taskKey and reuse that key across chats. When the chat becomes long/laggy, press the injected controller's **HANDOFF** button: the current agent must sync the shared plan, call `task_checkpoint_save`, then return only one compact resume prompt. In the fresh Desktop chat, recover with `task_checkpoint_recover`, read the plan/current git state, call `context_packet` with the same taskKey, and continue the first unfinished checklist item.
 
 ## End-to-end verification
 
