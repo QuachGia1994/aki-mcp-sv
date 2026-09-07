@@ -9,6 +9,7 @@ const ponytail = readFileSync(new URL('../skills/ponytail/SKILL.md', import.meta
 const antiVibe = readFileSync(new URL('../skills/anti-vibecoding/SKILL.md', import.meta.url), 'utf8');
 const mobileNative = readFileSync(new URL('../skills/mobile-native/SKILL.md', import.meta.url), 'utf8');
 const iconSilhouette = readFileSync(new URL('../skills/icon-silhouette/SKILL.md', import.meta.url), 'utf8');
+const postmanRemote = readFileSync(new URL('../skills/postman-remote/SKILL.md', import.meta.url), 'utf8');
 const strix = readFileSync(new URL('../skills/strix/SKILL.md', import.meta.url), 'utf8');
 const panelClient = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
 
@@ -65,6 +66,16 @@ test('icon-silhouette skill forbids baked white squares and preserves platform m
   assert.match(iconSilhouette, /Build\/install and inspect the icon on at least one real Android launcher/);
 });
 
+test('postman-remote skill preserves Desktop execution and uses Cloudflare One private RDP for iPhone control', () => {
+  assert.match(postmanRemote, /^---\nname: aki-postman-remote\n/m);
+  assert.match(postmanRemote, /The phone is only a remote-control surface/);
+  assert.match(postmanRemote, /do not tell the user to switch to the web app/i);
+  assert.match(postmanRemote, /private hostname route/);
+  assert.match(postmanRemote, /Authenticate with Cloudflare One Client/);
+  assert.match(postmanRemote, /Do not open TCP 3389 on the router or publish it directly to the Internet/);
+  assert.match(postmanRemote, /Disconnect the RDP client when done; do not sign out/);
+});
+
 test('strix skill separates passive GitHub repo risk review from authorized active pentesting', () => {
   assert.match(strix, /^---\nname: aki-strix\n/m);
   assert.match(strix, /Active probing of a live domain\/API\/IP requires that the user owns the target or is authorized/);
@@ -73,7 +84,7 @@ test('strix skill separates passive GitHub repo risk review from authorized acti
 });
 
 test('default Prompt Instructions route primary skills while chained skills cover Ponytail and Icon Silhouette', () => {
-  assert.match(panelClient, /Skills ' \+ REPO_ROOT \+ '\/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;risk=strix; read SKILL\.md\./);
+  assert.match(panelClient, /Skills ' \+ REPO_ROOT \+ '\/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix; read SKILL\.md\./);
   assert.match(imagegen, /icon-silhouette\/SKILL\.md/);
   assert.match(mobileNative, /icon-silhouette\/SKILL\.md/);
   assert.match(antiVibe, /ponytail\/SKILL\.md/);

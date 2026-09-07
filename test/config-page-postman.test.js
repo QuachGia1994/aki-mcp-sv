@@ -24,6 +24,13 @@ test('Postman panel prefills a real Bearer token and keeps the tested MCP Reques
   assert.match(html, /Streamable HTTP/);
   assert.match(html, /Generate Config .* Agent Mode .* Add to Agent Mode/);
   assert.match(html, /known HTTP-MCP reconnect bug/);
+  assert.match(html, /Desktop-only workflow/);
+  assert.match(html, /multiple windows\/chats are OK/);
+  assert.match(html, /do not switch to Postman Web\/Cloud Agent/);
+  assert.match(html, /Cloudflare One private RDP \+ Access\/MFA/);
+  assert.match(html, /never expose port 3389 directly/);
+  assert.match(html, /iPhone only controls this Windows desktop/);
+  assert.match(html, /summarize goal\/decisions\/changes\/tests\/blockers\/next step/);
   assert.match(html, /Manual Agent Mode JSON is fallback only/);
   assert.match(html, /command.*args/);
   assert.doesNotMatch(html, /PASTE_ACCESS_TOKEN_HERE/);

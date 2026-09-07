@@ -35,6 +35,8 @@
 - [plan/done/standalone-newbie-ux-followups.md](plan/done/standalone-newbie-ux-followups.md) — newbie flow follow-ups: README restructure shipped 2026-08-16, claude.ai desync filed as known platform limitation
 - [ref/chatgpt-connector.md](ref/chatgpt-connector.md) — the real ChatGPT install flow: icon → name → description → connection (MCP URL) → tick "I understand"; DCR auto-registers the client, no Client ID/Secret to paste
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
+- [ref/postman-desktop-remote.md](ref/postman-desktop-remote.md) — desktop-only Postman AI Chat remotely controlled from iPhone through Cloudflare One private RDP + Access/MFA while Aki/repo/shell/build/test remain on Windows
+- [ref/postman-pool-autojoin.md](ref/postman-pool-autojoin.md) — opt-in Windows Telethon user-session listener + Selenium/LibreWolf flow that watches a group without adding a bot, accepts only authorized Postman invites, and reports joined account emails through an outbound bot without reading browser secrets
 - [ref/KIMI-WEB-LIVE-TEST.md](ref/KIMI-WEB-LIVE-TEST.md) — portable Kimi K3 browser bootstrap for the custom-domain Worker -> D1 -> local Aki route; placeholders only, no runtime credentials
 - [ref/QWEN-WEB-LIVE-TEST.md](ref/QWEN-WEB-LIVE-TEST.md) — portable Qwen browser bootstrap using the custom domain, idempotent task creation, polling, and real Windows project access
 - [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)

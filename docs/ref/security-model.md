@@ -1,6 +1,6 @@
 # Security model — minimal OAuth 2.1 (multi-client)
 
-Updated 2026-08-22 — Claude keeps a pre-issued confidential client; public/DCR clients share one strict redirect allowlist and PKCE flow on the same in-process server.
+Updated 2026-09-07 — Claude keeps a pre-issued confidential client; public/DCR clients share one strict redirect allowlist and PKCE flow on the same in-process server; operator remote-desktop access is a separate Cloudflare One private-app plane.
 
 ## Current auth architecture
 
@@ -30,6 +30,10 @@ Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clie
 
 Ingress edge does not change the trust boundary. Public reachability can come from Tailscale Funnel (default), a `PUBLIC_ORIGIN` edge you run, or a Cloudflare named tunnel (`--tunnel`) — these terminate TLS at different edges but all forward to the same loopback server, and the OAuth gate in `scripts/oauth.js` (passphrase at `/authorize` + PKCE S256 at `/token`) stays the only auth layer regardless of which one is used.
 
+Operator remote-desktop access is deliberately a **different plane** from Aki's public MCP ingress. When an iPhone remotely controls the Windows machine, prefer Cloudflare One private-hostname RDP through the Cloudflare One Client/WARP plus an Access private application/MFA; do not publish TCP 3389 directly and do not reuse Aki bearer tokens, OAuth client credentials, or the Aki passphrase as Windows/Cloudflare remote-desktop credentials. The phone controls the existing Windows session while Postman Desktop, Aki MCP, repositories, shell, build, and tests stay on Windows. See `docs/ref/postman-desktop-remote.md`.
+
+Postman pool auto-join is another opt-in local automation plane, not MCP authentication. When `~/.aki/mcpsv/postman-pool.json` is enabled, a Telethon user-session listener receives only the owner's source-group messages and `scripts/postman-pool.js` still requires both the exact source chat ID and an allowlisted sender user ID before it accepts an invite. The source group never needs the report bot. The bot is outbound-only (`sendMessage`); Aki never calls `getUpdates`, `setWebhook`, or `deleteWebhook`, so a pre-existing ROBOT SLTP webhook can keep exclusive inbound ownership of the same bot token. Telegram API credentials/session and the report bot token stay user-local; invite URLs are never logged and reach the transient Selenium worker through stdin. Selenium operates on one temporary clone of each LibreWolf profile at a time because the browser itself needs the signed-in session state; Aki does not parse/decrypt cookies, access tokens, or saved passwords. Clones live under the configured scratch root, exclude caches/lock files, are deleted at the end of the run, and stale `run-*` trees older than one hour are removed on the next run. See `docs/ref/postman-pool-autojoin.md`.
+
 ## Real limitations
 
 - **No refresh token rotation** for the pre-registered confidential Claude client; DCR/public clients rotate their refresh token on every refresh grant.
@@ -39,5 +43,7 @@ Ingress edge does not change the trust boundary. Public reachability can come fr
 ## Cross-references
 - `docs/research/claude-ai-oauth-connector.md` — research that drove the Claude pre-registered path
 - `docs/ref/claude-connector.md` — fields on claude.ai's dialog
+- `docs/ref/postman-desktop-remote.md` — Cloudflare One private-RDP operator plane for iPhone → Windows → Postman Desktop → Aki
+- `docs/ref/postman-pool-autojoin.md` — Telegram allowlist, invite handling, transient LibreWolf profile clones, and Selenium join/report boundary
 - `docs/plan/done/init.md` — original architecture decisions
 - OpenAI Apps SDK auth: https://developers.openai.com/apps-sdk/build/auth

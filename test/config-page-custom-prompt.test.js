@@ -26,7 +26,7 @@ test('fork workflow instructions are checked and locked in section 3', () => {
   assert.match(html, /One shared live plan across all AI agents; report completion back into the same file .*custom/);
   assert.match(html, /Work directly in the user-specified real repo; no sandbox\/virtual-copy edits .*custom/);
   assert.match(html, /Build\/CI: trigger only; do not wait or monitor unless asked .*custom/);
-  assert.match(html, /Aki Skills: Browser\/ImageGen \+ Ponytail\/Anti-Vibe \+ Mobile Native \+ Icon Silhouette \+ Strix .*custom/);
+  assert.match(html, /Aki Skills: Browser\/ImageGen \+ Ponytail\/Anti-Vibe \+ Mobile Native \+ Icon Silhouette \+ Strix \+ Postman Remote .*custom/);
 });
 
 test('xKiro panel config is local-only and never renders a saved secret', () => {
@@ -100,19 +100,19 @@ test('generated workflow orders research before shared plan and encodes direct-r
   assert.match(client, /no poll unless asked/);
   assert.match(client, /multi=>context_packet\(taskKey=plan\); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails\/high-risk=>escalate/);
   assert.match(client, /else lines\.push\('Flow: snapshot once; deep=>agent_read\(xKiro free\)/);
-  assert.match(client, /code=anti-vibecoding;mobile=mobile-native;risk=strix/);
+  assert.match(client, /code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix/);
 });
 
 function promptForRuleSpec(ruleSpec) {
   return [
     "[akimcp 1.14.0 · akidevrule 2.7.0] ALWAYS short dense on-point. DON'T YAPPING. Claim=evidence; search=citation.",
     'Session start MCP "Aki MCP Server from local Shell & FileSystem": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.',
-    'Before plan: research GitHub/upstream; cite repo/docs/issues/releases.',
+    'Before plan: research GitHub/upstream; cite evidence.',
     'Mutate/multi: ONE shared plan: given path else ~/.aki/mcpsv/task/<id>/plan.md; read resume/handoff; keep checklist/decisions/evidence/outcome; reply path when created. Q&A:no plan.',
     'Repo via Aki MCP only; user path; no sandbox/temp copies unless asked; read back writes.',
     'Files: find_path; text=search_content; git/ls/grep=run_cmd cwd=repo; no cd/-C.',
     'Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.',
-    'Skills D:\\LacViet\\aki-mcp-sv/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;risk=strix; read SKILL.md.',
+    'Skills D:\\LacViet\\aki-mcp-sv/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix; read SKILL.md.',
     'Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.',
     'First: if ~/.aki/mcpsv/intro.json absent, read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md; write {"seen":true}.',
     'Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.',

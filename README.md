@@ -88,7 +88,7 @@ Beyond `$MCP_DATA_DIR`, the filesystem tools are also granted `~/.aki` (where ak
 
 `npm start` runs in the foreground: Ctrl+C to stop, restart manually when needed. **After editing code, Ctrl+C and `npm start` again** (Node doesn't hot-reload).
 
-The generated section-3 Instructions route Aki's skill pack automatically: `skills/browser/SKILL.md` for live/current web evidence, `skills/imagegen/SKILL.md` for host-native visual generation/editing, `skills/ponytail/SKILL.md` for minimal/YAGNI coding, `skills/anti-vibecoding/SKILL.md` for contract/evidence/verification/convergence discipline, `skills/mobile-native/SKILL.md` for SwiftUI iOS 27+ system tabs plus Expo Router NativeTabs and Tauri v2 mobile/React boundaries, `skills/icon-silhouette/SKILL.md` for platform-correct app/launcher icon assets without baked white square corners, and `skills/strix/SKILL.md` for evidence-first GitHub repo security/risk audits with authorized Strix validation when available. Aki MCP still supplies local repo/files/shell context; the skills never fake a missing host capability, silently migrate a mobile stack, claim a green result without executed evidence, pre-mask launcher assets that the OS should mask, install scanners without need, or actively probe third-party infrastructure without authorization.
+The generated section-3 Instructions route Aki's skill pack automatically: `skills/browser/SKILL.md` for live/current web evidence, `skills/imagegen/SKILL.md` for host-native visual generation/editing, `skills/ponytail/SKILL.md` for minimal/YAGNI coding, `skills/anti-vibecoding/SKILL.md` for contract/evidence/verification/convergence discipline, `skills/mobile-native/SKILL.md` for SwiftUI iOS 27+ system tabs plus Expo Router NativeTabs and Tauri v2 mobile/React boundaries, `skills/icon-silhouette/SKILL.md` for platform-correct app/launcher icon assets without baked white square corners, `skills/postman-remote/SKILL.md` for keeping Postman Desktop/Aki/repo execution on Windows while iPhone only remote-controls that desktop through a private Cloudflare path, and `skills/strix/SKILL.md` for evidence-first GitHub repo security/risk audits with authorized Strix validation when available. Aki MCP still supplies local repo/files/shell context; the skills never fake a missing host capability, silently migrate a mobile stack, claim a green result without executed evidence, pre-mask launcher assets that the OS should mask, shift a desktop-only Postman workflow into Postman Web/cloud state, install scanners without need, or actively probe third-party infrastructure without authorization.
 
 ## Connecting from Claude web
 
@@ -127,6 +127,10 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 **Antigravity 2.0 desktop — custom remote MCP:** the global file is `~/.gemini/config/mcp_config.json` (`%USERPROFILE%\.gemini\config\mcp_config.json` on Windows; workspace-local alternative `.agents/mcp_config.json`). Remote MCP entries must use `serverUrl`, not legacy `url`/`httpUrl`. Aki supports Antigravity's DCR callback `https://antigravity.google/oauth-callback`, so no static bearer token is needed. Example: `{"mcpServers":{"aki-mcp-sv":{"serverUrl":"https://your-host/mcp"}}}`. Antigravity's permission engine can auto-approve only this server with `mcp(aki-mcp-sv/*)` instead of unsafe global `mcp(*)`; current desktop builds persist the global grant under `userSettings.globalPermissionGrants.allow` in `~/.gemini/config/config.json`.
 
 ## Connecting from Postman
+
+This integration is **Postman Desktop-first**. Aki does not require Postman Web, linked project folders, or durable team/workspace cloud state: use Desktop AI Chat, let Aki MCP (or an explicitly requested `dùng subagent shell` path) reach the Windows repo/files/shell, and summarize long/laggy chats into a compact prompt for a fresh Desktop chat. For iPhone access, remote-control the existing Windows desktop instead of moving the workflow to Postman Web/Cloud Agent; the preferred design is Cloudflare One private-network RDP + Access/MFA, documented in [`docs/ref/postman-desktop-remote.md`](docs/ref/postman-desktop-remote.md). Postman Desktop, Aki MCP, build/test, and repositories remain on Windows.
+
+Windows can also opt into [`docs/ref/postman-pool-autojoin.md`](docs/ref/postman-pool-autojoin.md): the owner's Telegram user session (Telethon) listens to a group without adding a bot, accepts Postman invite links only from an allowlisted admin/chat ID pair, then Aki queues a local Selenium/LibreWolf pass over the existing signed-in browser profiles and reports joined accounts through an outbound-only Telegram bot. The existing ROBOT SLTP webhook bot may be reused for `sendMessage`; Aki never calls `getUpdates`/`setWebhook`/`deleteWebhook` on it. Telegram credentials stay under `~/.aki/mcpsv/`, invite URLs are not logged, and browser scratch stays on D:.
 
 Postman's Agent Mode has no OAuth redirect for this third-party MCP server, so the local Aki panel mints or reuses a real issued access token and shows a ready-to-copy Authorization value plus filled MCP JSON. The same Postman tab can now Launch/Quit/New window through Aki's optional Postman control daemon; launching there attaches CDP automation that auto-clicks Approve / Continue / Run / Try again and manages Thinking / Auto-run. The daemon is opt-in and never starts with `npm start`. Prefer Postman's documented MCP Request workflow instead of editing Agent Mode JSON first:
 
@@ -228,13 +232,16 @@ tools-server.js — one shared McpServer, in-process (InMemoryTransport, no chil
                                   claude-mem-mcp.js   (read-only local worker search/timeline/observation lookup)
                                   filesystem-mcp.js   (native read/write/edit inside the allowed folders)
                                   postman-mcp.js      (read-only daemon status tool + panel lifecycle helpers)
+                                  postman-pool.js     (optional Telegram user-session event gate + Windows pool auto-join)
 
 panel.js       — 127.0.0.1:9998, never exposed via Funnel
                  control UI: allowed folders, shell allowlist,
                  install akidevrule, generate the connector prompt,
                  optional Postman Launch/Quit/New window controls
 
-aki-pmcontrol/ — optional child daemon started only from the Postman panel tab
+aki-pmcontrol/ — optional long-lived child daemon started only from the Postman panel tab
+postman-pool-telegram.py — optional long-lived Telethon user-session listener; no bot membership required in the source group
+postman-pool-join.py — transient Selenium/LibreWolf worker spawned only for an authorized pool invite
 ```
 
 The ingress layer is swappable: Tailscale Funnel is the zero-config default, but the same `/mcp` endpoint can instead be served through your own Cloudflare named tunnel or any stable public HTTPS edge you already run — see [Exposing to the internet](#exposing-to-the-internet). Everything below the ingress line (gatekeeper, OAuth, in-process tools server) is unchanged whichever edge you pick.

@@ -85,13 +85,13 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  lines.push('Before plan: research GitHub/upstream; cite repo/docs/issues/releases.');
+  lines.push('Before plan: research GitHub/upstream; cite evidence.');
   lines.push('Mutate/multi: ONE shared plan: given path else ~/.aki/mcpsv/task/<id>/plan.md; read resume/handoff; keep checklist/decisions/evidence/outcome; reply path when created. Q&A:no plan.');
   lines.push('Repo via Aki MCP only; user path; no sandbox/temp copies unless asked; read back writes.');
   lines.push('Files: find_path; text=search_content; git/ls/grep=run_cmd cwd=repo; no cd/-C.');
   if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
   else lines.push('Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
-  lines.push('Skills ' + REPO_ROOT + '/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;risk=strix; read SKILL.md.');
+  lines.push('Skills ' + REPO_ROOT + '/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix; read SKILL.md.');
   lines.push('Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.');
   lines.push('First: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
   lines.push('Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.');
