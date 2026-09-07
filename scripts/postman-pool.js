@@ -170,6 +170,19 @@ async function telegramBotCall(config, method, body, fetchImpl) {
   return data.result;
 }
 
+export function resolveReportCredentials(configPath = POSTMAN_POOL_CONFIG_PATH) {
+  const raw = readJson(configPath, null) || {};
+  const envToken = process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN;
+  const reportBotToken = envToken || raw.reportBotToken || raw.botToken || '';
+  const reportChatId = raw.reportChatId ? String(raw.reportChatId) : '';
+  const tokenSource = envToken ? 'env' : raw.reportBotToken || raw.botToken ? 'config' : 'none';
+  return { reportBotToken, reportChatId, tokenSource };
+}
+
+export async function sendPostmanPoolReportMessage(credentials, text, fetchImpl = fetch) {
+  return telegramBotCall({ reportBotToken: credentials.reportBotToken }, 'sendMessage', { chat_id: credentials.reportChatId, text }, fetchImpl);
+}
+
 function startTelegramUserListener(config, onMessage, spawnImpl = cp.spawn) {
   const command = pythonCommand(TELEGRAM_LISTENER_PATH, ['--json-lines']);
   const child = spawnImpl(command.file, command.args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });

@@ -11,6 +11,8 @@ import {
   isAuthorizedTelegramMessage,
   loadPostmanPoolConfig,
   normalizeInviteUrl,
+  resolveReportCredentials,
+  sendPostmanPoolReportMessage,
   startPostmanPoolWatcher,
 } from '../scripts/postman-pool.js';
 
@@ -164,6 +166,38 @@ for (const call of reportCalls) {
 }
 integrationWatcher.close();
 assert.equal(listener.killed, true);
+
+// resolveReportCredentials + sendPostmanPoolReportMessage: outbound sendMessage-only report path.
+const credConfigPath = path.join(tempDir, 'creds.json');
+writeFileSync(credConfigPath, JSON.stringify({ enabled: false, reportBotToken: 'config-token', reportChatId: '279000740' }));
+delete process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN;
+let creds = resolveReportCredentials(credConfigPath);
+assert.equal(creds.reportBotToken, 'config-token', 'disabled config still exposes the report token for a manual test');
+assert.equal(creds.reportChatId, '279000740');
+assert.equal(creds.tokenSource, 'config');
+process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN = 'env-token';
+creds = resolveReportCredentials(credConfigPath);
+assert.equal(creds.reportBotToken, 'env-token', 'env token overrides config token');
+assert.equal(creds.tokenSource, 'env');
+delete process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN;
+
+const sendCalls = [];
+const sendResult = await sendPostmanPoolReportMessage(
+  { reportBotToken: 'config-token', reportChatId: '279000740' },
+  'aki outbound test',
+  async (url, options) => {
+    sendCalls.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: { message_id: 7 } }) };
+  },
+);
+assert.equal(sendCalls.length, 1);
+assert.match(sendCalls[0].url, /\/sendMessage$/, 'report test must call sendMessage only');
+assert.doesNotMatch(sendCalls[0].url, /getUpdates|setWebhook|deleteWebhook/, 'report test must never touch inbound routing');
+const sentBody = JSON.parse(sendCalls[0].options.body);
+assert.equal(sentBody.chat_id, '279000740');
+assert.equal(sentBody.text, 'aki outbound test');
+assert.equal(sendResult.message_id, 7);
+
 rmSync(tempDir, { recursive: true, force: true });
 
 console.log('postman-pool.test.js: ok');
