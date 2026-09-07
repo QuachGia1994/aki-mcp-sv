@@ -1,11 +1,18 @@
 import http from 'node:http';
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
+import { getOrIssueAccessToken, verifyBearer } from './oauth.js';
 import { log, logErr } from './log.js';
 
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 19999;
 
-export function startLoopbackMcp({ port = Number(process.env.LOOPBACK_MCP_PORT || DEFAULT_PORT), onError } = {}) {
+export function startLoopbackMcp({
+  port = Number(process.env.LOOPBACK_MCP_PORT || DEFAULT_PORT),
+  onError,
+  ensureAuth = getOrIssueAccessToken,
+  verifyAuth = verifyBearer,
+} = {}) {
+  ensureAuth();
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0];
     const t0 = Date.now();
@@ -19,6 +26,14 @@ export function startLoopbackMcp({ port = Number(process.env.LOOPBACK_MCP_PORT |
     if (req.headers.origin) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       return res.end('browser-origin requests are not allowed');
+    }
+
+    if (!verifyAuth(req.headers.authorization)) {
+      res.writeHead(401, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'WWW-Authenticate': 'Bearer realm="aki-loopback-mcp"',
+      });
+      return res.end(JSON.stringify({ error: 'unauthorized' }));
     }
 
     if (req.method === 'POST') {
@@ -47,7 +62,7 @@ export function startLoopbackMcp({ port = Number(process.env.LOOPBACK_MCP_PORT |
   });
   server.listen(port, HOST, () => {
     const address = server.address();
-    log(`[loopback-mcp] listening on http://${HOST}:${address.port}/mcp (local only, no OAuth)`);
+    log(`[loopback-mcp] listening on http://${HOST}:${address.port}/mcp (local only, Bearer auth required)`);
   });
   return server;
 }

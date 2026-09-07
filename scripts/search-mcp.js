@@ -13,16 +13,50 @@ const SKIP_DIRS = new Set([
 ]);
 const MAX_DEPTH = 12;
 const DEFAULT_LIMIT = 100;
+const MAX_GLOB_PATTERN_LENGTH = 256;
 
-function toMatcher(query) {
+function wildcardMatch(pattern, value) {
+  const needle = pattern.toLowerCase();
+  const candidate = value.toLowerCase();
+  let patternIndex = 0;
+  let valueIndex = 0;
+  let starIndex = -1;
+  let starValueIndex = 0;
+
+  while (valueIndex < candidate.length) {
+    const token = needle[patternIndex];
+    if (patternIndex < needle.length && (token === '?' || token === candidate[valueIndex])) {
+      patternIndex += 1;
+      valueIndex += 1;
+      continue;
+    }
+    if (token === '*') {
+      starIndex = patternIndex;
+      patternIndex += 1;
+      starValueIndex = valueIndex;
+      continue;
+    }
+    if (starIndex >= 0) {
+      patternIndex = starIndex + 1;
+      starValueIndex += 1;
+      valueIndex = starValueIndex;
+      continue;
+    }
+    return false;
+  }
+
+  while (needle[patternIndex] === '*') patternIndex += 1;
+  return patternIndex === needle.length;
+}
+
+export function toMatcher(query) {
   if (!/[*?]/.test(query)) {
     const needle = query.toLowerCase();
     return (rel) => rel.toLowerCase().includes(needle);
   }
-  const source = query.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  const re = new RegExp(`^${source}$`, 'i');
+  if (query.length > MAX_GLOB_PATTERN_LENGTH) throw new Error(`glob pattern exceeds ${MAX_GLOB_PATTERN_LENGTH} characters`);
   const scoped = query.includes('/');
-  return (rel) => re.test(scoped ? rel : path.basename(rel));
+  return (rel) => wildcardMatch(query, scoped ? rel : path.basename(rel));
 }
 
 function walk(base, matches) {

@@ -1,0 +1,274 @@
+#!/usr/bin/env node
+// Guided setup for Aki Watch (Postman pool auto-join). Orchestrates the proven
+// scripts and reuses their config loader; it never reimplements the automation
+// and never prints secret values (Telegram api hash / bot token) to the terminal.
+// The human-only steps it cannot skip live in docs/ref/aki-watch-onboarding.md.
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import readline from 'node:readline/promises';
+import { fileURLToPath } from 'node:url';
+import {
+  POSTMAN_POOL_CONFIG_PATH,
+  getPostmanPoolConfigStatus,
+  resolveReportCredentials,
+  sendPostmanPoolReportMessage,
+} from './postman-pool.js';
+
+const TELEGRAM_SCRIPT = fileURLToPath(new URL('./postman-pool-telegram.py', import.meta.url));
+const JOIN_SCRIPT = fileURLToPath(new URL('./postman-pool-join.py', import.meta.url));
+const IS_WIN = process.platform === 'win32';
+const PY = IS_WIN ? 'py' : 'python3';
+const PY_PREFIX = IS_WIN ? ['-3'] : [];
+
+function redactToken(value) {
+  return String(value == null ? '' : value).replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot<redacted>');
+}
+
+function pyCapture(args) {
+  const res = spawnSync(PY, [...PY_PREFIX, ...args], { encoding: 'utf8', windowsHide: true });
+  if (res.error) return { ok: false, text: res.error.message };
+  return { ok: res.status === 0, text: `${res.stdout || ''}${res.stderr || ''}`.trim() };
+}
+
+function pyInherit(args) {
+  // -X utf8 keeps emoji-titled Telegram groups from crashing the Windows console codec.
+  return spawnSync(PY, [...PY_PREFIX, '-X', 'utf8', ...args], { stdio: 'inherit', windowsHide: true }).status ?? 1;
+}
+
+function moduleVersion(name) {
+  const res = pyCapture(['-c', `import ${name}; print(getattr(${name}, "__version__", "installed"))`]);
+  return res.ok ? res.text : null;
+}
+
+function readConfig(configPath) {
+  if (!existsSync(configPath)) return {};
+  try {
+    return JSON.parse(readFileSync(configPath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeConfig(configPath, config) {
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+}
+
+function withDefaults(config) {
+  const dir = path.dirname(POSTMAN_POOL_CONFIG_PATH);
+  return {
+    enabled: false,
+    telegramApiId: 0,
+    telegramApiHash: '',
+    telegramSessionPath: path.join(dir, 'telegram-user.session'),
+    sourceChatId: '',
+    adminUserIds: [],
+    reportBotToken: '',
+    reportChatId: '',
+    profileRoot: '',
+    librewolfBinary: IS_WIN ? 'C:\\Program Files\\LibreWolf\\librewolf.exe' : '',
+    scratchRoot: '',
+    timeoutSeconds: 45,
+    ...config,
+  };
+}
+
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+    });
+    process.stdin.on('end', () => resolve(data));
+  });
+}
+
+// Non-secret view of the config for prefilling the GUI form: secret values
+// (telegramApiHash, reportBotToken) are reported only as booleans, never echoed.
+function configView(configPath) {
+  const raw = readConfig(configPath);
+  const status = getPostmanPoolConfigStatus(configPath);
+  return {
+    configPath,
+    enabled: raw.enabled === true,
+    telegramApiId: Number(raw.telegramApiId) || 0,
+    hasApiHash: Boolean(raw.telegramApiHash),
+    telegramSessionPath: raw.telegramSessionPath || '',
+    sourceChatId: raw.sourceChatId ? String(raw.sourceChatId) : '',
+    adminUserIds: Array.isArray(raw.adminUserIds) ? raw.adminUserIds : [],
+    hasReportBotToken: !status.missing.includes('reportBotToken'),
+    tokenSource: status.tokenSource,
+    reportChatId: raw.reportChatId ? String(raw.reportChatId) : '',
+    profileRoot: raw.profileRoot || '',
+    librewolfBinary: raw.librewolfBinary || '',
+    scratchRoot: raw.scratchRoot || '',
+    timeoutSeconds: Number(raw.timeoutSeconds) || 45,
+  };
+}
+
+async function setConfigFromStdin(configPath) {
+  const patchRaw = await readStdin();
+  const patch = patchRaw.trim() ? JSON.parse(patchRaw) : {};
+  const merged = withDefaults({ ...readConfig(configPath), ...patch });
+  if (Array.isArray(merged.adminUserIds)) {
+    merged.adminUserIds = merged.adminUserIds.map((n) => Number(n)).filter((n) => Number.isSafeInteger(n) && n > 0);
+  }
+  merged.telegramApiId = Number(merged.telegramApiId) || 0;
+  writeConfig(configPath, merged);
+}
+
+async function sendTestReport(configPath) {
+  const status = getPostmanPoolConfigStatus(configPath);
+  if (status.missing.includes('reportBotToken') || status.missing.includes('reportChatId')) {
+    console.log(JSON.stringify({ ok: false, error: `missing ${status.missing.join(', ')}` }));
+    return;
+  }
+  const creds = resolveReportCredentials(configPath);
+  try {
+    const result = await sendPostmanPoolReportMessage(creds, 'Aki Watch: outbound test message (sendMessage only).');
+    console.log(JSON.stringify({ ok: true, chatId: creds.reportChatId, tokenSource: creds.tokenSource, messageId: result?.message_id ?? null }));
+  } catch (error) {
+    console.log(JSON.stringify({ ok: false, error: redactToken(error?.message || String(error)) }));
+  }
+}
+
+function printCheck(configPath) {
+  const status = getPostmanPoolConfigStatus(configPath);
+  const raw = readConfig(configPath);
+  const pyVer = pyCapture(['--version']);
+  const librewolf = raw.librewolfBinary || '';
+  console.log('Aki Watch - environment check\n');
+  const line = (k, v) => console.log(`  ${String(k).padEnd(18)} ${v}`);
+  line('node', process.version);
+  line(`${PY} ${PY_PREFIX.join(' ')}`.trim(), pyVer.ok ? pyVer.text : 'NOT FOUND');
+  line('telethon', moduleVersion('telethon') || 'NOT INSTALLED (py -3 -m pip install telethon)');
+  line('selenium', moduleVersion('selenium') || 'NOT INSTALLED (py -3 -m pip install selenium)');
+  line('geckodriver', 'Selenium 4 auto-manages it (needs network on first run)');
+  line('librewolf', librewolf ? (existsSync(librewolf) ? librewolf : `MISSING: ${librewolf}`) : 'not set');
+  console.log(`\nConfig: ${configPath}`);
+  line('enabled', status.enabled);
+  line('sourceChatId', status.sourceChatId || '(missing)');
+  line('adminUserIds', status.adminUserIds.length ? status.adminUserIds.join(', ') : '(missing)');
+  line('reportChatId', status.reportChatId || '(missing)');
+  line('reportBotToken', status.missing.includes('reportBotToken') ? '(missing)' : `present (source: ${status.tokenSource})`);
+  line('missing', status.missing.length ? status.missing.join(', ') : 'none');
+  console.log(`\n  ready to enable    ${status.ready ? 'YES' : 'NO'}`);
+}
+
+async function runSetup(configPath) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = async (question, def) => {
+    const shown = def !== undefined && def !== '' ? `${question} [${def}]: ` : `${question}: `;
+    const answer = (await rl.question(shown)).trim();
+    return answer || (def ?? '');
+  };
+  const yes = async (question) => /^y(es)?$/i.test((await rl.question(`${question} (y/N): `)).trim());
+  try {
+    console.log('Aki Watch guided setup. Secrets are written to the local config only, never printed.');
+    console.log(`Config: ${configPath}`);
+    console.log('Human-only steps (my.telegram.org, @BotFather, Postman logins): docs/ref/aki-watch-onboarding.md\n');
+
+    let config = withDefaults(readConfig(configPath));
+
+    console.log('Step 1 - Telegram API credentials: open https://my.telegram.org/apps and create an app.');
+    config.telegramApiId = Number(await ask('telegramApiId', config.telegramApiId || '')) || config.telegramApiId;
+    const apiHash = await ask('telegramApiHash (stays local)', config.telegramApiHash ? '(keep existing)' : '');
+    if (apiHash && apiHash !== '(keep existing)') config.telegramApiHash = apiHash;
+    writeConfig(configPath, config);
+
+    if (await yes('Step 2 - Run Telegram login now to create the session and list your groups?')) {
+      pyInherit([TELEGRAM_SCRIPT, '--login', '--config', configPath]);
+    }
+    console.log('From the SELF line printed above, note your own userId (used for a self-DM reportChatId).');
+
+    config.sourceChatId = String(await ask('Step 3 - sourceChatId (paste the group chatId from the list)', config.sourceChatId));
+    writeConfig(configPath, config);
+
+    if (await yes('Step 4 - Observe the group to capture the admin sender ID? (admin posts a message; Ctrl+C to stop)')) {
+      pyInherit([TELEGRAM_SCRIPT, '--observe-senders', '--config', configPath]);
+    }
+    const admins = await ask('adminUserIds (comma-separated numeric IDs)', config.adminUserIds.join(','));
+    config.adminUserIds = admins.split(',').map((part) => Number(part.trim())).filter((n) => Number.isSafeInteger(n) && n > 0);
+    writeConfig(configPath, config);
+
+    console.log('Step 5 - Report bot token from @BotFather (/newbot), or reuse an existing outbound bot.');
+    console.log('Leave blank to supply it via env AKI_POSTMAN_POOL_REPORT_BOT_TOKEN instead of the config file.');
+    const token = await ask('reportBotToken (blank = use env)', config.reportBotToken ? '(keep existing)' : '');
+    if (token && token !== '(keep existing)') config.reportBotToken = token;
+
+    console.log('Step 6 - reportChatId: for a private DM use your own userId (the SELF line) and press Start on the bot first.');
+    config.reportChatId = String(await ask('reportChatId', config.reportChatId));
+    writeConfig(configPath, config);
+
+    if (await yes('Check Postman profile discovery now (postman-pool-join.py --dry-run)?')) {
+      pyInherit([JOIN_SCRIPT, '--dry-run']);
+    }
+
+    const status = getPostmanPoolConfigStatus(configPath);
+    if (!status.ready) {
+      console.log(`\nStill missing: ${status.missing.join(', ')}. Re-run setup after supplying them.`);
+      return;
+    }
+    console.log('\nConfig is complete (all required fields present).');
+
+    if (await yes('Send one outbound test message now (sendMessage only)?')) {
+      const creds = resolveReportCredentials(configPath);
+      try {
+        const result = await sendPostmanPoolReportMessage(creds, 'Aki Watch: outbound test message (sendMessage only).');
+        console.log(`Sent test to chat ${creds.reportChatId} (token source: ${creds.tokenSource}); message_id=${result?.message_id ?? 'n/a'}`);
+      } catch (error) {
+        console.log(`Test send failed: ${redactToken(error?.message)}`);
+      }
+    }
+
+    if (await yes('Enable the watcher now (set enabled=true)?')) {
+      config = withDefaults(readConfig(configPath));
+      config.enabled = true;
+      writeConfig(configPath, config);
+      console.log('enabled=true written. Restart Aki so the watcher process picks it up.');
+    } else {
+      console.log('Left enabled=false. Set it to true and restart Aki when ready.');
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  let configPath = POSTMAN_POOL_CONFIG_PATH;
+  const configFlag = args.indexOf('--config');
+  if (configFlag >= 0 && args[configFlag + 1]) configPath = args[configFlag + 1];
+  if (args.includes('--status-json')) {
+    console.log(JSON.stringify(getPostmanPoolConfigStatus(configPath)));
+    return 0;
+  }
+  if (args.includes('--get-config-json')) {
+    console.log(JSON.stringify(configView(configPath)));
+    return 0;
+  }
+  if (args.includes('--set-config-json')) {
+    await setConfigFromStdin(configPath);
+    console.log(JSON.stringify(configView(configPath)));
+    return 0;
+  }
+  if (args.includes('--send-test-json')) {
+    await sendTestReport(configPath);
+    return 0;
+  }
+  if (args.includes('--check')) {
+    printCheck(configPath);
+    return 0;
+  }
+  await runSetup(configPath);
+  return 0;
+}
+
+main()
+  .then((code) => process.exit(code))
+  .catch((error) => {
+    console.error(redactToken(error?.message || error));
+    process.exit(1);
+  });

@@ -1,0 +1,140 @@
+:root {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #1a1a1a;
+  background: #f6f6f6;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 {
+  margin: 0 0 4px;
+}
+
+.sub {
+  margin: 0 0 16px;
+  opacity: 0.7;
+}
+
+.hint {
+  font-size: 12px;
+  opacity: 0.7;
+  margin: 0 0 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.tab {
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.tab.active {
+  border-bottom-color: #3b82f6;
+  font-weight: 600;
+}
+
+.screen {
+  display: none;
+}
+
+.screen.active {
+  display: block;
+}
+
+form {
+  display: grid;
+  gap: 10px;
+}
+
+.group {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  border-radius: 6px;
+}
+
+.group strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+input {
+  padding: 7px 9px;
+  font-size: 14px;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-radius: 6px;
+}
+
+.tag {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+button {
+  padding: 8px 14px;
+  font-size: 14px;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.out {
+  margin-top: 16px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 6px;
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #eaeaea;
+    background: #1e1e1e;
+  }
+  input {
+    background: #262626;
+    color: #eaeaea;
+  }
+  .out {
+    background: #262626;
+  }
+}

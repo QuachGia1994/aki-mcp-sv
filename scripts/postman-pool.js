@@ -10,6 +10,7 @@ const POSTMAN_POOL_STATE_PATH = path.join(USER_DIR, 'postman-pool-state.json');
 const JOIN_WORKER_PATH = fileURLToPath(new URL('./postman-pool-join.py', import.meta.url));
 const TELEGRAM_LISTENER_PATH = fileURLToPath(new URL('./postman-pool-telegram.py', import.meta.url));
 const POSTMAN_HOST_SUFFIXES = ['postman.com', 'getpostman.com', 'postman.co'];
+const WORKER_EVENT_PREFIX = '[postman-pool:event] ';
 const MAX_SEEN = 100;
 
 function allowedPostmanHost(hostname) {
@@ -91,6 +92,28 @@ export function formatPostmanPoolReport(result) {
   return lines.join('\n');
 }
 
+export function parsePostmanPoolWorkerEvent(line) {
+  const text = String(line || '').trim();
+  if (!text.startsWith(WORKER_EVENT_PREFIX)) return null;
+  try {
+    const event = JSON.parse(text.slice(WORKER_EVENT_PREFIX.length));
+    return event && typeof event === 'object' && !Array.isArray(event) ? event : null;
+  } catch {
+    return null;
+  }
+}
+
+export function formatManualVerificationReport(event) {
+  const account = event?.email || event?.profile || 'unknown account';
+  const profile = event?.email && event?.profile ? ` (${event.profile})` : '';
+  return `Postman pool: Cloudflare verification required for ${account}${profile}. Complete it in the open LibreWolf window; Aki will resume automatically.`;
+}
+
+export function postmanPoolResultIsRetryable(result) {
+  const failed = Array.isArray(result?.failed) ? result.failed : [];
+  return failed.some((row) => row?.status === 'manual_verification_timeout');
+}
+
 function readJson(pathName, fallback) {
   if (!existsSync(pathName)) return fallback;
   try { return JSON.parse(readFileSync(pathName, 'utf8')); } catch { return fallback; }
@@ -126,6 +149,7 @@ export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
     librewolfBinary: raw.librewolfBinary || null,
     scratchRoot: raw.scratchRoot || null,
     timeoutSeconds: Number.isFinite(Number(raw.timeoutSeconds)) ? Math.max(10, Math.min(120, Number(raw.timeoutSeconds))) : 45,
+    manualVerificationSeconds: Number.isFinite(Number(raw.manualVerificationSeconds)) ? Math.max(60, Math.min(900, Number(raw.manualVerificationSeconds))) : 300,
   };
 }
 
@@ -137,7 +161,7 @@ function pythonCommand(scriptPath, extraArgs = []) {
   return process.platform === 'win32' ? { file: 'py', args: ['-3', scriptPath, ...extraArgs] } : { file: 'python3', args: [scriptPath, ...extraArgs] };
 }
 
-function runJoinWorker(inviteUrl, config, spawnImpl = cp.spawn) {
+function runJoinWorker(inviteUrl, config, spawnImpl = cp.spawn, onProgress = null) {
   return new Promise((resolve, reject) => {
     const command = pythonCommand(JOIN_WORKER_PATH, ['--json-stdin']);
     const args = [...command.args];
@@ -145,11 +169,25 @@ function runJoinWorker(inviteUrl, config, spawnImpl = cp.spawn) {
     if (config.librewolfBinary) args.push('--librewolf-binary', config.librewolfBinary);
     if (config.scratchRoot) args.push('--scratch-root', config.scratchRoot);
     args.push('--timeout', String(config.timeoutSeconds));
+    args.push('--manual-verification-timeout', String(config.manualVerificationSeconds));
     const child = spawnImpl(command.file, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
     let stderr = '';
+    let stderrLines = '';
     child.stdout?.on('data', (chunk) => { stdout += chunk; });
-    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.stderr?.on('data', (chunk) => {
+      const text = chunk.toString();
+      stderr += text;
+      stderrLines += text;
+      for (;;) {
+        const newline = stderrLines.indexOf('\n');
+        if (newline < 0) break;
+        const line = stderrLines.slice(0, newline);
+        stderrLines = stderrLines.slice(newline + 1);
+        const event = parsePostmanPoolWorkerEvent(line);
+        if (event && onProgress) Promise.resolve(onProgress(event)).catch((error) => console.error(`[postman-pool] progress report failed: ${shortError(error.message)}`));
+      }
+    });
     child.on('error', reject);
     child.on('exit', (code) => {
       if (code !== 0) return reject(new Error(shortError(stderr || `join worker exited ${code}`)));
@@ -181,6 +219,30 @@ export function resolveReportCredentials(configPath = POSTMAN_POOL_CONFIG_PATH) 
 
 export async function sendPostmanPoolReportMessage(credentials, text, fetchImpl = fetch) {
   return telegramBotCall({ reportBotToken: credentials.reportBotToken }, 'sendMessage', { chat_id: credentials.reportChatId, text }, fetchImpl);
+}
+
+export function getPostmanPoolConfigStatus(configPath = POSTMAN_POOL_CONFIG_PATH) {
+  const raw = readJson(configPath, null) || {};
+  const { reportBotToken, reportChatId, tokenSource } = resolveReportCredentials(configPath);
+  const telegramApiId = Number(process.env.AKI_POSTMAN_POOL_TELEGRAM_API_ID || raw.telegramApiId);
+  const telegramApiHash = process.env.AKI_POSTMAN_POOL_TELEGRAM_API_HASH || raw.telegramApiHash;
+  const adminUserIds = Array.isArray(raw.adminUserIds) ? raw.adminUserIds.map(String).filter(Boolean) : [];
+  const missing = [];
+  if (!(Number.isSafeInteger(telegramApiId) && telegramApiId > 0)) missing.push('telegramApiId');
+  if (!telegramApiHash) missing.push('telegramApiHash');
+  if (!raw.sourceChatId) missing.push('sourceChatId');
+  if (adminUserIds.length === 0) missing.push('adminUserIds');
+  if (!reportBotToken) missing.push('reportBotToken');
+  if (!reportChatId) missing.push('reportChatId');
+  return {
+    enabled: raw.enabled === true,
+    sourceChatId: raw.sourceChatId ? String(raw.sourceChatId) : '',
+    adminUserIds,
+    reportChatId,
+    tokenSource,
+    missing,
+    ready: missing.length === 0,
+  };
 }
 
 function startTelegramUserListener(config, onMessage, spawnImpl = cp.spawn) {
@@ -245,12 +307,21 @@ export function startPostmanPoolWatcher({ configPath = POSTMAN_POOL_CONFIG_PATH,
     if (!inviteUrl) return;
     const hash = fingerprint(inviteUrl);
     if (seen.has(hash)) return;
+    let manualVerificationSeen = false;
     try {
-      const result = await runJoinWorker(inviteUrl, config, spawnImpl);
-      remember(hash);
+      const result = await runJoinWorker(inviteUrl, config, spawnImpl, async (event) => {
+        if (event?.type === 'manual_verification_required') {
+          manualVerificationSeen = true;
+          console.warn(`[postman-pool] ${event.email || event.profile || 'account'} waiting for manual Cloudflare verification`);
+          await report(formatManualVerificationReport(event));
+        } else if (event?.type === 'manual_verification_resolved') {
+          console.log(`[postman-pool] ${event.email || event.profile || 'account'} Cloudflare verification resolved; resuming`);
+        }
+      });
+      if (!postmanPoolResultIsRetryable(result)) remember(hash);
       await report(formatPostmanPoolReport(result));
     } catch (error) {
-      remember(hash);
+      if (!manualVerificationSeen) remember(hash);
       await report(`Postman pool: automation failed · ${shortError(error.message)}`);
     }
   };

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { readBody } from '../scripts/http.js';
 import { dcrRateLimitAvailable, dcrRegistrationAvailable, handleRegister, isAllowedRedirect, pruneUnusedDcrClients, shouldRotateRefresh, rotateRefreshGrant } from '../scripts/oauth.js';
 import { DEFAULT_ALLOWLIST, parseSettingsText } from '../scripts/allowlist.js';
-import { containedIn, pathIdentity, resolveRealUnderRoot, resolveRealUnderRootSync } from '../scripts/roots.js';
+import { containedIn, envDefaultRoots, pathIdentity, resolveRealUnderRoot, resolveRealUnderRootSync } from '../scripts/roots.js';
 import { resolveExecFileTarget, trustedInterpreterScriptArg, validateAllowedCommandArgs } from '../scripts/shell-mcp.js';
 
 test('readBody rejects declared and streamed bodies above the configured cap', async () => {
@@ -42,15 +42,35 @@ test('trusted interpreter preallow only accepts a script as argv[0]', () => {
   assert.equal(trustedInterpreterScriptArg('bash', [trusted]), null);
 });
 
-test('default shell allowlist excludes package-script execution entrypoints', () => {
+test('default shell allowlist excludes package-script and environment-introspection entrypoints', () => {
   assert.deepEqual(DEFAULT_ALLOWLIST.npm, ['list', 'ls', 'outdated']);
   assert.equal('npx' in DEFAULT_ALLOWLIST, false);
+  assert.equal('jq' in DEFAULT_ALLOWLIST, false);
 });
 
 test('malformed settings fail closed instead of becoming an empty/default configuration', () => {
   assert.throws(() => parseSettingsText('{broken'), /JSON/);
   assert.throws(() => parseSettingsText('[]'), /settings root must be a JSON object/);
   assert.deepEqual(parseSettingsText('{"folders":["D:\\\\Safe"]}').folders, ['D:\\Safe']);
+});
+
+test('fresh-install roots keep secrets out while preserving narrow rule surfaces', () => {
+  const cwd = path.resolve('safe-default-root');
+  const home = path.resolve('user-home');
+  const first = path.resolve('explicit-root-a');
+  const second = path.resolve('explicit-root-b');
+  const ruleRoots = [
+    path.join(home, '.aki', 'akidevrule'),
+    path.join(home, '.claude', 'CLAUDE.md'),
+    path.join(home, '.claude', 'CLAUDE.local.md'),
+    path.join(home, '.claude', 'skills', 'akirule'),
+  ];
+  const fresh = envDefaultRoots({ env: {}, cwd, home, exists: () => true });
+  assert.deepEqual(fresh, [cwd, ...ruleRoots]);
+  assert.equal(fresh.includes(home), false);
+  assert.equal(fresh.includes(path.join(home, '.aki')), false);
+  assert.equal(fresh.includes(path.join(home, '.claude')), false);
+  assert.deepEqual(envDefaultRoots({ env: { MCP_DATA_DIR: `${first},${second}` }, cwd, home, exists: () => true }), [first, second, ...ruleRoots]);
 });
 
 test('path identity lowercases only on Windows-like filesystems', () => {

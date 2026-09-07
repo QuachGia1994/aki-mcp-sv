@@ -90,7 +90,7 @@ export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
   return { mcp: branch(local.mcp, mcpLatest), rule: branch(local.rule, parseChangelogVersion(ruleLog)) };
 }
 
-// A convenience mirror the pasted instruction reads at session start (under ~/.aki = a locked allowed root), so a remote AI can tell the user its instruction is stale. Never fatal — the console/panel banners stand alone.
+// A convenience mirror the pasted instruction may read at session start when the owner has granted this user-data path. Never fatal — the console/panel banners stand alone.
 export function writeStatusFile(info) {
   try {
     writeFileSync(STATUS_PATH, `${JSON.stringify({ checkedAt: new Date().toISOString(), ...info }, null, 2)}\n`);

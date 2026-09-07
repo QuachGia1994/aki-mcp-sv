@@ -36,7 +36,8 @@ Create or edit `~/.aki/mcpsv/postman-pool.json` while keeping `enabled=false`:
   "profileRoot": "C:\\Users\\YOU\\AppData\\Roaming\\LibreWolf",
   "librewolfBinary": "C:\\Program Files\\LibreWolf\\librewolf.exe",
   "scratchRoot": "D:\\LacViet\\.aki-tmp\\postman-pool",
-  "timeoutSeconds": 45
+  "timeoutSeconds": 45,
+  "manualVerificationSeconds": 300
 }
 ```
 
@@ -96,7 +97,8 @@ If the existing bot cannot DM the intended report recipient, have that recipient
 2. The local Telethon session emits the message to Aki. Aki validates sender ID, chat ID, HTTPS host, and invite-shaped URL, deduplicates the link, and queues one join run at a time.
 3. `scripts/postman-pool-join.py` discovers LibreWolf profiles. Numbered profiles are included; a non-numbered main profile is also included when Postman identity metadata identifies an account.
 4. Each profile is cloned to scratch, opened visibly with LibreWolf, and given the invite link. The worker clicks only `Accept Invite` / `Join Team` controls and reports success only after an explicit joined/already-member signal or a redirect to a known Postman application host; an arbitrary redirect or generic `Welcome to Postman` copy is not success.
-5. Joined account emails are written to `~/.aki/mcpsv/postman-emails.txt`; the report bot sends joined/already-joined, skipped, and failed counts plus account emails/profile names to `reportChatId`.
-6. Scratch profile clones are deleted after each account. A failed account does not prevent the remaining profiles from running.
+5. If Postman/Cloudflare shows a security-verification page, Aki does not attempt to bypass it. The current LibreWolf window and cloned profile stay open, Hathaway sends a `manual verification required` notice, and the worker waits up to `manualVerificationSeconds` (default 300, bounded 60-900) for the owner to complete the challenge. When the challenge disappears in the same browser context, Aki resumes the invite automatically. A verification timeout is treated as retryable and the invite hash is not newly deduplicated by that run.
+6. Joined account emails are written to `~/.aki/mcpsv/postman-emails.txt`; the report bot sends joined/already-joined, skipped, and failed counts plus account emails/profile names to `reportChatId`.
+7. Scratch profile clones are deleted after each account. A failed account does not prevent the remaining profiles from running.
 
-Postman's invite-link flow remains open invite -> `Accept Invite` -> sign in if needed -> redirect to the team. If a profile is no longer signed in, the worker reports that profile as failed instead of attempting to enter credentials.
+Postman's invite-link flow remains open invite -> security verification when demanded by the site -> `Accept Invite` -> sign in if needed -> redirect to the team. If a profile is no longer signed in, the worker reports that profile as failed instead of attempting to enter credentials. Aki never clicks, solves, or circumvents Cloudflare challenge controls on the user's behalf.

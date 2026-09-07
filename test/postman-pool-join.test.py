@@ -34,6 +34,39 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertTrue(MODULE.invite_failure_signal("Sign in to Postman"))
         self.assertFalse(MODULE.invite_failure_signal("You joined the team"))
 
+    def test_security_verification_signal_only_matches_postman_challenge_pages(self):
+        body = "Performing security verification. This website verifies you are not a bot."
+        self.assertTrue(MODULE.security_verification_signal("https://identity.getpostman.com/login", body, "Just a moment..."))
+        self.assertFalse(MODULE.security_verification_signal("https://identity.getpostman.com/login", "Sign in to Postman", "Postman"))
+        self.assertFalse(MODULE.security_verification_signal("https://example.com/", body, "Just a moment..."))
+
+    def test_security_verification_wait_keeps_same_driver_and_resumes_after_human_clears_it(self):
+        class By:
+            TAG_NAME = "tag"
+
+        class Driver:
+            current_url = "https://identity.getpostman.com/login"
+            title = "Just a moment..."
+
+            def __init__(self):
+                self.reads = 0
+
+            def find_element(self, _by, _name):
+                self.reads += 1
+                text = "Performing security verification. This website verifies you are not a bot." if self.reads == 1 else "Postman invite ready"
+                return type("Element", (), {"text": text})()
+
+        events = []
+        original_emit = MODULE.emit_progress
+        MODULE.emit_progress = lambda event: events.append(event)
+        try:
+            driver = Driver()
+            self.assertTrue(MODULE.wait_for_security_verification(driver, By, 1, {"profile": "Hồ sơ 1"}, poll_seconds=0))
+        finally:
+            MODULE.emit_progress = original_emit
+        self.assertEqual(driver.reads, 2)
+        self.assertEqual([event["type"] for event in events], ["manual_verification_required", "manual_verification_resolved"])
+
     def test_profile_identity_temp_stays_under_supplied_scratch_root(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)

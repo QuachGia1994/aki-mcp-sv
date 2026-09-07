@@ -3,9 +3,17 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { startLoopbackMcp } from '../scripts/loopback-mcp.js';
 
-async function request(port, { method = 'POST', sessionId, body }) {
+const AUTHORIZATION = 'Bearer loopback-test-token';
+const startTestLoopback = () => startLoopbackMcp({
+  port: 0,
+  ensureAuth: () => {},
+  verifyAuth: (header) => header === AUTHORIZATION,
+});
+
+async function request(port, { method = 'POST', sessionId, body, authorization = AUTHORIZATION }) {
   const headers = { 'Content-Type': 'application/json' };
   if (sessionId) headers['Mcp-Session-Id'] = sessionId;
+  if (authorization) headers.Authorization = authorization;
   const response = await fetch(`http://127.0.0.1:${port}/mcp`, {
     method,
     headers,
@@ -17,11 +25,12 @@ async function request(port, { method = 'POST', sessionId, body }) {
     sessionId: response.headers.get('mcp-session-id'),
     body: text ? JSON.parse(text) : null,
     cors: response.headers.get('access-control-allow-origin'),
+    authenticate: response.headers.get('www-authenticate'),
   };
 }
 
 test('loopback MCP binds only to 127.0.0.1 and serves Streamable HTTP without CORS', async (t) => {
-  const server = startLoopbackMcp({ port: 0 });
+  const server = startTestLoopback();
   t.after(() => server.close());
   if (!server.listening) await once(server, 'listening');
 
@@ -77,7 +86,7 @@ test('loopback MCP binds only to 127.0.0.1 and serves Streamable HTTP without CO
 });
 
 test('loopback MCP does not expose unrelated routes or legacy SSE GET', async (t) => {
-  const server = startLoopbackMcp({ port: 0 });
+  const server = startTestLoopback();
   t.after(() => server.close());
   if (!server.listening) await once(server, 'listening');
   const address = server.address();
@@ -85,13 +94,36 @@ test('loopback MCP does not expose unrelated routes or legacy SSE GET', async (t
   const missing = await fetch(`http://127.0.0.1:${address.port}/token`);
   assert.equal(missing.status, 404);
 
-  const legacyGet = await fetch(`http://127.0.0.1:${address.port}/mcp`);
+  const legacyGet = await fetch(`http://127.0.0.1:${address.port}/mcp`, { headers: { Authorization: AUTHORIZATION } });
   assert.equal(legacyGet.status, 405);
   assert.equal(legacyGet.headers.get('allow'), 'POST, DELETE');
 });
 
+test('loopback MCP requires a valid bearer token before tool access', async (t) => {
+  const server = startTestLoopback();
+  t.after(() => server.close());
+  if (!server.listening) await once(server, 'listening');
+  const address = server.address();
+
+  const unauthorized = await request(address.port, {
+    authorization: null,
+    body: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'unauthorized-loopback-test', version: '1.0.0' },
+      },
+    },
+  });
+  assert.equal(unauthorized.status, 401);
+  assert.match(unauthorized.authenticate ?? '', /^Bearer /);
+});
+
 test('loopback MCP rejects browser-shaped and simple cross-origin POSTs', async (t) => {
-  const server = startLoopbackMcp({ port: 0 });
+  const server = startTestLoopback();
   t.after(() => server.close());
   if (!server.listening) await once(server, 'listening');
   const address = server.address();
@@ -109,7 +141,7 @@ test('loopback MCP rejects browser-shaped and simple cross-origin POSTs', async 
 
   const browserLike = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+    headers: { 'Content-Type': 'application/json', Authorization: AUTHORIZATION, Origin: 'https://evil.example' },
     body,
   });
   assert.equal(browserLike.status, 403);
@@ -117,7 +149,7 @@ test('loopback MCP rejects browser-shaped and simple cross-origin POSTs', async 
 
   const simplePost = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
+    headers: { 'Content-Type': 'text/plain', Authorization: AUTHORIZATION },
     body,
   });
   assert.equal(simplePost.status, 415);

@@ -1,26 +1,31 @@
 // Path containment shared by every MCP tool that touches the filesystem — one implementation, because a second copy of a security boundary is a second chance to get it subtly wrong.
 import { realpath } from 'node:fs/promises';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadFolders } from './allowlist.js';
 
-// Fallback when setting.json carries no `folders` key yet (fresh install, or a folder edit was never saved via the panel): reconstructs the same default the old boot-time MCP_DATA_DIR env var used to expand to (dataDir + ~/.aki + ~/.claude), so behavior is unchanged until the first save — including the rule/config dirs the panel's own prompt-builder tells the AI to read.
-function envDefaultRoots() {
-  const base = (process.env.MCP_DATA_DIR || os.homedir())
+// Fresh installs expose the working directory plus only the rule surfaces named by the generated Instructions. Whole ~/.aki and ~/.claude stay outside the default boundary so OAuth/session state is not implicitly readable.
+export function envDefaultRoots({ env = process.env, cwd = process.cwd(), home = os.homedir(), exists = existsSync } = {}) {
+  const configured = String(env.MCP_DATA_DIR ?? '')
     .split(',')
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => path.resolve(p));
-  const always = [path.join(os.homedir(), '.aki'), path.join(os.homedir(), '.claude')];
-  return [...new Set([...(base.length ? base : [path.resolve(os.homedir())]), ...always])];
+  const ruleRoots = [
+    path.join(home, '.aki', 'akidevrule'),
+    path.join(home, '.claude', 'CLAUDE.md'),
+    path.join(home, '.claude', 'CLAUDE.local.md'),
+    path.join(home, '.claude', 'skills', 'akirule'),
+  ].filter((p) => exists(p));
+  return [...new Set([...(configured.length ? configured : [path.resolve(cwd)]), ...ruleRoots])];
 }
 
 // Per-call read (no module-level snapshot): a folder add/remove in setting.json takes effect on the very next call, the same way the shell allowlist already does. An empty/malformed read must never widen to "no restriction" — the safe-default fallback below is mandatory, never optional.
 export function getRoots() {
   const stored = loadFolders().map((p) => path.resolve(p));
   const roots = stored.length ? stored : envDefaultRoots();
-  return roots.length ? roots : [path.resolve(os.homedir())];
+  return roots.length ? roots : [path.resolve(process.cwd())];
 }
 
 export function pathIdentity(value, { platform = process.platform } = {}) {

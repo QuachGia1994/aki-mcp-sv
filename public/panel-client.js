@@ -109,26 +109,15 @@ function markDirty() {
   say('msgPaths', 'unsaved changes', false);
 }
 
-// Deleting a rule-zone row would silently cut the AI off from its rules, so those rows are locked, not deletable.
-const isProtectedPath = (p) => p === RULES_DIR || p === CLAUDE_DIR || p === AKI_DIR;
-
 function addPath(value, dirty) {
   const wrap = document.createElement('div');
   const input = document.createElement('input');
   input.type = 'text'; input.value = value;
-  if (isProtectedPath(value)) {
-    input.readOnly = true;
-    const lock = document.createElement('span');
-    lock.textContent = '🔒';
-    lock.title = 'Rule-file access, locked so it cannot be revoked by accident.';
-    wrap.append(input, lock);
-  } else {
-    input.oninput = markDirty;
-    const del = document.createElement('button');
-    del.textContent = '×';
-    del.onclick = () => { wrap.remove(); markDirty(); };
-    wrap.append(input, del);
-  }
+  input.oninput = markDirty;
+  const del = document.createElement('button');
+  del.textContent = '×';
+  del.onclick = () => { wrap.remove(); markDirty(); };
+  wrap.append(input, del);
   document.getElementById('paths').append(wrap);
   if (dirty) markDirty();
 }

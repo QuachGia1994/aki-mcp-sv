@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aki Watch</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Aki Watch</h1>
+      <p class="sub">Postman pool auto-join &mdash; setup &amp; status</p>
+
+      <nav class="tabs">
+        <button type="button" class="tab active" data-screen="check">Environment</button>
+        <button type="button" class="tab" data-screen="setup">Setup</button>
+        <button type="button" class="tab" data-screen="status">Status</button>
+      </nav>
+
+      <section id="screen-check" class="screen active">
+        <button id="check-btn" type="button">Run environment check</button>
+        <pre id="check-out" class="out">Click "Run environment check" to inspect prerequisites and config readiness.</pre>
+      </section>
+
+      <section id="screen-setup" class="screen">
+        <p class="hint">Secrets are written to the local config file only, never shown here. Leave a secret field blank to keep the existing value. Get API credentials at my.telegram.org and a bot token from &#64;BotFather (see docs/ref/aki-watch-onboarding.md).</p>
+
+        <div class="group">
+          <strong>Telegram</strong>
+          <div class="row">
+            <button type="button" id="login-btn">Login (opens console)</button>
+            <button type="button" id="dialogs-btn">List my groups</button>
+            <button type="button" id="observe-btn">Observe admin ID (console)</button>
+          </div>
+          <pre id="dialogs-out" class="out">Login once (console), then "List my groups" to copy a source chat ID. "Observe" prints the admin's sender ID while they post; copy it into Admin user IDs.</pre>
+        </div>
+
+        <form id="setup-form">
+          <label>Telegram API ID<input name="telegramApiId" type="number" inputmode="numeric" /></label>
+          <label>Telegram API hash <span class="tag" id="tag-apihash"></span><input name="telegramApiHash" type="password" placeholder="leave blank to keep" autocomplete="off" /></label>
+          <label>Source chat ID<input name="sourceChatId" /></label>
+          <label>Admin user IDs (comma-separated)<input name="adminUserIds" /></label>
+          <label>Report bot token <span class="tag" id="tag-token"></span><input name="reportBotToken" type="password" placeholder="leave blank to keep / use env" autocomplete="off" /></label>
+          <label>Report chat ID<input name="reportChatId" /></label>
+          <label>Telegram session path<input name="telegramSessionPath" /></label>
+          <label>LibreWolf binary<input name="librewolfBinary" /></label>
+          <label>Profile root<input name="profileRoot" /></label>
+          <label>Scratch root<input name="scratchRoot" /></label>
+          <label>Timeout (seconds)<input name="timeoutSeconds" type="number" inputmode="numeric" /></label>
+          <div class="row">
+            <button type="button" id="reload-btn">Reload</button>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+        <pre id="setup-out" class="out"></pre>
+      </section>
+
+      <section id="screen-status" class="screen">
+        <div class="row">
+          <button id="status-btn" type="button">Refresh status</button>
+          <button id="test-btn" type="button">Send outbound test</button>
+          <button id="enable-btn" type="button">Enable</button>
+          <button id="disable-btn" type="button">Disable</button>
+        </div>
+        <pre id="status-out" class="out">Click "Refresh status".</pre>
+        <p class="hint">Enabling only writes the config flag &mdash; restart Aki so the watcher process (in the MCP server) picks it up. The outbound test uses sendMessage only.</p>
+      </section>
+    </main>
+  </body>
+</html>

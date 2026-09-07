@@ -9,7 +9,7 @@ import { SETTINGS_PATH } from './userdata.js';
 // Unix tools work as-is on macOS/Linux and on Windows when Git for Windows usr\bin is on PATH.
 const UNIX_DEFAULT = [
   'ls', 'cat', 'pwd', 'grep', 'head', 'tail', 'wc', 'file', 'stat', 'tree', 'ps', 'df', 'du',
-  'whoami', 'uname', 'uniq', 'cut', 'diff', 'jq',
+  'whoami', 'uname', 'uniq', 'cut', 'diff',
   'basename', 'dirname', 'realpath', 'which', 'date', 'strings', 'uptime', 'pgrep',
   ['lsof', '-i'],
   ['npm', 'list', 'ls', 'outdated'], ['pip', 'freeze', 'list'], ['node', '-v'],

@@ -1,10 +1,5 @@
 // Renders the control panel page. Served only by panel.js on loopback; credentials never travel over the Funnel.
-import os from 'node:os';
-import path from 'node:path';
 import { esc } from './html.js';
-
-const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const AKI_DIR = path.join(os.homedir(), '.aki');
 const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
 const SETTINGS_URL = 'https://claude.ai/new#settings/general';
 const GROK_SETTINGS_URL = 'https://grok.com/?_s=personality';
@@ -86,7 +81,7 @@ function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
 
-export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, hasGit = false, savedIngress = null }) {
+export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, userDir, updateInfo = {}, hasGit = false, savedIngress = null }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
   const postmanAuth = `Bearer ${accessToken}`;
   const postmanConfig = JSON.stringify({ mcpServers: { 'aki-mcp-sv': { url, headers: { Authorization: postmanAuth } } } });
@@ -370,8 +365,8 @@ ${field('Widen command', WIDEN_SNIPPET)}
 
 <section id="s5"><h2>5 · Folders the connector may reach</h2>
 <p class="helptext">These folders scope file tools and the shell's working directory. Allowed shell commands run with your user permissions and may access files outside this list.</p>
-<p class="helptext">The default root is your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects.</p>
-<p class="helptext">Save takes effect immediately for every tool (shell, search, and file read/write/edit alike) — no restart needed.</p>
+<p class="helptext">Fresh installs expose only the process working directory plus narrow Aki rule files/directories needed by section 3. The whole home folder, <span class="mono">~/.aki</span>, and <span class="mono">~/.claude</span> are not granted automatically.</p>
+<p class="helptext">Every row is owner-controlled and removable. Save takes effect immediately for every tool (shell, search, and file read/write/edit alike) — no restart needed.</p>
 <div class="flist" id="paths"></div>
 <div class="acts">
   <button class="primary" data-act="addFolder">+ Add folder…</button>
@@ -436,9 +431,6 @@ ${field('Widen command', WIDEN_SNIPPET)}
 <button class="to-top" id="toTop" aria-label="Scroll to top" title="Scroll to top">↑</button>
 <script>
 const TOKEN = ${JSON.stringify(token)};
-const RULES_DIR = ${JSON.stringify(rulesDir)};
-const CLAUDE_DIR = ${JSON.stringify(CLAUDE_DIR)};
-const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const USER_DIR = ${JSON.stringify(userDir)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};

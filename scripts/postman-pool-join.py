@@ -28,6 +28,12 @@ POSTMAN_HOST_SUFFIXES = ("postman.com", "getpostman.com", "postman.co")
 POSTMAN_APP_HOSTS = {"app.getpostman.com", "go.postman.co", "web.postman.co"}
 JOINED_MARKERS = ("already a member", "already joined", "already part of", "you joined", "joined the team")
 INVITE_FAILURE_MARKERS = ("invalid or expired invite code", "unable to join the team", "sign in", "log in", "sign up")
+SECURITY_VERIFICATION_MARKERS = (
+    "performing security verification",
+    "verifies you are not a bot",
+    "verify you are not a bot",
+    "checking if the site connection is secure",
+)
 CACHE_DIRS = {
     "cache2",
     "startupCache",
@@ -74,6 +80,47 @@ def joined_signal(body: str) -> bool:
 def invite_failure_signal(body: str) -> bool:
     lowered = body.lower()
     return any(marker in lowered for marker in INVITE_FAILURE_MARKERS)
+
+
+def security_verification_signal(url: str, body: str, title: str = "") -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if not any(host == suffix or host.endswith(f".{suffix}") for suffix in POSTMAN_HOST_SUFFIXES):
+        return False
+    lowered = f"{title}\n{body}".lower()
+    return any(marker in lowered for marker in SECURITY_VERIFICATION_MARKERS)
+
+
+def emit_progress(event: dict) -> None:
+    print(f"[postman-pool:event] {json.dumps(event, ensure_ascii=False)}", file=sys.stderr, flush=True)
+
+
+def wait_for_security_verification(driver, By, timeout: int, progress: dict | None = None, poll_seconds: float = 1.0) -> bool:
+    def snapshot() -> tuple[str, str]:
+        try:
+            body = driver.find_element(By.TAG_NAME, "body").text
+        except Exception:
+            body = ""
+        try:
+            title = driver.title or ""
+        except Exception:
+            title = ""
+        return body, title
+
+    body, title = snapshot()
+    if not security_verification_signal(driver.current_url, body, title):
+        return True
+    emit_progress({"type": "manual_verification_required", **(progress or {})})
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(poll_seconds)
+        body, title = snapshot()
+        if not security_verification_signal(driver.current_url, body, title):
+            emit_progress({"type": "manual_verification_resolved", **(progress or {})})
+            return True
+    return False
 
 
 def gecko_profiles(root: Path) -> list[tuple[str, Path]]:
@@ -282,15 +329,36 @@ def firefox_driver(profile_clone: Path, binary: Path, scratch_root: Path):
     return webdriver.Firefox(options=options, service=service)
 
 
-def accept_invite(invite_url: str, profile_clone: Path, binary: Path, scratch_root: Path, timeout: int) -> tuple[str, str | None]:
+def accept_invite(
+    invite_url: str,
+    profile_clone: Path,
+    binary: Path,
+    scratch_root: Path,
+    timeout: int,
+    manual_verification_timeout: int,
+    progress: dict | None = None,
+) -> tuple[str, str | None]:
     _, By, _, _, EC, WebDriverWait = selenium_modules()
     driver = firefox_driver(profile_clone, binary, scratch_root)
+
+    def body_text() -> str:
+        try:
+            return driver.find_element(By.TAG_NAME, "body").text
+        except Exception:
+            return ""
+
+    def verification_cleared() -> bool:
+        return wait_for_security_verification(driver, By, manual_verification_timeout, progress)
+
     try:
         driver.get(invite_url)
         wait = WebDriverWait(driver, timeout)
         wait.until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
+        if not verification_cleared():
+            return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
+
         initial_url = driver.current_url
-        lower_body = lambda: driver.find_element(By.TAG_NAME, "body").text.lower()
+        lower_body = lambda: body_text().lower()
         button_xpaths = [
             "//button[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
             "//a[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
@@ -303,6 +371,8 @@ def accept_invite(invite_url: str, profile_clone: Path, binary: Path, scratch_ro
                 clickable = WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.XPATH, xpath)))
                 break
             except Exception:
+                if not verification_cleared():
+                    return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
                 continue
         if clickable is None:
             body = lower_body()
@@ -320,11 +390,10 @@ def accept_invite(invite_url: str, profile_clone: Path, binary: Path, scratch_ro
         deadline = time.time() + timeout
         while time.time() < deadline:
             time.sleep(0.5)
+            if not verification_cleared():
+                return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
             current_url = driver.current_url
-            try:
-                body = lower_body()
-            except Exception:
-                body = ""
+            body = lower_body()
             if invite_failure_signal(body):
                 if any(marker in body for marker in ("sign in", "log in", "sign up")):
                     return "failed", "Postman session is not signed in"
@@ -386,7 +455,7 @@ def discover_rows(profile_root: Path, scratch_root: Path) -> list[dict]:
     return deduped
 
 
-def run(invite_url: str, profile_root: Path, binary: Path, scratch_root: Path, timeout: int) -> dict:
+def run(invite_url: str, profile_root: Path, binary: Path, scratch_root: Path, timeout: int, manual_verification_timeout: int) -> dict:
     if not valid_invite_url(invite_url):
         raise RuntimeError("not a recognized Postman invite URL")
     joined: list[dict] = []
@@ -405,7 +474,15 @@ def run(invite_url: str, profile_root: Path, binary: Path, scratch_root: Path, t
             try:
                 log(f"[postman-pool] {row['profile']} -> {row.get('email') or 'email unknown'}")
                 clone = clone_profile(source, run_root)
-                status, error = accept_invite(invite_url, clone, binary, run_root, timeout)
+                status, error = accept_invite(
+                    invite_url,
+                    clone,
+                    binary,
+                    run_root,
+                    timeout,
+                    manual_verification_timeout,
+                    {"profile": row["profile"], "email": row.get("email")},
+                )
                 result = {"profile": row["profile"], "email": row.get("email"), "status": status}
                 if error:
                     result["error"] = error
@@ -433,6 +510,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--librewolf-binary")
     parser.add_argument("--scratch-root")
     parser.add_argument("--timeout", type=int, default=45)
+    parser.add_argument("--manual-verification-timeout", type=int, default=300)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--smoke-browser", action="store_true")
     return parser.parse_args()
@@ -460,7 +538,14 @@ def main() -> int:
             return 0
         if not invite_url:
             raise RuntimeError("invite URL is required")
-        result = run(invite_url, profile_root, binary, scratch_root, max(10, min(120, args.timeout)))
+        result = run(
+            invite_url,
+            profile_root,
+            binary,
+            scratch_root,
+            max(10, min(120, args.timeout)),
+            max(60, min(900, args.manual_verification_timeout)),
+        )
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except Exception as exc:

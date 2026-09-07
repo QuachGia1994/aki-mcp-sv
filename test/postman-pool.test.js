@@ -7,10 +7,14 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
   extractPostmanInviteUrl,
+  formatManualVerificationReport,
   formatPostmanPoolReport,
+  getPostmanPoolConfigStatus,
   isAuthorizedTelegramMessage,
   loadPostmanPoolConfig,
   normalizeInviteUrl,
+  parsePostmanPoolWorkerEvent,
+  postmanPoolResultIsRetryable,
   resolveReportCredentials,
   sendPostmanPoolReportMessage,
   startPostmanPoolWatcher,
@@ -41,6 +45,14 @@ assert.match(report, /two@example\.com/);
 assert.match(report, /1 skipped/);
 assert.match(report, /1 failed/);
 assert.doesNotMatch(report, /invite_code=/, 'Telegram report must never echo the invite bearer URL');
+
+const verificationEvent = parsePostmanPoolWorkerEvent('[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 5","email":"five@example.com"}');
+assert.deepEqual(verificationEvent, { type: 'manual_verification_required', profile: 'Hồ sơ 5', email: 'five@example.com' });
+assert.equal(parsePostmanPoolWorkerEvent('[postman-pool] normal log'), null);
+assert.match(formatManualVerificationReport(verificationEvent), /five@example\.com/);
+assert.doesNotMatch(formatManualVerificationReport(verificationEvent), /invite_code=/);
+assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'manual_verification_timeout' }] }), true);
+assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'failed' }] }), false);
 
 assert.deepEqual(loadPostmanPoolConfig('/definitely/missing/postman-pool.json'), { enabled: false });
 
@@ -140,6 +152,12 @@ await waitFor(() => integrationSpawns.length === 2, 'authorized text_link invite
 assert.doesNotMatch(integrationSpawns[1].args.join(' '), /invite_code=/, 'invite bearer must not appear in worker argv');
 await waitFor(() => joinInputs.length === 1, 'first join worker did not receive stdin input');
 assert.equal(JSON.parse(joinInputs[0]).inviteUrl, entityInvite);
+assert.match(integrationSpawns[1].args.join(' '), /--manual-verification-timeout 300/);
+integrationSpawns[1].child.stderr.write('[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 1","email":"one@example.com"}\n');
+await waitFor(() => reportCalls.length === 1, 'manual verification progress was not reported while the worker remained open');
+const verificationReportBody = JSON.parse(reportCalls[0].options.body);
+assert.match(verificationReportBody.text, /Cloudflare verification required/);
+assert.match(verificationReportBody.text, /one@example\.com/);
 
 emitMessage({ chat: { id: -100123 }, from: { id: 42 }, text: secondInvite });
 emitMessage({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite });
@@ -149,14 +167,14 @@ assert.equal(integrationSpawns.length, 2, 'queue must not overlap join workers')
 integrationSpawns[1].child.stdout.write(JSON.stringify({ joined: [{ profile: 'Hồ sơ 1', email: 'one@example.com', status: 'joined' }], skipped: [], failed: [] }));
 integrationSpawns[1].child.exitCode = 0;
 integrationSpawns[1].child.emit('exit', 0);
-await waitFor(() => reportCalls.length === 1 && integrationSpawns.length === 3, 'second invite did not run after first completed');
+await waitFor(() => reportCalls.length === 2 && integrationSpawns.length === 3, 'second invite did not run after first completed');
 await waitFor(() => joinInputs.length === 2, 'second join worker did not receive stdin input');
 assert.equal(JSON.parse(joinInputs[1]).inviteUrl, secondInvite);
 
 integrationSpawns[2].child.stdout.write(JSON.stringify({ joined: [], skipped: [], failed: [{ profile: 'Hồ sơ 2', error: `failed at ${secondInvite}` }] }));
 integrationSpawns[2].child.exitCode = 0;
 integrationSpawns[2].child.emit('exit', 0);
-await waitFor(() => reportCalls.length === 2, 'second report was not sent');
+await waitFor(() => reportCalls.length === 3, 'second report was not sent');
 await new Promise((resolve) => setTimeout(resolve, 20));
 assert.equal(integrationSpawns.length, 3, 'duplicate invite must be deduplicated after the first run');
 for (const call of reportCalls) {
@@ -166,6 +184,35 @@ for (const call of reportCalls) {
 }
 integrationWatcher.close();
 assert.equal(listener.killed, true);
+
+// A worker crash after manual verification begins must remain retryable instead of poisoning dedupe state.
+const retrySpawns = [];
+const retryReports = [];
+const retrySpawn = (file, args) => {
+  const child = fakeChild();
+  retrySpawns.push({ file, args, child });
+  return child;
+};
+const retryWatcher = startPostmanPoolWatcher({
+  configPath,
+  statePath: path.join(tempDir, 'manual-retry-state.json'),
+  spawnImpl: retrySpawn,
+  fetchImpl: async (url, options) => {
+    retryReports.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+  },
+});
+const retryListener = retrySpawns[0].child;
+retryListener.stdout.write(`${JSON.stringify({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite })}\n`);
+await waitFor(() => retrySpawns.length === 2, 'retry test did not start first join worker');
+retrySpawns[1].child.stderr.write('[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 1"}\n');
+await waitFor(() => retryReports.length === 1, 'retry test did not forward manual verification event');
+retrySpawns[1].child.exitCode = 1;
+retrySpawns[1].child.emit('exit', 1);
+await waitFor(() => retryReports.length === 2, 'retry test did not report worker failure');
+retryListener.stdout.write(`${JSON.stringify({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite })}\n`);
+await waitFor(() => retrySpawns.length === 3, 'invite was incorrectly deduped after worker crashed during manual verification');
+retryWatcher.close();
 
 // resolveReportCredentials + sendPostmanPoolReportMessage: outbound sendMessage-only report path.
 const credConfigPath = path.join(tempDir, 'creds.json');
@@ -197,6 +244,23 @@ const sentBody = JSON.parse(sendCalls[0].options.body);
 assert.equal(sentBody.chat_id, '279000740');
 assert.equal(sentBody.text, 'aki outbound test');
 assert.equal(sendResult.message_id, 7);
+
+// getPostmanPoolConfigStatus: readiness summary that never surfaces secret values.
+const statusConfigPath = path.join(tempDir, 'status.json');
+delete process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN;
+delete process.env.AKI_POSTMAN_POOL_TELEGRAM_API_ID;
+delete process.env.AKI_POSTMAN_POOL_TELEGRAM_API_HASH;
+writeFileSync(statusConfigPath, JSON.stringify({ enabled: false, telegramApiId: 0, telegramApiHash: '', sourceChatId: '', adminUserIds: [], reportBotToken: '', reportChatId: '' }));
+let poolStatus = getPostmanPoolConfigStatus(statusConfigPath);
+assert.equal(poolStatus.ready, false);
+assert.deepEqual([...poolStatus.missing].sort(), ['adminUserIds', 'reportBotToken', 'reportChatId', 'sourceChatId', 'telegramApiHash', 'telegramApiId'].sort());
+assert.ok(!('reportBotToken' in poolStatus) && !('telegramApiHash' in poolStatus), 'status never surfaces secret values');
+writeFileSync(statusConfigPath, JSON.stringify({ enabled: true, telegramApiId: 12345, telegramApiHash: 'h', sourceChatId: '-100123', adminUserIds: [42], reportBotToken: 't', reportChatId: '279000740' }));
+poolStatus = getPostmanPoolConfigStatus(statusConfigPath);
+assert.equal(poolStatus.ready, true);
+assert.deepEqual(poolStatus.missing, []);
+assert.equal(poolStatus.enabled, true);
+assert.equal(poolStatus.tokenSource, 'config');
 
 rmSync(tempDir, { recursive: true, force: true });
 
