@@ -261,11 +261,13 @@
     creditArm();
 
     permissionCards().forEach((card) => {
+      if (card.dataset.akiPressed === '1') return;
       const copy = cardCopy(card);
       const folderIntent = cfg[AUTO_REJECT_PICK_FOLDER.configKey] && copy.toLowerCase().includes(AUTO_REJECT_PICK_FOLDER.bodyNeedle);
       if (folderIntent) {
         const decline = slotButton(card, 'decline');
         if (!decline) return;
+        card.dataset.akiPressed = '1';
         window.__pmArmedCard = { kind: 'folder', copy, label: buttonLabel(decline), el: card };
         press(decline);
         if (!card.isConnected) creditArm();
@@ -278,6 +280,7 @@
       const row = autoClicker.matchPrimary(label);
       const allowed = row ? cfg[row.configKey] : (card.matches(PERMISSION_CARD_ROOT) && cfg.autoApprove);
       if (!allowed) return;
+      card.dataset.akiPressed = '1';
       window.__pmArmedCard = { kind: 'confirm', copy, label, el: card };
       press(confirm);
       if (!card.isConnected) creditArm();
@@ -339,7 +342,9 @@
       autoRejectPickFolder: true,
       autoInjectInstruction: true,
       showAllTeams: false,
-      isPinned: true
+      isPinned: true,
+      ctxCharAmber: 80000,
+      ctxCharRed: 150000
     };
 
     if (window.__pmInitialConfig && typeof window.__pmInitialConfig === 'object') {
@@ -359,6 +364,8 @@
       autoRejectPickFolder: config.autoRejectPickFolder,
       autoInjectInstruction: config.autoInjectInstruction,
       isPinned: config.isPinned,
+      ctxCharAmber: config.ctxCharAmber,
+      ctxCharRed: config.ctxCharRed,
       ...extra
     };
 
@@ -431,7 +438,9 @@
   function submitChatInput(inputEl) {
     const chat = inputEl.closest('[data-testid="ai-chat-container"]');
     const sendBtn = chat && chat.querySelector('.ai-chat-input-send-button');
-    if (sendBtn) press(sendBtn);
+    if (!sendBtn || sendBtn.disabled || sendBtn.getAttribute('aria-disabled') === 'true') return false;
+    press(sendBtn);
+    return true;
   }
 
   function agentSwitchItem(kind) {
@@ -573,7 +582,62 @@
     return data.teams.find(t => String(t.team_id) === String(currentTeamId)) || data.teams[0];
   }
 
+  function formatCreditReset(iso) {
+    if (!iso) return '';
+    const ms = new Date(iso).getTime() - Date.now();
+    if (!isFinite(ms)) return '';
+    if (ms <= 0) return 'Resets now';
+    const totalH = Math.floor(ms / 3600000);
+    const days = Math.floor(totalH / 24);
+    if (days >= 1) return `Resets in ${days}d ${totalH % 24}h`;
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    return `Resets in ${totalH}h ${minutes}m`;
+  }
+
+  function readConversationChars() {
+    try {
+      const container = document.querySelector('[data-testid="ai-chat-container"] [data-testid="ai-chat-conversation-container"]');
+      return container ? (container.innerText || '').length : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function to24h(time) {
+    const match = time && /^(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)$/i.exec(time.trim());
+    if (!match) return time || '';
+    let hour = parseInt(match[1], 10) % 12;
+    if (/PM/i.test(match[4])) hour += 12;
+    return String(hour).padStart(2, '0') + ':' + match[2] + ':' + match[3];
+  }
+
+  function renderContextBar() {
+    const footer = document.querySelector('[data-testid="ai-chat-container"] .ai-chat-footer');
+    const host = footer && footer.querySelector('.ai-chat-center-content');
+    if (!host) return;
+    const chars = readConversationChars();
+    const amber = config.ctxCharAmber || 80000;
+    const red = config.ctxCharRed || 150000;
+    const pct = Math.max(2, Math.min(100, Math.round((chars / red) * 100)));
+    const color = chars >= red
+      ? 'var(--content-color-error)'
+      : chars >= amber
+        ? 'var(--content-color-warning, #f5a623)'
+        : 'var(--content-color-success)';
+    const kb = chars > 0 ? Math.round(chars / 1000) + 'K' : '0';
+    let bar = document.getElementById('aki-ctx-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'aki-ctx-bar';
+    }
+    bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 12px 4px;font-size:10px;opacity:.85';
+    if (host.lastElementChild !== bar) host.appendChild(bar);
+    bar.title = `Chat context — ${chars.toLocaleString()} characters (${kb})\nGreen: healthy · Amber ≥ ${Math.round(amber / 1000)}K · Red ≥ ${Math.round(red / 1000)}K → start a new chat.`;
+    bar.innerHTML = `<span style="color:var(--content-color-secondary,#8b8b8b);white-space:nowrap">Context</span><div style="flex:1;height:4px;border-radius:2px;background:var(--background-color-tertiary,rgba(128,128,128,.25));overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};transition:width .3s"></div></div><span style="color:${color};font-variant-numeric:tabular-nums;white-space:nowrap">${kb}</span>`;
+  }
+
   function renderStatusBarUsage() {
+    renderContextBar();
     const el = document.getElementById('aki-status-bar-usage');
     if (!el) return;
 
@@ -589,7 +653,7 @@
     el.innerHTML = `
       <span class="aki-sb-team">${team.name || team.slug || 'Team'}</span>
       <span class="aki-sb-bar"><span class="aki-sb-fill ${quotaFillClass(pct)}" style="width: ${pct}%;"></span></span>
-      <span class="aki-sb-credits">${team.quota.used.toLocaleString()} / ${team.quota.limit.toLocaleString()}</span>
+      <span class="aki-sb-credits" title="${formatCreditReset(team.quota.resetAt)}">${team.quota.used.toLocaleString()} / ${team.quota.limit.toLocaleString()}</span>
     `;
   }
 
@@ -640,6 +704,7 @@
     }
 
     const actPct = quotaPct(activeTeam.quota);
+    const resetStr = formatCreditReset(activeTeam.quota && activeTeam.quota.resetAt);
 
     box.innerHTML = `
       <div>
@@ -658,7 +723,7 @@
           <button id="aki-toggle-all-teams" class="aki-text-btn">
             ${config.showAllTeams ? 'Collapse' : `View all ${data.teams.length} teams`}
           </button>
-          <span class="aki-muted">${data.updatedAt || ''}</span>
+          <span class="aki-muted">${resetStr ? resetStr + ' · ' : ''}${data.updatedAt ? 'updated ' + to24h(data.updatedAt) : ''}</span>
         </div>
         ${allTeamsHTML}
       </div>
@@ -685,7 +750,7 @@
   const PANEL_WIDTH = 350;
   const ANCHOR_GAP = 4;
   const VIEWPORT_PAD = 8;
-  const AKI_UI_V = 'aether14';
+  const AKI_UI_V = 'aether19';
 
   function togglePanel(forcedState) {
     const panel = document.getElementById('aki-control-panel');
@@ -1243,6 +1308,10 @@
             </label>
           </div>
           <textarea id="aki-instruction-textarea" class="aki-textarea">${escapeHtml(config.instruction)}</textarea>
+          <div class="aki-row">
+            <span class="aki-section-label">SUMMARIZE FOR HANDOFF<span class="aki-help" title="Summarize this chat into a compact message for a fresh chat without replacing the durable HANDOFF flow.">?</span></span>
+            <button type="button" id="aki-btn-summarize-chat" class="aki-btn">SUMMARIZE THIS CHAT</button>
+          </div>
         </div>
       `;
 
@@ -1344,6 +1413,15 @@
       };
     }
 
+    const summarizeChatBtn = panel.querySelector('#aki-btn-summarize-chat');
+    if (summarizeChatBtn && !window.__pmSendInFlight) {
+      summarizeChatBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.__cdpRequestSummarize === 'function') window.__cdpRequestSummarize('');
+      };
+    }
+
     const installBtn = panel.querySelector('#aki-btn-install-rule');
     if (installBtn) {
       installBtn.onclick = (e) => {
@@ -1402,32 +1480,43 @@
     status.classList.add('aki-err');
   };
 
-  async function sendAiPrompt(text) {
+  async function typeAndSubmitChat(input, text) {
+    input.focus();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, text);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (submitChatInput(input)) return true;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return false;
+  }
+
+  async function sendChatPrompt(text, btnId) {
     if (window.__pmSendInFlight || !text || !text.trim()) return false;
     const input = findChatInput();
     if (!input) return false;
     window.__pmSendInFlight = true;
-    const btn = document.getElementById('aki-btn-send-instruction');
+    const btn = btnId && document.getElementById(btnId);
     const oldLabel = btn ? btn.textContent : null;
     if (btn) { btn.disabled = true; btn.textContent = 'SENDING…'; }
     try {
-      const full = instructionPrefix() + '\n\n' + text;
-      // Lexical editor (contenteditable, not textarea/input): a synthetic InputEvent
-      // ('beforeinput') is ignored by Lexical's own handler (no getTargetRanges()); the
-      // browser's native execCommand pipeline is what Lexical actually listens to. Lexical's
-      // DOM reconciliation after execCommand is not synchronous with this script tick — a
-      // double rAF wait (live-confirmed) is needed before the button reads the typed state.
-      input.focus();
-      document.execCommand('selectAll', false, null);
-      document.execCommand('insertText', false, full);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      submitChatInput(input);
-      return true;
+      return await typeAndSubmitChat(input, text);
     } finally {
       window.__pmSendInFlight = false;
       if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
     }
   }
+
+  function sendAiPrompt(text) {
+    return sendChatPrompt(instructionPrefix() + '\n\n' + text, 'aki-btn-send-instruction');
+  }
+
+  function sendSummarizePrompt(text) {
+    return sendChatPrompt(text, 'aki-btn-summarize-chat');
+  }
+
+  window.__pmDeliverSummarizePrompt = function (text) { sendSummarizePrompt(text); };
 
   let armedForNewChat = false;
   function checkAndInjectInstruction() {

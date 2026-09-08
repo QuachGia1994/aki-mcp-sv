@@ -10,6 +10,7 @@ const os = require('os');
 const { execFile } = require('child_process');
 const { fetchAllUsage } = require('./scripts/cdp-usage');
 const { PostmanSession } = require('./scripts/postman-session');
+const { loadInstruction, saveInstruction, copyDefaultIfMissing } = require('./scripts/instruction-store');
 const daemonPid = require('./scripts/daemon-pid');
 const {
   checkForUpdate,
@@ -19,9 +20,19 @@ const {
   RULES_DIR,
 } = require('./scripts/update-check');
 
-const AKI_DATA_DIR = path.join(os.homedir(), '.aki', 'cdp-postman');
-const DATA_JSON_PATH = path.join(AKI_DATA_DIR, 'data.json');
-const INSTRUCTION_PATH = path.join(__dirname, 'data', 'aki-postman-instruction.md');
+const AKI_DATA_DIR = process.env.AKI_DATA_DIR || path.join(os.homedir(), '.aki', 'mcpsv');
+const PROMPTS_DIR = path.join(AKI_DATA_DIR, 'prompts');
+const ASSETS_PROMPTS_DIR = path.join(__dirname, 'assets', 'prompts');
+const PROVIDER = 'postman';
+const SUM_PROMPT_NAME = 'aki-prompt-sum-to-new-chat.md';
+const USER_PROMPT_PATH = path.join(PROMPTS_DIR, `${PROVIDER}.md`);
+const DEFAULT_PROMPT_PATH = path.join(ASSETS_PROMPTS_DIR, `${PROVIDER}.md`);
+const SHARED_PROMPT_USER_PATH = path.join(PROMPTS_DIR, SUM_PROMPT_NAME);
+const SHARED_PROMPT_DEFAULT_PATH = path.join(ASSETS_PROMPTS_DIR, SUM_PROMPT_NAME);
+const LEGACY_CDP_DIR = path.join(os.homedir(), '.aki', 'cdp-postman');
+const DATA_JSON_PATH = path.join(LEGACY_CDP_DIR, 'data.json');
+const LEGACY_INSTRUCTION_PATH = path.join(LEGACY_CDP_DIR, 'aki-postman-instruction.md');
+const LEGACY_REPO_INSTRUCTION_PATH = path.join(__dirname, 'data', 'aki-postman-instruction.md');
 const RULES_SOURCE_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
@@ -32,6 +43,9 @@ let cachedUpdateInfo = localSnapshot();
 let akiConfig = null;
 let loggedMissingRule = false;
 const CHAT_URL_RE = /gateway\.postman\.com\/chat/i;
+const TURN_LOG_PATH = path.join(LEGACY_CDP_DIR, 'usage-turns.jsonl');
+const convoState = new Map();
+let lastGlobalUsageMilli = null;
 
 async function refreshUsageData(customToken = null) {
   cachedUsageData = await fetchAllUsage(customToken);
@@ -86,51 +100,117 @@ function logRuleUpdate(info) {
 // Mỗi lượt chat trả về SSE có event `usage` (docs/research/chat-gateway.md). Bắt thẳng tại
 // Network.loadingFinished của CDP thay vì polling định kỳ hay patch window.fetch trong trang.
 function hookChatUsageCapture(client) {
-  const pendingTeamId = new Map();
+  const pending = new Map();
 
-  client.Network.requestWillBeSent((params) => {
+  client.Network.requestWillBeSent(async (params) => {
     const req = params.request || {};
     if (req.method !== 'POST' || !CHAT_URL_RE.test(req.url || '')) return;
     const referer = (req.headers && (req.headers.Referer || req.headers.referer)) || '';
     let teamId = null;
     try { teamId = new URL(referer).searchParams.get('teamId'); } catch (e) {}
-    pendingTeamId.set(params.requestId, teamId);
+
+    let reqConvoId = null;
+    let reqModel = null;
+    try {
+      let post = req.postData;
+      if (!post && req.hasPostData) {
+        const result = await client.Network.getRequestPostData({ requestId: params.requestId }).catch(() => null);
+        post = result && result.postData;
+      }
+      if (post) {
+        const body = JSON.parse(post);
+        reqConvoId = (body.input && body.input.conversationId) || null;
+        reqModel = (body.devModeOptions && body.devModeOptions.selectedModel) || null;
+      }
+    } catch (e) {}
+
+    pending.set(params.requestId, { teamId, reqConvoId, reqModel });
   });
 
   client.Network.loadingFinished(async (params) => {
-    if (!pendingTeamId.has(params.requestId)) return;
-    const teamId = pendingTeamId.get(params.requestId);
-    pendingTeamId.delete(params.requestId);
+    if (!pending.has(params.requestId)) return;
+    const ctx = pending.get(params.requestId);
+    pending.delete(params.requestId);
     try {
       const { body, base64Encoded } = await client.Network.getResponseBody({ requestId: params.requestId });
-      applyChatUsageFromSSE(client, base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body, teamId);
+      applyChatUsageFromSSE(client, base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body, ctx);
     } catch (e) {}
   });
 
-  client.Network.loadingFailed((params) => pendingTeamId.delete(params.requestId));
+  client.Network.loadingFailed((params) => pending.delete(params.requestId));
 }
 
-function applyChatUsageFromSSE(client, sseText, teamId) {
-  if (!cachedUsageData || !Array.isArray(cachedUsageData.teams) || !cachedUsageData.teams.length) return;
-
+function applyChatUsageFromSSE(client, sseText, ctx) {
   let latest = null;
+  let convo = null;
   for (const line of sseText.split('\n')) {
     if (!line.startsWith('data:')) continue;
     try {
       const evt = JSON.parse(line.slice(5).trim());
       if (evt.eventType === 'usage' && evt.data && typeof evt.data.limit === 'number') latest = evt.data;
+      else if (evt.eventType === 'conversation' && evt.data && evt.data.id) convo = evt.data;
     } catch (e) {}
   }
   if (!latest) return;
 
+  logUsageTurn(ctx, latest, convo);
+  if (!cachedUsageData || !Array.isArray(cachedUsageData.teams) || !cachedUsageData.teams.length) return;
+
+  const teamId = ctx && ctx.teamId;
   const team = cachedUsageData.teams.find((t) => String(t.team_id) === String(teamId)) || cachedUsageData.teams[0];
   team.quota = {
     used: Math.ceil((latest.usage || 0) / 1000),
     limit: Math.floor((latest.limit || 0) / 1000),
-    percent: latest.limit > 0 ? Math.round(((latest.usage || 0) / latest.limit) * 100) : 0
+    percent: latest.limit > 0 ? Math.round(((latest.usage || 0) / latest.limit) * 100) : 0,
+    resetAt: (latest.usageCycle && latest.usageCycle.end) || null
   };
   cachedUsageData.updatedAt = new Date().toLocaleTimeString();
   pushUsageToPage(client);
+}
+
+function logUsageTurn(ctx, latest, convo) {
+  try {
+    const usageMilli = latest.usage || 0;
+    const convoId = (convo && convo.id) || (ctx && ctx.reqConvoId) || null;
+    const model = (ctx && ctx.reqModel) || (convo && convo.modelKey) || null;
+    let state = convoId ? convoState.get(convoId) : null;
+    let prevUsage;
+
+    if (convoId) {
+      if (!state) {
+        state = { turns: 0, startUsage: usageMilli, lastUsage: usageMilli };
+        convoState.set(convoId, state);
+      }
+      prevUsage = state.lastUsage;
+    } else {
+      prevUsage = lastGlobalUsageMilli == null ? usageMilli : lastGlobalUsageMilli;
+    }
+
+    const deltaMilli = usageMilli - prevUsage;
+    if (state) {
+      state.turns += 1;
+      state.lastUsage = usageMilli;
+    }
+    lastGlobalUsageMilli = usageMilli;
+
+    const record = {
+      ts: new Date().toISOString(),
+      teamId: (ctx && ctx.teamId) || null,
+      conversationId: convoId,
+      model,
+      turn: state ? state.turns : null,
+      usageMilli,
+      limitMilli: latest.limit || 0,
+      deltaMilli,
+      cumulativeMilli: state ? usageMilli - state.startUsage : null,
+      isTeamPooled: !!latest.isTeamPooled
+    };
+    fs.mkdirSync(LEGACY_CDP_DIR, { recursive: true });
+    fs.appendFileSync(TURN_LOG_PATH, JSON.stringify(record) + '\n', 'utf8');
+    const turn = record.turn == null ? '?' : record.turn;
+    const cumulative = record.cumulativeMilli == null ? 'n/a' : `${(record.cumulativeMilli / 1000).toFixed(2)}cr`;
+    console.log(`[usage] turn=${turn} convo=${convoId ? convoId.slice(0, 8) : 'n/a'} model=${model || '?'} Δ=${(deltaMilli / 1000).toFixed(2)}cr cum=${cumulative}`);
+  } catch (e) {}
 }
 
 // The daemon's automation contract — auto-click + panel-stays-open must hold on every start
@@ -143,7 +223,7 @@ const FORCED_ON_KEYS = ['autoApprove', 'autoContinue', 'autoRun', 'autoRetry', '
 // POST /api/postman-new-window, via postman-mcp.js's requestNewWindow): a flag file next to
 // data.json is the smallest transport that works — the panel is the only writer, this is the
 // only reader/deleter, and it rides discover()'s existing 1s tick instead of a new interval.
-const NEW_WINDOW_FLAG_PATH = path.join(AKI_DATA_DIR, 'new-window.flag');
+const NEW_WINDOW_FLAG_PATH = path.join(LEGACY_CDP_DIR, 'new-window.flag');
 
 function consumePendingNewWindow() {
   if (!fs.existsSync(NEW_WINDOW_FLAG_PATH)) return;
@@ -174,26 +254,40 @@ function loadAkiData() {
 }
 
 function loadInstructionFile() {
-  if (!fs.existsSync(INSTRUCTION_PATH)) return '';
-  try {
-    return fs.readFileSync(INSTRUCTION_PATH, 'utf8');
-  } catch (e) {
-    return '';
-  }
+  return loadInstruction([
+    USER_PROMPT_PATH,
+    LEGACY_INSTRUCTION_PATH,
+    LEGACY_REPO_INSTRUCTION_PATH,
+    DEFAULT_PROMPT_PATH,
+  ]);
 }
 
 function saveInstructionFile(text) {
   try {
-    fs.writeFileSync(INSTRUCTION_PATH, String(text));
+    saveInstruction(USER_PROMPT_PATH, text);
   } catch (e) {
-    console.error('❌ Lỗi ghi file aki-postman-instruction.md:', e.message);
+    console.error('❌ Lỗi ghi file prompts/postman.md:', e.message);
   }
+}
+
+function loadSummarizePromptFile() {
+  return loadInstruction([SHARED_PROMPT_USER_PATH, SHARED_PROMPT_DEFAULT_PATH]);
+}
+
+function init() {
+  fs.mkdirSync(PROMPTS_DIR, { recursive: true });
+  if (!loadInstruction([USER_PROMPT_PATH])) {
+    const legacyInstruction = loadInstruction([LEGACY_INSTRUCTION_PATH, LEGACY_REPO_INSTRUCTION_PATH]);
+    if (legacyInstruction) saveInstruction(USER_PROMPT_PATH, legacyInstruction);
+    else copyDefaultIfMissing(USER_PROMPT_PATH, DEFAULT_PROMPT_PATH);
+  }
+  copyDefaultIfMissing(SHARED_PROMPT_USER_PATH, SHARED_PROMPT_DEFAULT_PATH);
 }
 
 function saveAkiData(data) {
   try {
-    if (!fs.existsSync(AKI_DATA_DIR)) {
-      fs.mkdirSync(AKI_DATA_DIR, { recursive: true });
+    if (!fs.existsSync(LEGACY_CDP_DIR)) {
+      fs.mkdirSync(LEGACY_CDP_DIR, { recursive: true });
     }
     let existing = {};
     if (fs.existsSync(DATA_JSON_PATH)) {
@@ -304,9 +398,13 @@ async function setupCDP(target, port) {
       await client.Runtime.addBinding({ name: '__cdpInstallAkiRule' });
     } catch (e) {}
 
-    // 3c. Binding save instruction text (textarea → data/aki-postman-instruction.md)
+    // 3c. Binding save instruction text.
     try {
       await client.Runtime.addBinding({ name: '__cdpSaveInstruction' });
+    } catch (e) {}
+
+    try {
+      await client.Runtime.addBinding({ name: '__cdpRequestSummarize' });
     } catch (e) {}
 
     client.Runtime.bindingCalled(async (event) => {
@@ -338,6 +436,11 @@ async function setupCDP(target, port) {
         pushUsageToPage(client);
       } else if (event.name === '__cdpSaveInstruction') {
         saveInstructionFile(event.payload);
+      } else if (event.name === '__cdpRequestSummarize') {
+        const summarizePrompt = loadSummarizePromptFile();
+        client.Runtime.evaluate({
+          expression: `if (typeof window.__pmDeliverSummarizePrompt === 'function') window.__pmDeliverSummarizePrompt(${JSON.stringify(summarizePrompt)});`
+        }).catch(() => {});
       }
     });
 
@@ -437,6 +540,7 @@ async function main() {
   daemonPid.claim();
   console.log('⚡ Postman CDP Daemon — non-invasive, native gateway');
 
+  init();
   loadAkiData();
   logRuleUpdate(cachedUpdateInfo);
   checkForUpdate().then((info) => {

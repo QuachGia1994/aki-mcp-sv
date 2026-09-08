@@ -68,7 +68,8 @@ function extractCredits(body) {
   return {
     used: Math.ceil((op.usage || 0) / 1000),
     limit: Math.floor((op.limit || 0) / 1000),
-    percent: op.limit > 0 ? Math.round(((op.usage || 0) / op.limit) * 100) : 0
+    percent: op.limit > 0 ? Math.round(((op.usage || 0) / op.limit) * 100) : 0,
+    resetAt: (op.usageCycle && op.usageCycle.end) || null
   };
 }
 
