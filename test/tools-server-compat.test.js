@@ -50,6 +50,9 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.match(instructions, /local__aki_doctor for unified read-only health diagnosis/);
     assert.match(instructions, /local__image_inbox with action=latest by default/);
     assert.match(instructions, /prefer local__opencode_exec when its write-worker toggle is enabled/);
+    assert.match(instructions, /Astra 6 policy \(any variant or reasoning effort\).*gpt-5\.6-luna with reasoning_effort=high/);
+    assert.match(instructions, /native Luna is unavailable, report that once.*without claiming Luna ran/);
+    assert.match(instructions, /For non-Astra implementation, prefer local__opencode_exec/);
     assert.match(instructions, /run verification separately with local__run_cmd/);
   } finally {
     await client.close();

@@ -290,6 +290,7 @@ ${field('Passphrase', passphrase)}
 <div class="tabpane" id="tab-context">
   <h3 class="subh">Aki Free-first Orchestrator</h3>
   <p class="helptext">Durable Project Graph + task checkpoint feed the Context Optimizer; the Budget Router then chooses the cheapest healthy eligible read worker before Astra/Work sees the compact packet. OpenCode Zen remains the bounded implementation worker and Aki runs tests separately. Provider-reported tokens, Aki estimates, avoided lead context, and cache hits stay separate metrics.</p>
+  <p class="helptext">Astra 6 (any variant/effort) reviews scope, then delegates about 90% of remaining substantive implementation/tests to native host <span class="mono">gpt-5.6-luna</span> at <span class="mono">reasoning_effort=high</span>, passing cwd, plan, ownership, acceptance criteria, and evidence for final review. This overrides <span class="mono">local__opencode_exec</span> only for Astra. If native Luna is unavailable, report it once and use the existing permitted route without claiming Luna ran; other models keep the current path.</p>
   <h3 class="subh">Context Optimizer</h3>
   <p class="helptext">Aki preserves the stable prefix during the hot window and applies stale/wasted cleanup to it only at the next cold boundary. This reduces Aki-to-lead context but does not claim or control ChatGPT/Work provider cache hits.</p>
   <label style="display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="contextOptimizerEnabled"> <strong>Auto-optimize context</strong></label>

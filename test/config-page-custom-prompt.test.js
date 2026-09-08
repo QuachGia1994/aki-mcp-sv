@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { renderPanel } from '../scripts/config-page.js';
 
 function render() {
@@ -15,6 +16,37 @@ function render() {
     userDir: 'C:\\Users\\User\\.aki\\mcpsv',
     updateInfo: {},
   });
+}
+
+const CORE_RULE_FILES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'];
+const ALL_RULE_FILES = [...CORE_RULE_FILES, 'RULE-agent-engineering.md', 'RULE-docs.md', 'RULE-release.md'];
+
+function runBuildPrompt({ ruleFiles = ALL_RULE_FILES, checkedRuleFiles = CORE_RULE_FILES, loadRules = true, contextOptimizer = true } = {}) {
+  const source = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
+  const start = source.indexOf('function buildPrompt()');
+  const end = source.indexOf('\n\n// Nothing about a folder row', start);
+  assert.ok(start >= 0 && end > start, 'buildPrompt source should be present');
+  const elements = new Map([
+    ['loadRules', { checked: loadRules }],
+    ['contextOptimizerEnabled', { checked: contextOptimizer }],
+    ['prompt', { value: '' }],
+    ['promptCount', { textContent: '', className: '' }],
+  ]);
+  const inputs = ruleFiles.map((value) => ({ value, checked: checkedRuleFiles.includes(value) }));
+  const document = {
+    getElementById: (id) => elements.get(id),
+    querySelectorAll: (selector) => selector === '#ruleChecks input:checked' ? inputs.filter((input) => input.checked) : selector === '#ruleChecks input' ? inputs : [],
+  };
+  const context = {
+    MCP_VERSION: '1.15.0',
+    RULE_VERSION: '2.8.0',
+    MCP_NAME: 'Aki MCP Server from local Shell & FileSystem',
+    REPO_ROOT: 'D:\\LacViet\\aki-mcp-sv',
+    document,
+  };
+  vm.runInNewContext(`${source.slice(start, end)}\nthis.buildPrompt = buildPrompt;`, context);
+  context.buildPrompt();
+  return { prompt: elements.get('prompt').value, count: elements.get('promptCount') };
 }
 
 test('fork workflow instructions are checked and locked in section 3', () => {
@@ -81,6 +113,17 @@ test('OpenCode panel reuses CLI auth and exposes only free-model controls', () =
   assert.match(client, /\/api\/opencode-test/);
 });
 
+test('Astra 6 panel guidance names native Luna delegation and truthful fallback', () => {
+  const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
+  const { prompt } = runBuildPrompt();
+  assert.match(client, /Astra6\(any\):review\/plan/);
+  assert.match(prompt, /gpt-5\.6-luna@high ~90% implementation\/tests/);
+  assert.match(prompt, /unavailable=>report\+fallback/);
+  const html = render();
+  assert.match(html, /Astra 6 \(any variant\/effort\).*gpt-5\.6-luna/);
+  assert.match(html, /native Luna is unavailable, report it once/);
+});
+
 test('Context Optimizer panel exposes bounded lead-packet controls without claiming provider cache hits', () => {
   const html = render();
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
@@ -115,39 +158,23 @@ test('generated workflow is lean, reuses evidence, and keeps routed context out 
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
   const plan = client.indexOf('Plan: nontrivial=>research GitHub/upstream');
   const lean = client.indexOf('Lean: conclusion first');
-  const context = client.indexOf('Context: AGENTS.md=thin map 30-100 lines');
-  const realRepo = client.indexOf('Repo: Aki MCP real path');
+  const context = client.indexOf('Context: AGENTS/HANDOFF 30-100');
+  const realRepo = client.indexOf('Repo: Aki MCP path');
   assert.ok(plan >= 0 && lean >= 0 && context >= 0 && realRepo >= 0);
   assert.ok(plan < lean && lean < context && context < realRepo);
   assert.match(client, /reuse confirmed facts unless stale\/ambiguous/);
-  assert.match(client, /authorized scope=no reconfirm/);
+  assert.match(client, /scope authorized=no reconfirm/);
   assert.match(client, /verify by risk/);
-  assert.match(client, /subagent only if independent ROI>coordination/);
-  assert.match(client, /AGENTS\.md=thin map 30-100 lines, no routed\/global rule duplication/);
-  assert.match(client, /HANDOFF=30-100 lines state only/);
+  assert.match(client, /delegate if ROI>coordination/);
+  assert.match(client, /AGENTS\/HANDOFF 30-100 lines/);
   assert.match(client, /no sandbox\/temp unless asked/);
   assert.match(client, /multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo/);
   assert.match(client, /deep=agent_read;code=opencode_exec;tests=run_cmd cwd=repo/);
   assert.match(client, /browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix/);
 });
 
-function promptForRuleSpec(ruleSpec) {
-  return [
-    "[akimcp 1.15.0 · akidevrule 2.8.0] SHORT+DENSE. DON'T YAPPING. Claim=evidence; search=citation.",
-    'Session start MCP "Aki MCP Server from local Shell & FileSystem": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.',
-    'Plan: nontrivial=>research GitHub/upstream; reuse confirmed facts unless stale/ambiguous; ONE plan=given path or ~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint. Q&A:no plan.',
-    'Lean: conclusion first; no restating request; stop when evidence suffices; authorized scope=no reconfirm; verify by risk; CI trigger/no poll unless asked; done=deliverable+checks+limits; subagent only if independent ROI>coordination.',
-    'Context: AGENTS.md=thin map 30-100 lines, no routed/global rule duplication; HANDOFF=30-100 lines state only; detail=plan/checkpoint.',
-    'Repo: Aki MCP real path; preserve dirty; no sandbox/temp unless asked; read back writes/diffs.',
-    'Tools: unknown=find_path;text=search_content;multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.',
-    'Skills D:\\LacViet\\aki-mcp-sv/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.',
-    'First: intro.json absent=>read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md. Update mismatch=>tell user update panel+re-paste.',
-  ].join('\n');
-}
-
 test('default locked prompt stays safely below ChatGPT 1500-character cap', () => {
-  const ruleSpec = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'].join(',');
-  const prompt = promptForRuleSpec(ruleSpec);
+  const { prompt } = runBuildPrompt();
   assert.ok(prompt.length <= 1400, `default prompt should leave safety margin under 1500, got ${prompt.length}`);
 });
 
@@ -156,6 +183,6 @@ test('full-tick prompt compacts all rule files and stays below ChatGPT 1500-char
   assert.match(client, /picked\.length === allRuleInputs\.length/);
   assert.match(client, /'index\.md,METHOD-\*\.md,RULE-\*\.md'/);
   assert.match(client, /: picked\.join\(','\)/, 'partial selections must still enumerate exactly the picked rules');
-  const prompt = promptForRuleSpec('index.md,METHOD-*.md,RULE-*.md');
+  const { prompt } = runBuildPrompt({ ruleFiles: ALL_RULE_FILES, checkedRuleFiles: ALL_RULE_FILES });
   assert.ok(prompt.length <= 1400, `full-tick prompt should leave safety margin under 1500, got ${prompt.length}`);
 });

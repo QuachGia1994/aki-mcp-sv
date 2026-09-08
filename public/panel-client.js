@@ -70,7 +70,7 @@ document.addEventListener('click', (e) => {
 });
 
 function buildPrompt() {
-  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] SHORT+DENSE. DON\'T YAPPING. Claim=evidence; search=citation.'];
+  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] SHORT. DON\'T YAPPING. Claim=evidence; search=citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
@@ -78,21 +78,22 @@ function buildPrompt() {
     const allRuleInputs = [...document.querySelectorAll('#ruleChecks input')];
     const allRulesPicked = allRuleInputs.length > 0 && picked.length === allRuleInputs.length;
     const ruleSpec = allRulesPicked ? 'index.md,METHOD-*.md,RULE-*.md' : picked.join(',');
-    lines.push('Session start MCP "' + MCP_NAME + '": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.');
+    lines.push('Session start MCP "' + MCP_NAME + '": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow; router ~/.claude/skills/akirule/SKILL.md.');
   }
   const rulesOn = document.getElementById('loadRules').checked;
   const hasIndex = [...document.querySelectorAll('#ruleChecks input')].some((i) => i.value === 'index.md');
   if (rulesOn && !hasIndex) {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  lines.push('Plan: nontrivial=>research GitHub/upstream; reuse confirmed facts unless stale/ambiguous; ONE plan=given path or ~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint. Q&A:no plan.');
-  lines.push('Lean: conclusion first; no restating request; stop when evidence suffices; authorized scope=no reconfirm; verify by risk; CI trigger/no poll unless asked; done=deliverable+checks+limits; subagent only if independent ROI>coordination.');
-  lines.push('Context: AGENTS.md=thin map 30-100 lines, no routed/global rule duplication; HANDOFF=30-100 lines state only; detail=plan/checkpoint.');
-  lines.push('Repo: Aki MCP real path; preserve dirty; no sandbox/temp unless asked; read back writes/diffs.');
+  lines.push('Plan: nontrivial=>research GitHub/upstream; reuse confirmed facts unless stale/ambiguous; ONE plan=path|~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint; Q&A:no plan.');
+  lines.push('Lean: conclusion first; no restating; stop at enough evidence; scope authorized=no reconfirm; verify by risk; CI trigger/no poll unless asked; done=deliverable+checks+limits; delegate if ROI>coordination.');
+  lines.push('Context: AGENTS/HANDOFF 30-100 lines; no routed/global duplication; detail=plan/checkpoint');
+  lines.push('Repo: Aki MCP path; keep dirty; no sandbox/temp unless asked; read back writes/diffs');
+  lines.push('Astra6(any):review/plan->native gpt-5.6-luna@high ~90% implementation/tests->review; code override; unavailable=>report+fallback.');
   if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: unknown=find_path;text=search_content;multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.');
   else lines.push('Tools: unknown=find_path;text=search_content;deep=agent_read;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.');
   lines.push('Skills ' + REPO_ROOT + '/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.');
-  lines.push('First: intro.json absent=>read ' + REPO_ROOT + '/docs/ref/mcp-intro.md. Update mismatch=>tell user update panel+re-paste.');
+  lines.push('First: intro.json absent=>read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; mismatch=>tell user update+re-paste.');
   const value = lines.join('\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;
