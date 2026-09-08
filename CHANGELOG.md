@@ -4,6 +4,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Fixed
+- File moves refuse existing destinations; concurrent file moves cannot overwrite the same destination.
+- Partial text reads preserve UTF-8 characters across chunk boundaries, normalize CRLF consistently, count trailing line endings correctly, and validate non-negative line limits including zero.
+- Recursive directory creation accepts missing parent chains while retaining root and symlink/junction containment checks.
+- MCP rejects invalid JSON-RPC envelopes with HTTP 400 before session routing instead of throwing on null input or treating malformed requests as session failures.
+- Content search reports missing executables, invalid patterns, timeouts, and truncated process output as tool errors instead of false no-match or partial-success results; its Windows process stays hidden.
+
 ### Changed
 - **Prompt Instructions now optimize context instead of force-loading contextual rules.** Panel section 3 locks only AkiDevRule's four mechanical core files (`index`, `agent-behavior`, `coding`, `pattern-core`); `agent-engineering`, `docs`, `release`, and other contextual files stay behind `akirule` unless explicitly selected. This follows OpenAI's current harness guidance to use instruction files as a thin map rather than a monolithic manual and removes redundant always-on context.
 - **Aki handoffs and worker behavior are lean by contract.** Generated Instructions and Postman guidance now lead with the conclusion/action, reuse confirmed evidence unless stale/ambiguous, stop discovery once evidence is sufficient, avoid reconfirming already-authorized scope, size verification to risk, finish once deliverable + required checks + explicit limits are satisfied, and use subagents only when independent benefit exceeds coordination/context cost. `AGENTS.md` is treated as a thin 30–100-line project map without routed/global-rule duplication; substantive fresh-chat handoffs target 30–100 lines, never exceed 100, and keep durable detail in the plan/checkpoint instead of transcript prose. Plan: `~/.aki/mcpsv/task/aki-context-lean-20260908/plan.md`.

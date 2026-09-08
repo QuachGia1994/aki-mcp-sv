@@ -95,15 +95,19 @@ export function findPath(query, from, limit) {
   return `${found.length} result(s) under ${base}:\n${head.join('\n')}${note}`;
 }
 
-export function searchContent(query, from, glob, limit) {
+export function searchContent(query, from, glob, limit, { run = execFile } = {}) {
   const base = resolveRealUnderRootSync(from);
   const args = ['-rniIE', '--binary-files=without-match', ...[...SKIP_DIRS].map((d) => `--exclude-dir=${d}`)];
   if (glob) args.push(`--include=${glob}`);
   args.push('-e', query, base);
-  return new Promise((resolve) => {
-    execFile('grep', args, { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+  return new Promise((resolve, reject) => {
+    run('grep', args, { timeout: 30_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err && (err.code !== 1 || err.killed || err.signal)) {
+        const message = err.code === 'ENOENT' ? 'grep executable not found on PATH; install or expose the required Unix tools (Git for Windows on Windows)' : stderr?.trim() || err.message;
+        return reject(new Error(message));
+      }
       const lines = (stdout || '').split('\n').filter(Boolean);
-      if (!lines.length) return resolve(err && stderr ? `error: ${stderr.trim()}` : `no lines matched "${query}" under ${base}`);
+      if (!lines.length) return resolve(`no lines matched "${query}" under ${base}`);
       const head = lines.slice(0, limit);
       const note = lines.length > head.length ? `\n… ${lines.length - head.length} more line(s)` : '';
       resolve(`${lines.length} matching line(s):\n${head.join('\n')}${note}`);

@@ -1,5 +1,5 @@
 // Path containment shared by every MCP tool that touches the filesystem — one implementation, because a second copy of a security boundary is a second chance to get it subtly wrong.
-import { realpath } from 'node:fs/promises';
+import { lstat, realpath } from 'node:fs/promises';
 import { existsSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,7 +88,7 @@ export function resolveRealUnderRootSync(target, { roots = getRoots() } = {}) {
 }
 
 // Symlink-safe variant for filesystem-mcp.js's read/write/edit tools: resolveUnderRoot only checks the requested path's string prefix, which a symlink can defeat (a link *inside* a root pointing *outside* it). Ported from @modelcontextprotocol/server-filesystem's validatePath() — realpath the target and re-check containment on the resolved path, not the requested one. A target that doesn't exist yet (new file) falls back to validating its parent directory's real path instead, so file creation still works.
-export async function resolveRealUnderRoot(target, { roots = getRoots() } = {}) {
+export async function resolveRealUnderRoot(target, { roots = getRoots(), allowMissingParents = false } = {}) {
   const abs = resolveUnderRoots(target, roots);
   const canonicalRoots = await realRoots(roots);
   try {
@@ -99,12 +99,23 @@ export async function resolveRealUnderRoot(target, { roots = getRoots() } = {}) 
     return real;
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
-    const parent = path.dirname(abs);
+    let parent = path.dirname(abs);
     let realParent;
-    try {
-      realParent = await realpath(parent);
-    } catch {
-      throw new Error(`parent directory does not exist: ${parent}`);
+    while (true) {
+      try {
+        realParent = await realpath(parent);
+        break;
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        if (!allowMissingParents || parent === path.dirname(parent)) throw new Error(`parent directory does not exist: ${parent}`);
+        try {
+          await lstat(parent);
+          throw new Error(`parent symlink target does not exist: ${parent}`);
+        } catch (entryError) {
+          if (entryError.code !== 'ENOENT') throw entryError;
+        }
+        parent = path.dirname(parent);
+      }
     }
     if (!canonicalRoots.some((root) => containedIn(realParent, root))) {
       throw new Error(`parent directory escapes the allowed roots: ${realParent}`);

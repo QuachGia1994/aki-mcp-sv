@@ -11,6 +11,8 @@ import {
   DEFAULT_NEGOTIATED_PROTOCOL_VERSION,
   LATEST_PROTOCOL_VERSION,
   SUPPORTED_PROTOCOL_VERSIONS,
+  isJSONRPCRequest,
+  isJSONRPCNotification,
 } from '@modelcontextprotocol/sdk/types.js';
 import { log } from './log.js';
 import { readBody, json as jsonResponse } from './http.js';
@@ -193,6 +195,10 @@ export async function handleStreamableMcp(req, res) {
   } catch (error) {
     if (error?.code === 'BODY_TOO_LARGE') return jsonResponse(res, 413, { jsonrpc: '2.0', error: { code: -32030, message: error.message }, id: null });
     return jsonResponse(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null });
+  }
+
+  if (!isJSONRPCRequest(message) && !isJSONRPCNotification(message)) {
+    return jsonResponse(res, 400, { jsonrpc: '2.0', error: { code: -32600, message: 'Invalid Request' }, id: null });
   }
 
   const method = message.method;

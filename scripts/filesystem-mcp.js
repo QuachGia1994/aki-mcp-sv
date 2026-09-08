@@ -12,6 +12,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { StringDecoder } from 'node:string_decoder';
 import { createTwoFilesPatch } from 'diff';
 import { z } from 'zod';
 import { getRoots, resolveRealUnderRoot } from './roots.js';
@@ -23,28 +24,29 @@ function createUnifiedDiff(original, modified, filepath) {
   return createTwoFilesPatch(filepath, filepath, normalizeLineEndings(original), normalizeLineEndings(modified), 'original', 'modified');
 }
 
-// Memory-efficient tail: reads from the end in fixed-size chunks instead of loading the whole file.
 async function tailFile(filePath, numLines) {
-  const CHUNK_SIZE = 1024;
-  const { size: fileSize } = await fs.stat(filePath);
-  if (fileSize === 0) return '';
   const handle = await fs.open(filePath, 'r');
   try {
-    const lines = [];
+    const { size: fileSize } = await handle.stat();
+    const chunks = [];
     let position = fileSize;
-    const chunk = Buffer.alloc(CHUNK_SIZE);
-    let remainingText = '';
-    while (position > 0 && lines.length < numLines) {
-      const size = Math.min(CHUNK_SIZE, position);
-      position -= size;
-      const { bytesRead } = await handle.read(chunk, 0, size, position);
+    let lines = 0;
+    while (position > 0 && lines < numLines) {
+      const chunk = Buffer.alloc(Math.min(1024, position));
+      position -= chunk.length;
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
       if (!bytesRead) break;
-      const chunkText = chunk.subarray(0, bytesRead).toString('utf-8') + remainingText;
-      const chunkLines = normalizeLineEndings(chunkText).split('\n');
-      if (position > 0) remainingText = chunkLines.shift();
-      for (let i = chunkLines.length - 1; i >= 0 && lines.length < numLines; i--) lines.unshift(chunkLines[i]);
+      let start = 0;
+      for (let i = bytesRead - 1; i >= 0; i--) {
+        if (chunk[i] !== 10 || position + i === fileSize - 1) continue;
+        if (++lines === numLines) {
+          start = i + 1;
+          break;
+        }
+      }
+      chunks.push(chunk.subarray(start, bytesRead));
     }
-    return lines.join('\n');
+    return normalizeLineEndings(Buffer.concat(chunks.reverse()).toString('utf8')).replace(/\n$/, '');
   } finally {
     await handle.close();
   }
@@ -54,20 +56,24 @@ async function headFile(filePath, numLines) {
   const handle = await fs.open(filePath, 'r');
   try {
     const lines = [];
+    const decoder = new StringDecoder('utf8');
     let buffer = '';
     let offset = 0;
     const chunk = Buffer.alloc(1024);
     while (lines.length < numLines) {
       const { bytesRead } = await handle.read(chunk, 0, chunk.length, offset);
-      if (!bytesRead) break;
+      if (!bytesRead) {
+        buffer += decoder.end();
+        break;
+      }
       offset += bytesRead;
-      buffer += chunk.subarray(0, bytesRead).toString('utf-8');
+      buffer += decoder.write(chunk.subarray(0, bytesRead));
       const newlineIdx = buffer.lastIndexOf('\n');
       if (newlineIdx !== -1) {
         const complete = buffer.slice(0, newlineIdx).split('\n');
         buffer = buffer.slice(newlineIdx + 1);
         for (const line of complete) {
-          lines.push(line);
+          lines.push(line.replace(/\r$/, ''));
           if (lines.length >= numLines) break;
         }
       }
@@ -80,9 +86,12 @@ async function headFile(filePath, numLines) {
 }
 
 export async function readTextFile({ path: p, tail, head }) {
-  if (tail && head) throw new Error('cannot specify both head and tail');
+  if (tail !== undefined && head !== undefined) throw new Error('cannot specify both head and tail');
+  const count = tail ?? head;
+  if (count !== undefined && (!Number.isSafeInteger(count) || count < 0)) throw new Error('line count must be a non-negative integer');
   const real = await resolveRealUnderRoot(p);
-  return tail ? tailFile(real, tail) : head ? headFile(real, head) : fs.readFile(real, 'utf-8');
+  if (count === 0) return '';
+  return tail !== undefined ? tailFile(real, tail) : head !== undefined ? headFile(real, head) : fs.readFile(real, 'utf-8');
 }
 
 export async function getFileInfoText(p) {
@@ -176,8 +185,8 @@ export function register(server) {
       description: 'Read the complete contents of a text file. Use "tail"/"head" to read only the last/first N lines of a large file instead of the whole thing. Only works under the configured roots.',
       inputSchema: {
         path: z.string(),
-        tail: z.number().optional().describe('If provided, returns only the last N lines'),
-        head: z.number().optional().describe('If provided, returns only the first N lines'),
+        tail: z.number().int().nonnegative().optional().describe('If provided, returns only the last N lines'),
+        head: z.number().int().nonnegative().optional().describe('If provided, returns only the first N lines'),
       },
     },
     async ({ path: p, tail, head }) => {
@@ -237,8 +246,7 @@ export function register(server) {
     },
     async ({ path: p }) => {
       try {
-        // The directory itself may not exist yet — resolveRealUnderRoot's ENOENT fallback validates the parent instead, which is exactly what's needed here.
-        const real = await resolveRealUnderRoot(p);
+        const real = await resolveRealUnderRoot(p, { allowMissingParents: true });
         await fs.mkdir(real, { recursive: true });
         return ok(`created ${p}`);
       } catch (e) {
@@ -258,7 +266,19 @@ export function register(server) {
       try {
         const realSource = await resolveRealUnderRoot(source);
         const realDest = await resolveRealUnderRoot(destination);
-        await fs.rename(realSource, realDest);
+        try {
+          await fs.lstat(realDest);
+          throw new Error('destination already exists');
+        } catch (e) {
+          if (e.code !== 'ENOENT') throw e;
+        }
+        if ((await fs.stat(realSource)).isDirectory()) {
+          await fs.rename(realSource, realDest);
+        } else {
+          // link creates the destination exclusively, including when another move races this one.
+          await fs.link(realSource, realDest);
+          await fs.unlink(realSource);
+        }
         return ok(`moved ${source} to ${destination}`);
       } catch (e) {
         return fail(e);
