@@ -19,7 +19,7 @@ function render() {
 
 test('fork workflow instructions are checked and locked in section 3', () => {
   const html = render();
-  for (const id of ['researchGitHubBeforePlan', 'sharedLivePlan', 'realRepoOnly', 'triggerBuildOnly', 'nativeVisualTools']) {
+  for (const id of ['researchGitHubBeforePlan', 'sharedLivePlan', 'realRepoOnly', 'triggerBuildOnly', 'nativeVisualTools', 'leanContextPolicy']) {
     assert.match(html, new RegExp(`id="${id}" checked disabled`));
   }
   assert.match(html, /Research relevant GitHub repo before creating live plan .*custom/);
@@ -27,6 +27,11 @@ test('fork workflow instructions are checked and locked in section 3', () => {
   assert.match(html, /Work directly in the user-specified real repo; no sandbox\/virtual-copy edits .*custom/);
   assert.match(html, /Build\/CI: trigger only; do not wait or monitor unless asked .*custom/);
   assert.match(html, /Aki Skills: Browser\/ImageGen \+ Ponytail\/Anti-Vibe \+ Mobile Native \+ Icon Silhouette \+ Strix \+ Postman Remote .*custom/);
+  assert.match(html, /Lean context: reuse confirmed facts; proportional verification; AGENTS\/HANDOFF stay thin .*custom/);
+  const source = readFileSync(new URL('../scripts/config-page.js', import.meta.url), 'utf8');
+  assert.match(source, /const LOCKED_RULES = \['index\.md', 'RULE-agent-behavior\.md', 'RULE-coding\.md', 'RULE-pattern-core\.md'\];/);
+  assert.doesNotMatch(source, /const LOCKED_RULES = \[[^\]]*RULE-agent-engineering\.md/);
+  assert.match(html, /Contextual rules stay routed through <span class="mono">akirule<\/span> instead of consuming every session/);
 });
 
 test('Postman prompt uses the same durable long-chat protocol as the controller', () => {
@@ -34,17 +39,20 @@ test('Postman prompt uses the same durable long-chat protocol as the controller'
   const source = readFileSync(new URL('../scripts/config-page.js', import.meta.url), 'utf8');
   const instruction = readFileSync(new URL('../scripts/aki-pmcontrol/data/aki-postman-instruction.md', import.meta.url), 'utf8');
   assert.match(source, /aki-pmcontrol\/data\/aki-postman-instruction\.md/);
-  assert.match(instruction, /ONE shared plan and one stable taskKey/);
+  assert.match(instruction, /ONE shared plan \+ stable taskKey/);
   assert.match(instruction, /context_packet/);
   assert.match(instruction, /task_checkpoint_save\/recover/);
   assert.match(instruction, /task_checkpoint_recover first/);
-  assert.match(instruction, /Never store full chat transcripts/);
+  assert.match(instruction, /never store transcripts/);
   assert.match(instruction, /SUMMARY CURRENT SESSION AS PROMPT TO COPY INTO NEW CHAT/);
   assert.match(instruction, /treat it exactly as HANDOFF/);
+  assert.match(instruction, /target 30–100 lines, never exceed 100/);
+  assert.match(instruction, /AGENTS\.md as a thin project map \(normally 30–100 lines\)/);
+  assert.match(instruction, /verification depth follows risk/);
   assert.match(instruction, /images=image_inbox/);
   assert.match(instruction, /xem ảnh mới nhất/);
-  assert.match(instruction, /Do not OCR unless I explicitly ask/);
-  assert.match(html, /ONE shared plan and one stable taskKey/);
+  assert.match(instruction, /Do not OCR unless explicitly asked/);
+  assert.match(html, /ONE shared plan \+ stable taskKey/);
   assert.match(html, /task_checkpoint_save\/recover/);
 });
 
@@ -103,43 +111,42 @@ test('Gemini Spark panel documents one-call repo snapshot and unavoidable client
   assert.match(html, /Write\/shell calls may still require separate Spark confirmation/);
 });
 
-test('generated workflow orders research before shared plan and encodes direct-repo/build handoff rules', () => {
+test('generated workflow is lean, reuses evidence, and keeps routed context out of every session', () => {
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
-  const research = client.indexOf('Before plan: research GitHub/upstream');
-  const plan = client.indexOf('Mutate/multi: ONE shared plan');
-  const realRepo = client.indexOf('Repo via Aki MCP only');
-  const build = client.indexOf('Build/CI: trigger only');
-  assert.ok(research >= 0 && plan >= 0 && realRepo >= 0 && build >= 0);
-  assert.ok(research < plan, 'GitHub research must precede live-plan creation');
-  assert.ok(plan < realRepo, 'shared-plan handoff must be established before execution location');
-  assert.ok(realRepo < build, 'real-repo policy must precede build handoff');
-  assert.match(client, /ONE shared plan: given path else/);
-  assert.match(client, /checklist\/decisions\/evidence\/outcome/);
-  assert.match(client, /no sandbox\/temp copies unless asked/);
-  assert.match(client, /no poll unless asked/);
-  assert.match(client, /multi=>context_packet\(taskKey=plan\); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails\/high-risk=>escalate/);
-  assert.match(client, /else lines\.push\('Flow: snapshot once; deep=>agent_read\(xKiro free\)/);
-  assert.match(client, /code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix/);
+  const plan = client.indexOf('Plan: nontrivial=>research GitHub/upstream');
+  const lean = client.indexOf('Lean: conclusion first');
+  const context = client.indexOf('Context: AGENTS.md=thin map 30-100 lines');
+  const realRepo = client.indexOf('Repo: Aki MCP real path');
+  assert.ok(plan >= 0 && lean >= 0 && context >= 0 && realRepo >= 0);
+  assert.ok(plan < lean && lean < context && context < realRepo);
+  assert.match(client, /reuse confirmed facts unless stale\/ambiguous/);
+  assert.match(client, /authorized scope=no reconfirm/);
+  assert.match(client, /verify by risk/);
+  assert.match(client, /subagent only if independent ROI>coordination/);
+  assert.match(client, /AGENTS\.md=thin map 30-100 lines, no routed\/global rule duplication/);
+  assert.match(client, /HANDOFF=30-100 lines state only/);
+  assert.match(client, /no sandbox\/temp unless asked/);
+  assert.match(client, /multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo/);
+  assert.match(client, /deep=agent_read;code=opencode_exec;tests=run_cmd cwd=repo/);
+  assert.match(client, /browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix/);
 });
 
 function promptForRuleSpec(ruleSpec) {
   return [
-    "[akimcp 1.14.0 · akidevrule 2.7.0] ALWAYS short dense on-point. DON'T YAPPING. Claim=evidence; search=citation.",
+    "[akimcp 1.15.0 · akidevrule 2.8.0] SHORT+DENSE. DON'T YAPPING. Claim=evidence; search=citation.",
     'Session start MCP "Aki MCP Server from local Shell & FileSystem": read ~/.claude/CLAUDE.md + ~/.aki/akidevrule/{' + ruleSpec + '}; follow all. Router ~/.claude/skills/akirule/SKILL.md.',
-    'Before plan: research GitHub/upstream; cite evidence.',
-    'Mutate/multi: ONE shared plan: given path else ~/.aki/mcpsv/task/<id>/plan.md; read resume/handoff; keep checklist/decisions/evidence/outcome; reply path when created. Q&A:no plan.',
-    'Repo via Aki MCP only; user path; no sandbox/temp copies unless asked; read back writes.',
-    'Files: find_path; text=search_content; git/ls/grep=run_cmd cwd=repo; no cd/-C.',
-    'Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.',
-    'Skills D:\\LacViet\\aki-mcp-sv/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix; read SKILL.md.',
-    'Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.',
-    'First: if ~/.aki/mcpsv/intro.json absent, read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md; write {"seen":true}.',
-    'Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.',
+    'Plan: nontrivial=>research GitHub/upstream; reuse confirmed facts unless stale/ambiguous; ONE plan=given path or ~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint. Q&A:no plan.',
+    'Lean: conclusion first; no restating request; stop when evidence suffices; authorized scope=no reconfirm; verify by risk; CI trigger/no poll unless asked; done=deliverable+checks+limits; subagent only if independent ROI>coordination.',
+    'Context: AGENTS.md=thin map 30-100 lines, no routed/global rule duplication; HANDOFF=30-100 lines state only; detail=plan/checkpoint.',
+    'Repo: Aki MCP real path; preserve dirty; no sandbox/temp unless asked; read back writes/diffs.',
+    'Tools: unknown=find_path;text=search_content;multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.',
+    'Skills D:\\LacViet\\aki-mcp-sv/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.',
+    'First: intro.json absent=>read D:\\LacViet\\aki-mcp-sv/docs/ref/mcp-intro.md. Update mismatch=>tell user update panel+re-paste.',
   ].join('\n');
 }
 
 test('default locked prompt stays safely below ChatGPT 1500-character cap', () => {
-  const ruleSpec = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'RULE-agent-engineering.md', 'RULE-docs.md', 'RULE-release.md'].join(',');
+  const ruleSpec = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'].join(',');
   const prompt = promptForRuleSpec(ruleSpec);
   assert.ok(prompt.length <= 1400, `default prompt should leave safety margin under 1500, got ${prompt.length}`);
 });

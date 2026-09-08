@@ -70,7 +70,7 @@ document.addEventListener('click', (e) => {
 });
 
 function buildPrompt() {
-  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] ALWAYS short dense on-point. DON\'T YAPPING. Claim=evidence; search=citation.'];
+  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] SHORT+DENSE. DON\'T YAPPING. Claim=evidence; search=citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
@@ -85,16 +85,14 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  lines.push('Before plan: research GitHub/upstream; cite evidence.');
-  lines.push('Mutate/multi: ONE shared plan: given path else ~/.aki/mcpsv/task/<id>/plan.md; read resume/handoff; keep checklist/decisions/evidence/outcome; reply path when created. Q&A:no plan.');
-  lines.push('Repo via Aki MCP only; user path; no sandbox/temp copies unless asked; read back writes.');
-  lines.push('Files: find_path; text=search_content; git/ls/grep=run_cmd cwd=repo; no cd/-C.');
-  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Flow: Q&A=>snapshot; multi=>context_packet(taskKey=plan); lead=packet; code=>opencode_exec; test=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
-  else lines.push('Flow: snapshot once; deep=>agent_read(xKiro free); implement=>opencode_exec; tests=>run_cmd; risky review; 2 free fails/high-risk=>escalate.');
-  lines.push('Skills ' + REPO_ROOT + '/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix; read SKILL.md.');
-  lines.push('Build/CI: trigger only; no poll unless asked; fail=>fix/retrigger.');
-  lines.push('First: if ~/.aki/mcpsv/intro.json absent, read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; write {"seen":true}.');
-  lines.push('Update: ~/.aki/mcpsv/aki-mcp-status.json mismatch/update=>tell user update panel + re-paste Instructions.');
+  lines.push('Plan: nontrivial=>research GitHub/upstream; reuse confirmed facts unless stale/ambiguous; ONE plan=given path or ~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint. Q&A:no plan.');
+  lines.push('Lean: conclusion first; no restating request; stop when evidence suffices; authorized scope=no reconfirm; verify by risk; CI trigger/no poll unless asked; done=deliverable+checks+limits; subagent only if independent ROI>coordination.');
+  lines.push('Context: AGENTS.md=thin map 30-100 lines, no routed/global rule duplication; HANDOFF=30-100 lines state only; detail=plan/checkpoint.');
+  lines.push('Repo: Aki MCP real path; preserve dirty; no sandbox/temp unless asked; read back writes/diffs.');
+  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: unknown=find_path;text=search_content;multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.');
+  else lines.push('Tools: unknown=find_path;text=search_content;deep=agent_read;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.');
+  lines.push('Skills ' + REPO_ROOT + '/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.');
+  lines.push('First: intro.json absent=>read ' + REPO_ROOT + '/docs/ref/mcp-intro.md. Update mismatch=>tell user update panel+re-paste.');
   const value = lines.join('\n');
   document.getElementById('prompt').value = value;
   const over = value.length > 1500;

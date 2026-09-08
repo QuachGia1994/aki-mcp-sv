@@ -21,7 +21,7 @@ const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvieta
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
-const LOCKED_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'RULE-agent-engineering.md', 'RULE-docs.md', 'RULE-release.md'];
+const LOCKED_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'];
 
 // Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
@@ -325,7 +325,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </section>
 
 <section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
-<p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
+<p class="helptext">Only AkiDevRule's four mechanical core files are locked on. Contextual rules stay routed through <span class="mono">akirule</span> instead of consuming every session; tick extras only when you intentionally want them always loaded. Then copy the Instructions into each AI.</p>
 <div class="acts">
   <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude ↗</a>
   <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok ↗</a>
@@ -341,6 +341,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
   <label><input type="checkbox" id="realRepoOnly" checked disabled> Work directly in the user-specified real repo; no sandbox/virtual-copy edits 🔒 custom</label>
   <label><input type="checkbox" id="triggerBuildOnly" checked disabled> Build/CI: trigger only; do not wait or monitor unless asked 🔒 custom</label>
   <label><input type="checkbox" id="nativeVisualTools" checked disabled> Aki Skills: Browser/ImageGen + Ponytail/Anti-Vibe + Mobile Native + Icon Silhouette + Strix + Postman Remote 🔒 custom</label>
+  <label><input type="checkbox" id="leanContextPolicy" checked disabled> Lean context: reuse confirmed facts; proportional verification; AGENTS/HANDOFF stay thin 🔒 custom</label>
 </div>
 ${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste these Instructions into the custom-instructions setting of each AI (Claude / Grok / ChatGPT / Gemini).</div>` : ''}
 <div class="checks" id="ruleChecks"></div>

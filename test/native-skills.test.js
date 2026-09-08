@@ -84,7 +84,7 @@ test('strix skill separates passive GitHub repo risk review from authorized acti
 });
 
 test('default Prompt Instructions route primary skills while chained skills cover Ponytail and Icon Silhouette', () => {
-  assert.match(panelClient, /Skills ' \+ REPO_ROOT \+ '\/skills: web=browser;img=imagegen;code=anti-vibecoding;mobile=mobile-native;remote=postman-remote;risk=strix; read SKILL\.md\./);
+  assert.match(panelClient, /Skills ' \+ REPO_ROOT \+ '\/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL\.md\./);
   assert.match(imagegen, /icon-silhouette\/SKILL\.md/);
   assert.match(mobileNative, /icon-silhouette\/SKILL\.md/);
   assert.match(antiVibe, /ponytail\/SKILL\.md/);

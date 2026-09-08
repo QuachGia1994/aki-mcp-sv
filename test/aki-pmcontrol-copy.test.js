@@ -35,7 +35,17 @@ const defaultInstruction = loadInstruction([
   defaultPromptPath,
 ]);
 assert.ok(defaultInstruction.trim(), 'a fresh clone must load a non-empty bundled Postman prompt');
-assert.ok(readFileSync(sharedPromptDefaultPath, 'utf8').trim(), 'shared summarize-to-new-chat prompt must be bundled');
+const sharedSummaryPrompt = readFileSync(sharedPromptDefaultPath, 'utf8');
+assert.ok(sharedSummaryPrompt.trim(), 'shared summarize-to-new-chat prompt must be bundled');
+assert.match(sharedSummaryPrompt, /target 30–100 non-empty lines and never exceed 100 lines/);
+assert.match(sharedSummaryPrompt, /do not pad/);
+assert.match(sharedSummaryPrompt, /intentional dirty files/);
+assert.match(sharedSummaryPrompt, /last-green verification/);
+assert.equal(
+  readFileSync(path.join(mcpRoot, 'assets/prompts/postman.md'), 'utf8'),
+  readFileSync(path.join(mcpRoot, 'data/aki-postman-instruction.md'), 'utf8'),
+  'bundled and panel Postman prompts must stay byte-identical',
+);
 
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'aki-pmcontrol-instruction-'));
 try {
@@ -107,6 +117,9 @@ assert.match(mcpSrc, /sendAiPrompt\(HANDOFF_PROMPT\)/);
 assert.match(mcpSrc, /task_checkpoint_save/);
 assert.match(mcpSrc, /task_checkpoint_recover/);
 assert.match(mcpSrc, /context_packet/);
+assert.match(mcpSrc, /For substantive work target 30–100 lines, never exceed 100/);
+assert.match(mcpSrc, /intentional dirty files/);
+assert.match(mcpSrc, /reuses confirmed plan\/checkpoint\/git facts without re-research unless stale or ambiguous/);
 assert.match(mcpSrc, /function typeAndSubmitChat/);
 assert.match(mcpSrc, /function sendSummarizePrompt/);
 assert.match(mcpSrc, /aki-btn-summarize-chat/);
