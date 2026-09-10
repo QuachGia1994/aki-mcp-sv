@@ -35,6 +35,14 @@ Read the generated run metadata and vulnerability artifacts, not only the CLI ex
 
 A zero-finding result is not proof of safety if the run stopped early, hit budget/time limits, skipped material scope, or failed setup. Report coverage and completion state explicitly.
 
+## Evidence linkage and finding revisions
+
+When the scanner/proxy exposes durable artifacts, attach stable evidence IDs to the finding instead of copying evidence only as prose. For HTTP-backed findings, prefer HTTP exchange IDs that resolve to the exact observed request/response; keep the human-readable reproduction as context, not as the sole evidence handle.
+
+Before creating or revising a finding, verify every referenced evidence ID exists in the current run/project and belongs to the target under review. Never emit dangling IDs, guessed IDs, or references copied from another scan.
+
+Treat finding edits as transactional: persist the revised finding first and only after persistence succeeds replace the current in-memory/local finding state. If persistence rejects or fails, retain the previous accepted finding unchanged. Preserve revision history so evidence additions, removals, and corrected conclusions remain auditable instead of silently overwriting the prior record.
+
 ## Finding classes
 
 Use two evidence classes:

@@ -3,7 +3,7 @@
 Read only when `~/.aki/mcpsv/intro.json` does not exist yet (the paste-in instruction prompt gates this). After reading, write `{"seen":true}` to that path via `write_file` so this file is never read again on any later session, on any account.
 
 ## Why this server exists
-This MCP gives an AI session filesystem, shell, search, and CLI-arm (`agy`/`kiro`) access to a real machine, over a single durable connection any account (Claude, ChatGPT, Grok, Gemini) can attach to. The point is continuity: work started from one account can be picked up from a different one later, because the state lives on disk under `~/.aki/mcpsv/`, not in any one chat's context window.
+This MCP gives an AI session filesystem, shell, search, and AGY CLI-arm access to a real machine, over a single durable connection any account (Claude, ChatGPT, Grok, Gemini) can attach to. The point is continuity: work started from one account can be picked up from a different one later, because the state lives on disk under `~/.aki/mcpsv/`, not in any one chat's context window.
 
 ## The live-plan pattern
 For any multi-step task, use exactly one shared plan at `~/.aki/mcpsv/task/<id>/plan.md`; if the user or another agent gives a plan path, use that exact file instead of creating a second plan. Keep checklist, current state, decisions, evidence, and handoff notes updated as work proceeds. Skip this for pure Q&A.

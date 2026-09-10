@@ -44,14 +44,14 @@ test('hot refresh preserves stable prefix byte-for-byte and cold refresh rebuild
   const worker = async () => {
     call++;
     if (call === 1) return workerResult({
-      stable: { goal: ['Ship guarded executor'], constraints: ['Free workers first'], decisions: ['Astra judges only'], architecture: ['OpenCode exec writes'], acceptance: ['Tests green'] },
-      dynamic: { evidence: ['scripts/opencode-mcp.js owns exec'], changes: [], tests: [], blockers: [], risks: [] },
+      stable: { goal: ['Ship guarded executor'], constraints: ['Free workers first'], decisions: ['Astra judges only'], architecture: ['Scoped Aki writes'], acceptance: ['Tests green'] },
+      dynamic: { evidence: ['write boundary is project-scoped'], changes: [], tests: [], blockers: [], risks: [] },
       classify: { keep: [], stale: [], wasted: [] },
     }, 12000);
     if (call === 2) return workerResult({
       stable: { goal: ['THIS MUST NOT REPLACE HOT PREFIX'], constraints: [], decisions: [], architecture: [], acceptance: [] },
       dynamic: { evidence: ['new evidence'], changes: ['one change'], tests: ['focused test green'], blockers: [], risks: [] },
-      classify: { keep: ['Ship guarded executor'], stale: ['scripts/opencode-mcp.js owns exec'], wasted: ['old tool dump'] },
+      classify: { keep: ['Ship guarded executor'], stale: ['write boundary is project-scoped'], wasted: ['old tool dump'] },
     }, 9000);
     return workerResult({
       stable: { goal: ['Rebuilt goal after cold boundary'], constraints: ['Free workers first'], decisions: [], architecture: [], acceptance: ['New acceptance'] },

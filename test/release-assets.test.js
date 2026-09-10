@@ -11,6 +11,6 @@ test('standalone payload includes every Postman walkthrough screenshot', () => {
   }
 });
 
-test('standalone payload includes OpenCode agent permission profiles', () => {
-  assert.ok(APP_ENTRIES.includes('.opencode/agents'), 'OpenCode read/exec agents must ship with the standalone payload');
+test('standalone payload excludes retired OpenCode agent permission profiles', () => {
+  assert.equal(APP_ENTRIES.includes('.opencode/agents'), false);
 });

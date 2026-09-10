@@ -244,7 +244,7 @@ export function register(server) {
     'repo_snapshot',
     {
       title: 'Aki One-Call Repository Snapshot',
-      description: 'Preferred first tool for broad local repository/codebase analysis when the client asks approval per MCP call or has a short tool deadline. In one read-only local pass it returns a bounded repository tree plus prioritized source/config/docs contents; it does not invoke Agy/Kiro/OpenCode, shell, network, or nested MCP calls. Secret-like files and symlinks are omitted. Use granular find/search/read only when the snapshot is insufficient.',
+      description: 'Preferred first tool for broad local repository/codebase analysis when the client asks approval per MCP call or has a short tool deadline. In one read-only local pass it returns a bounded repository tree plus prioritized source/config/docs contents; it does not invoke external AI workers, shell, network, or nested MCP calls. Secret-like files and symlinks are omitted. Use granular find/search/read only when the snapshot is insufficient.',
       inputSchema: {
         path: z.string().describe('absolute repository/project directory under an allowed root'),
         maxFiles: z.number().int().min(10).max(200).optional().describe(`maximum prioritized text files to include; default ${DEFAULT_MAX_FILES}`),

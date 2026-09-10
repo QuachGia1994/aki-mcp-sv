@@ -1,12 +1,10 @@
-// Factory for the one shared McpServer hosting every in-process tool domain (shell, agy, kiro,
+// Factory for the one shared McpServer hosting every in-process tool domain (shell, agy,
 // search, claude-mem read access, filesystem). It replaces local-tools-mcp.js's separately spawned
 // stdio child now that mcp-hub is gone (docs/plan/done/2.0.0-improve.md #7, Stage 2 phase 2). Each domain's logic stays in
 // its own register(server) module behind a stable contract, unchanged from Stage 1.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { register as registerShell } from './shell-mcp.js';
 import { register as registerAgy } from './agy-mcp.js';
-import { register as registerKiro } from './kiro-mcp.js';
-import { register as registerOpenCode } from './opencode-mcp.js';
 import { register as registerAgent } from './agent-mcp.js';
 import { register as registerSearch } from './search-mcp.js';
 import { register as registerRepoSnapshot } from './repo-snapshot-mcp.js';
@@ -26,12 +24,12 @@ const SERVER_INSTRUCTIONS = [
   'For broad local repo/codebase analysis, call local__repo_snapshot exactly once with the project path; it returns a bounded tree plus prioritized source/config/docs in one local read pass and is designed to finish within short client deadlines.',
   'Use local__agent_read only for semantic/cross-source retrieval after repo_snapshot is insufficient; do not decompose broad analysis into list_allowed_directories/find_path/search_content/read_text_file unless the one-call paths fail or the user requests granular reads.',
   'For multi-step/deep work, call local__context_packet with the shared plan/task id before expensive lead/Astra reasoning; it recovers the task checkpoint, searches compact durable project knowledge, then uses the Budget Router so raw retrieval/compression stays in the cheapest healthy eligible worker. Reuse the same taskKey on follow-ups; force a cold rebuild only when stable assumptions changed.',
-  'Use local__budget_router_read instead of choosing xKiro/OpenCode/agy/Kiro manually; its ledger keeps actual provider tokens, estimates, avoided lead context, and reported cache hits as separate metrics.',
+  'Use local__budget_router_read instead of choosing xKiro/agy manually; its ledger keeps actual provider tokens, estimates, avoided lead context, and reported cache hits as separate metrics.',
   'Use local__task_checkpoint_recover after compaction/restart/account handoff, local__graph_query for durable project decisions/facts, and local__aki_doctor for unified read-only health diagnosis.',
   'When the owner asks to inspect a screenshot/photo they placed in the local Postman image inbox, call local__image_inbox with action=latest by default, action=list when the filename is ambiguous, or action=read with the exact basename. The tool returns MCP-native image content for visual analysis.',
   'Astra 6 policy (any variant or reasoning effort): review the requirements and current work, settle a bounded scope, then delegate approximately 90% of remaining substantive implementation and tests to the native host subagent model gpt-5.6-luna with reasoning_effort=high. Pass the real cwd, shared plan/task key, ownership, acceptance criteria, and required evidence; Astra reviews the result and risky diffs.',
-  'For Astra 6, the native Luna route overrides the local__opencode_exec preference; do not reconfigure providers or fake runtime model detection. If native Luna is unavailable, report that once and use an existing permitted route without claiming Luna ran. Other models retain the existing OpenCode preference; the 90% target is guidance, not quota enforcement, and trivial Q&A stays with the lead.',
-  'For non-Astra implementation, prefer local__opencode_exec when its write-worker toggle is enabled and the task has a settled scope/plan; run verification separately with local__run_cmd, then review only risky diffs or unresolved items. Fall back to normal write tools when the free executor is disabled/unavailable or the task is high-risk.',
+  'If native Luna is unavailable, report that once and use an existing permitted route without claiming Luna ran; do not reconfigure providers or fake runtime model detection. The 90% target is guidance, not quota enforcement, and trivial Q&A stays with the lead.',
+  'For implementation outside a native Luna handoff, use the normal scoped write/edit tools in the real worktree and verify separately with local__run_cmd; review risky diffs or unresolved items before completion.',
 ].join(' ');
 
 const LOCAL_READ_ONLY_TOOLS = new Set([
@@ -54,7 +52,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'image_inbox',
 ]);
 
-const REMOTE_READ_ONLY_TOOLS = new Set(['kiro_read', 'opencode_read', 'opencode_status', 'xkiro_read', 'xkiro_status', 'agent_read', 'budget_router_status', 'aki_doctor']);
+const REMOTE_READ_ONLY_TOOLS = new Set(['xkiro_read', 'xkiro_status', 'agent_read', 'budget_router_status', 'aki_doctor']);
 
 const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],
@@ -65,7 +63,6 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   // default policy is read-only/plan-mode. A future wider allowlist must not inherit a false safety claim.
   ['run_cmd', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
-  ['opencode_exec', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['budget_router_read', { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   ['context_packet', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   ['graph_sync', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
@@ -109,7 +106,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerKiro, registerOpenCode, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
+  for (const register of [registerShell, registerAgy, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on

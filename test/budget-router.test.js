@@ -7,33 +7,31 @@ const fail = (text) => ({ content: [{ type: 'text', text }], isError: true });
 
 const health = {
   xkiro: { available: true, model: 'x/free', costClass: 'free' },
-  opencode: { available: true, model: 'opencode/free', costClass: 'free' },
   agy: { available: true, model: 'gemini-flash', costClass: 'quota' },
-  kiro: { available: true, model: 'sonnet', costClass: 'quota' },
 };
 
-test('Budget Router ranks zero-cost workers before quota workers and freeOnly excludes quota fallbacks', async () => {
+test('Budget Router ranks xKiro before AGY and freeOnly excludes the quota fallback', async () => {
   const all = await rankReadWorkers({ prompt: 'inspect', cwd: process.cwd(), healthOverride: health });
-  assert.deepEqual(all.map((item) => item.name), ['xkiro', 'opencode', 'agy', 'kiro']);
+  assert.deepEqual(all.map((item) => item.name), ['xkiro', 'agy']);
   const free = await rankReadWorkers({ prompt: 'inspect', cwd: process.cwd(), healthOverride: health, freeOnly: true });
-  assert.deepEqual(free.map((item) => item.name), ['xkiro', 'opencode']);
+  assert.deepEqual(free.map((item) => item.name), ['xkiro']);
 });
 
-test('Budget Router records failed worker then returns first successful fallback', async () => {
+test('Budget Router records failed xKiro then returns the AGY fallback', async () => {
   const recorded = [];
   const candidates = [
     { name: 'xkiro', provider: 'xKiro', model: 'x/free', costClass: 'free', invoke: async () => fail('quota exhausted') },
-    { name: 'opencode', provider: 'OpenCode Zen', model: 'opencode/free', costClass: 'free', invoke: async () => ok('done') },
+    { name: 'agy', provider: 'Antigravity', model: 'gemini-flash', costClass: 'quota', invoke: async () => ok('done') },
   ];
   const result = await runBudgetedRead(
-    { prompt: 'inspect', cwd: process.cwd(), freeOnly: true },
+    { prompt: 'inspect', cwd: process.cwd() },
     { ranker: async () => candidates, recorder: (entry) => recorded.push(entry), now: (() => { let n = 1000; return () => (n += 10); })() },
   );
   assert.equal(result.content[0].text, 'done');
   assert.equal(recorded.length, 2);
   assert.equal(recorded[0].success, false);
   assert.equal(recorded[1].success, true);
-  assert.equal(recorded[1].costClass, 'free');
+  assert.equal(recorded[1].costClass, 'quota');
 });
 
 test('Cost Ledger keeps provider usage, context avoidance, and cache hits as separate fields', () => {
@@ -51,11 +49,11 @@ test('Cost Ledger keeps provider usage, context avoidance, and cache hits as sep
   assert.equal(normalizeLedgerEntry({ providerCacheHits: '' }).providerCacheHits, null);
 });
 
-test('worker health probes are time-bounded so one slow free provider cannot stall routing', async () => {
+test('worker health probe is time-bounded so slow xKiro cannot stall routing', async () => {
   const never = () => new Promise(() => {});
   const started = Date.now();
-  const matrix = await getWorkerHealthMatrix({ refresh: true, xkiroStatus: never, openCodeStatus: never, probeTimeoutMs: 20 });
+  const matrix = await getWorkerHealthMatrix({ refresh: true, xkiroStatus: never, probeTimeoutMs: 20 });
   assert.ok(Date.now() - started < 500);
   assert.match(matrix.xkiro.reason, /timed out/);
-  assert.match(matrix.opencode.reason, /timed out/);
+  assert.ok(matrix.agy);
 });

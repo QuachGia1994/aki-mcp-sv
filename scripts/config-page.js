@@ -169,7 +169,7 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </div>
 </section>
 
-<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro, OpenCode, Free-first</h2>
+<section id="s1"><h2>1 · Connectors &amp; workers: Claude, Grok, ChatGPT, Gemini, Postman, xKiro, Free-first</h2>
 <p class="helptext">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
@@ -182,7 +182,6 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
   <button class="tab" data-tab="xkiro"><img src="/img/providers/xkiro.ico" class="provider-icon" alt="">xKiro</button>
-  <button class="tab" data-tab="opencode"><img src="/img/providers/opencode.svg" class="provider-icon" alt="">OpenCode</button>
   <button class="tab" data-tab="context">Free-first</button>
 </nav>
 
@@ -260,7 +259,7 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane" id="tab-xkiro">
   <h3 class="subh">xKiro Free read worker</h3>
-  <p class="helptext">Uses xKiro's OpenAI-compatible API as a read-only Aki worker. <span class="mono">local__agent_read</span> prefers xKiro first when configured, then falls back to agy → Kiro → OpenCode. The xKiro model receives only scoped Aki read tools — no write or shell capability.</p>
+  <p class="helptext">Uses xKiro's OpenAI-compatible API as a read-only Aki worker. <span class="mono">local__agent_read</span> prefers xKiro first when configured, then falls back to AGY. The xKiro model receives only scoped Aki read tools — no write or shell capability.</p>
   <p class="helptext">Free plan currently advertises 5M free-model tokens/day. The API key is stored only in <span class="mono">~/.aki/mcpsv/xkiro.json</span> (or use <span class="mono">XKIRO_API_KEY</span>); the panel never renders the saved key back.</p>
   <div class="row"><label>API key</label><input type="password" id="xkiroKey" autocomplete="off" placeholder="sk-xt-… (leave blank to keep saved key)"></div>
   <div class="row"><label>Free model</label><select id="xkiroModel"><option value="minimax/minimax-m3:free">MiniMax M3</option></select></div>
@@ -273,24 +272,10 @@ ${field('Passphrase', passphrase)}
   </div>
 </div>
 
-<div class="tabpane" id="tab-opencode">
-  <h3 class="subh">OpenCode Zen free workers</h3>
-  <p class="helptext">Uses the OpenCode Zen credential already managed by the OpenCode CLI; Aki never copies or stores that API key. Authenticate once with ${copyEl('opencode auth login')} and choose <strong>OpenCode Zen</strong>.</p>
-  <p class="helptext">Only active zero-cost Zen models with tool calling are selectable. Aki stores only the chosen model and local executor toggle in <span class="mono">~/.aki/mcpsv/opencode.json</span>; if that model disappears from the live catalog, the worker falls back only to another zero-cost Zen model.</p>
-  <div class="row"><label>Free model</label><select id="opencodeModel"><option value="opencode/muse-spark-1.3-contributor-free">Muse Spark 1.3 Free</option></select></div>
-  <label style="display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="opencodeExecEnabled"> <strong>Enable write worker</strong> — allows <span class="mono">local__opencode_exec</span> to edit only inside the selected project; shell, web, delegation, skills, and external-directory access stay denied.</label>
-  <div class="acts">
-    <button class="primary" data-act="saveOpenCode">Save model</button>
-    <button data-act="refreshOpenCode">Refresh models</button>
-    <button data-act="testOpenCode">Test worker</button>
-    <span class="dot" id="opencodeDot">…</span><span class="msg" id="msgOpenCode"></span>
-  </div>
-</div>
-
 <div class="tabpane" id="tab-context">
   <h3 class="subh">Aki Free-first Orchestrator</h3>
-  <p class="helptext">Durable Project Graph + task checkpoint feed the Context Optimizer; the Budget Router then chooses the cheapest healthy eligible read worker before Astra/Work sees the compact packet. OpenCode Zen remains the bounded implementation worker and Aki runs tests separately. Provider-reported tokens, Aki estimates, avoided lead context, and cache hits stay separate metrics.</p>
-  <p class="helptext">Astra 6 (any variant/effort) reviews scope, then delegates about 90% of remaining substantive implementation/tests to native host <span class="mono">gpt-5.6-luna</span> at <span class="mono">reasoning_effort=high</span>, passing cwd, plan, ownership, acceptance criteria, and evidence for final review. This overrides <span class="mono">local__opencode_exec</span> only for Astra. If native Luna is unavailable, report it once and use the existing permitted route without claiming Luna ran; other models keep the current path.</p>
+  <p class="helptext">Durable Project Graph + task checkpoint feed the Context Optimizer; the Budget Router prefers xKiro free quota then AGY before Astra/Work sees the compact packet. Implementation uses native host delegation or Aki's normal scoped write/edit tools, with tests run separately. Provider-reported tokens, Aki estimates, avoided lead context, and cache hits stay separate metrics.</p>
+  <p class="helptext">Astra 6 (any variant/effort) reviews scope, then delegates about 90% of remaining substantive implementation/tests to native host <span class="mono">gpt-5.6-luna</span> at <span class="mono">reasoning_effort=high</span>, passing cwd, plan, ownership, acceptance criteria, and evidence for final review. If native Luna is unavailable, report it once and use the existing permitted route without claiming Luna ran.</p>
   <h3 class="subh">Context Optimizer</h3>
   <p class="helptext">Aki preserves the stable prefix during the hot window and applies stale/wasted cleanup to it only at the next cold boundary. This reduces Aki-to-lead context but does not claim or control ChatGPT/Work provider cache hits.</p>
   <label style="display:flex;gap:7px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="contextOptimizerEnabled"> <strong>Auto-optimize context</strong></label>

@@ -179,7 +179,6 @@ export function buildOptimizerWorkerPrompt({ prompt, previous, cold, budgetToken
 function providerFromResult(result) {
   const text = extractText(result);
   if (/\[xKiro\s/i.test(text)) return 'xKiro';
-  if (/\[OpenCode Zen/i.test(text)) return 'OpenCode';
   return 'BudgetRouter';
 }
 

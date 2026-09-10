@@ -23,7 +23,6 @@ export const LAUNCHERS = {
 export const APP_ENTRIES = [
   'scripts',
   'skills',
-  '.opencode/agents',
   'cloudflare',
   'public/panel.css',
   'public/panel-client.js',

@@ -1,7 +1,5 @@
 import { z } from 'zod';
 import { buildAgyArgs, runAgy } from './agy-mcp.js';
-import { runKiroRead } from './kiro-mcp.js';
-import { runOpenCodeRead } from './opencode-mcp.js';
 import { runXKiroRead, isXKiroConfigured } from './xkiro-mcp.js';
 import { resolveOrFail } from './roots.js';
 import { err } from './mcp-tool.js';
@@ -21,9 +19,7 @@ export function scopeWorkerPrompt(prompt, dir) {
 export function buildDefaultAgentProviders(scopedPrompt, dir) {
   return [
     ...(isXKiroConfigured() ? [['xkiro', () => runXKiroRead({ prompt: scopedPrompt, cwd: dir, reasoning: 'none' })]] : []),
-    ['opencode', () => runOpenCodeRead({ prompt: scopedPrompt, cwd: dir })],
     ['agy', () => runAgy(buildAgyArgs({ prompt: scopedPrompt, mode: 'plan', model: 'gemini-3.7-flash-high', effort: 'low', outputFormat: 'text' }), dir)],
-    ['kiro', () => runKiroRead({ prompt: scopedPrompt, effort: 'low', cwd: dir })],
   ];
 }
 
@@ -56,7 +52,7 @@ export function register(server) {
     'agent_read',
     {
       title: 'Aki One-Call Read Worker',
-      description: 'Preferred for broad semantic repo/codebase/research tasks after one repo_snapshot. Send the complete task plus cwd once; Aki Budget Router picks the cheapest healthy eligible read worker using observable free/quota health: xKiro/OpenCode zero-cost first, then AGY/Kiro quota fallback, with cooldown and local token/context ledger. Use granular find/search/read only when this worker fails or exact file-level retrieval is requested.',
+      description: 'Preferred for broad semantic repo/codebase/research tasks after one repo_snapshot. Send the complete task plus cwd once; Aki Budget Router prefers configured xKiro free quota, then falls back to AGY, with cooldown and local token/context ledger. Use granular find/search/read only when this worker fails or exact file-level retrieval is requested.',
       inputSchema: {
         prompt: z.string(),
         cwd: z.string().optional().describe('run inside this project dir; must be under an allowed root'),

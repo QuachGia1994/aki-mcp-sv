@@ -1,6 +1,6 @@
 # Docs index
 
-- [feat/tools.md](feat/tools.md) — the local capability suite and each tool's anchored purpose; why `agy`/`kiro` are agent-arms ("hands"), not redundant primitives, and are not to be removed by a subtraction audit
+- [feat/tools.md](feat/tools.md) — the current local capability suite and each tool's anchored purpose; xKiro + AGY are the retained worker arms, while OpenCode/Kiro are retired
 - [ref/mcp-intro.md](ref/mcp-intro.md) — first-session onboarding content (live-plan pattern, cross-account continuity), read once and gated by `~/.aki/mcpsv/intro.json`; shipped as a one-line pointer in the pasted instruction prompt, not the full text, since the ChatGPT 1500-char cap has no room for it
 - [plan/done/init.md](plan/done/init.md) — architecture decisions (mcp-hub + gatekeeper + funnel) and repo bootstrap checklist
 - [plan/done/instruction-prompt-improve.md](plan/done/instruction-prompt-improve.md) — compact the paste-in instruction prompt under ChatGPT's 1500-char cap (hoist the rules-dir prefix) and add the mandatory survey + `working.md` per-task workflow; shipped 1.2.0
@@ -41,7 +41,7 @@
 - [ref/KIMI-WEB-LIVE-TEST.md](ref/KIMI-WEB-LIVE-TEST.md) — portable Kimi K3 browser bootstrap for the custom-domain Worker -> D1 -> local Aki route; placeholders only, no runtime credentials
 - [ref/QWEN-WEB-LIVE-TEST.md](ref/QWEN-WEB-LIVE-TEST.md) — portable Qwen browser bootstrap using the custom domain, idempotent task creation, polling, and real Windows project access
 - [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)
-- [ref/harness-fact.md](ref/harness-fact.md) — the agy/kiro CLI facts the arm MCPs depend on (flags, model ids, effort enums), split by evidence tier: agy and kiro both verified live (kiro-cli 2.16.2, 2026-08-09)
+- [ref/harness-fact.md](ref/harness-fact.md) — current AGY CLI facts the local arm depends on, split by evidence tier; retired OpenCode/Kiro facts remain historical only
 - [research/claude-ai-oauth-connector.md](research/claude-ai-oauth-connector.md) — research behind the switch from token-in-URL to OAuth, with dates and sources
 - [research/chrome-cdp-default-profile-block.md](research/chrome-cdp-default-profile-block.md) — why `scripts/chrome.js` is being removed: Chrome 136 blocks remote debugging on the default profile
 - [research/claude-ai-mcp-session-reinit.md](research/claude-ai-mcp-session-reinit.md) — measured fact: claude.ai re-sends `initialize` with no session id every ~10s (17 hub sessions in 4 min for 3 conversations) — the evidence that forced the single-shared-session bridge

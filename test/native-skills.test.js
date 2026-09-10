@@ -81,6 +81,10 @@ test('strix skill separates passive GitHub repo risk review from authorized acti
   assert.match(strix, /Active probing of a live domain\/API\/IP requires that the user owns the target or is authorized/);
   assert.match(strix, /A zero-finding result is not proof of safety if the run stopped early/);
   assert.match(strix, /\*\*CERTAIN\*\*.*deterministic test/s);
+  assert.match(strix, /stable evidence IDs.*HTTP exchange IDs/s);
+  assert.match(strix, /verify every referenced evidence ID exists/);
+  assert.match(strix, /persist the revised finding first.*replace the current in-memory\/local finding state/s);
+  assert.match(strix, /preserve revision history/i);
 });
 
 test('default Prompt Instructions route primary skills while chained skills cover Ponytail and Icon Silhouette', () => {

@@ -24,9 +24,10 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__run_cmd'), true);
     assert.equal(names.has('local__agent_read'), true);
     assert.equal(names.has('local__repo_snapshot'), true);
-    assert.equal(names.has('local__opencode_read'), true);
-    assert.equal(names.has('local__opencode_exec'), true);
-    assert.equal(names.has('local__opencode_status'), true);
+    assert.equal(names.has('local__opencode_read'), false);
+    assert.equal(names.has('local__opencode_exec'), false);
+    assert.equal(names.has('local__opencode_status'), false);
+    assert.equal(names.has('local__kiro_read'), false);
     assert.equal(names.has('local__context_packet'), true);
     assert.equal(names.has('local__context_optimizer_status'), true);
     assert.equal(names.has('local__budget_router_read'), true);
@@ -45,15 +46,14 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.match(instructions, /do not decompose broad analysis into list_allowed_directories\/find_path\/search_content\/read_text_file/);
     assert.match(instructions, /call local__context_packet with the shared plan\/task id before expensive lead\/Astra reasoning/);
     assert.match(instructions, /Reuse the same taskKey on follow-ups/);
-    assert.match(instructions, /Use local__budget_router_read instead of choosing xKiro\/OpenCode\/agy\/Kiro manually/);
+    assert.match(instructions, /Use local__budget_router_read instead of choosing xKiro\/agy manually/);
     assert.match(instructions, /local__task_checkpoint_recover after compaction\/restart\/account handoff/);
     assert.match(instructions, /local__aki_doctor for unified read-only health diagnosis/);
     assert.match(instructions, /local__image_inbox with action=latest by default/);
-    assert.match(instructions, /prefer local__opencode_exec when its write-worker toggle is enabled/);
     assert.match(instructions, /Astra 6 policy \(any variant or reasoning effort\).*gpt-5\.6-luna with reasoning_effort=high/);
     assert.match(instructions, /native Luna is unavailable, report that once.*without claiming Luna ran/);
-    assert.match(instructions, /For non-Astra implementation, prefer local__opencode_exec/);
-    assert.match(instructions, /run verification separately with local__run_cmd/);
+    assert.match(instructions, /use the normal scoped write\/edit tools in the real worktree/);
+    assert.match(instructions, /verify separately with local__run_cmd/);
   } finally {
     await client.close();
     await server.close();
@@ -84,8 +84,9 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__read_text_file')?.annotations, localRead);
     assert.deepEqual(tools.get('filesystem__read_text_file')?.annotations, localRead);
     assert.deepEqual(tools.get('local__agent_read')?.annotations, remoteRead);
-    assert.deepEqual(tools.get('local__opencode_read')?.annotations, remoteRead);
-    assert.deepEqual(tools.get('local__opencode_status')?.annotations, remoteRead);
+    assert.equal(tools.has('local__opencode_read'), false);
+    assert.equal(tools.has('local__opencode_status'), false);
+    assert.equal(tools.has('local__kiro_read'), false);
     assert.deepEqual(tools.get('local__context_packet')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
     assert.deepEqual(tools.get('local__context_optimizer_status')?.annotations, localRead);
     assert.deepEqual(tools.get('local__graph_query')?.annotations, localRead);
@@ -98,12 +99,7 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__budget_router_read')?.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true });
     assert.deepEqual(tools.get('local__graph_sync')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
     assert.deepEqual(tools.get('local__task_checkpoint_save')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
-    assert.deepEqual(tools.get('local__opencode_exec')?.annotations, {
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: true,
-    });
+    assert.equal(tools.has('local__opencode_exec'), false);
 
     assert.deepEqual(tools.get('local__write_file')?.annotations, {
       readOnlyHint: false,

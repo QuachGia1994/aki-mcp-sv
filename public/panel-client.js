@@ -90,8 +90,8 @@ function buildPrompt() {
   lines.push('Context: AGENTS/HANDOFF 30-100 lines; no routed/global duplication; detail=plan/checkpoint');
   lines.push('Repo: Aki MCP path; keep dirty; no sandbox/temp unless asked; read back writes/diffs');
   lines.push('Astra6(any):review/plan->native gpt-5.6-luna@high ~90% implementation/tests->review; code override; unavailable=>report+fallback.');
-  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: unknown=find_path;text=search_content;multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.');
-  else lines.push('Tools: unknown=find_path;text=search_content;deep=agent_read;code=opencode_exec;tests=run_cmd cwd=repo;risky=review;2 fails/high-risk=>escalate;no cd/-C.');
+  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: unknown=find_path;text=search_content;multi=context_packet;code=edit_file/write_file;tests=run_cmd cwd=repo;risk=review;2fail/high=>escalate;no cd/-C.');
+  else lines.push('Tools: unknown=find_path;text=search_content;deep=agent_read;code=edit_file/write_file;tests=run_cmd cwd=repo;risk=review;2fail/high=>escalate;no cd/-C.');
   lines.push('Skills ' + REPO_ROOT + '/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.');
   lines.push('First: intro.json absent=>read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; mismatch=>tell user update+re-paste.');
   const value = lines.join('\n');
@@ -276,7 +276,6 @@ async function loadState() {
   s.paths.forEach((p) => addPath(p));
   renderRuleChecks(s.ruleFiles);
   renderXKiroState(s.xkiro || {});
-  renderOpenCodeState(s.opencode || {});
   renderContextOptimizerState(s.contextOptimizer || {});
   renderFreeFirstState(s.freeFirst || {});
   document.getElementById('ruleChecks').onchange = buildPrompt;
@@ -351,42 +350,6 @@ async function checkXKiroQuota(refresh = false) {
     return 'ready · ' + model + fallback + ' · ' + s.freeModels.length + ' free models · free tokens ' + free.remaining.toLocaleString() + ' / ' + free.limit_per_day.toLocaleString();
   }
   return 'ready · ' + model + fallback + ' · ' + s.freeModels.length + ' free models';
-}
-
-function renderOpenCodeState(state) {
-  const configured = state?.configured === true;
-  const dot = document.getElementById('opencodeDot');
-  dot.textContent = configured ? '✓' : '✕';
-  dot.className = 'dot ' + (configured ? 'ok' : 'err');
-  const select = document.getElementById('opencodeModel');
-  const models = Array.isArray(state?.freeModels) ? state.freeModels : [];
-  if (models.length) {
-    select.innerHTML = '';
-    for (const model of models) {
-      const option = document.createElement('option');
-      option.value = model.id;
-      option.textContent = model.name + ' · ' + model.id;
-      select.append(option);
-    }
-  }
-  const selected = state?.selectedModel || state?.model || state?.effectiveModel;
-  if (selected && [...select.options].some((option) => option.value === selected)) select.value = selected;
-  else if (state?.effectiveModel && [...select.options].some((option) => option.value === state.effectiveModel)) select.value = state.effectiveModel;
-  document.getElementById('opencodeExecEnabled').checked = state?.execEnabled === true;
-  if (!configured && state?.error) say('msgOpenCode', state.error, false);
-  else if (!configured) say('msgOpenCode', 'OpenCode Zen not authenticated — run opencode auth login', false);
-}
-
-async function checkOpenCodeStatus(refresh = false) {
-  const s = await api(refresh ? 'POST' : 'GET', refresh ? '/api/opencode-refresh' : '/api/opencode-status');
-  renderOpenCodeState(s);
-  if (s.error) throw new Error(s.error);
-  if (!s.configured) return 'not authenticated — run opencode auth login and choose OpenCode Zen';
-  const fallback = s.fallback ? ' · fallback from ' + s.selectedModel : '';
-  const exec = s.execEnabled ? ' · write worker ON' : ' · write worker off';
-  const catalog = s.catalogSource ? ' · catalog ' + s.catalogSource : '';
-  const warning = s.refreshWarning ? ' · refresh warning: ' + s.refreshWarning : '';
-  return 'ready · ' + s.effectiveModel + fallback + ' · ' + s.freeModels.length + ' free models' + exec + catalog + warning;
 }
 
 function renderContextOptimizerState(state) {
@@ -486,16 +449,6 @@ const ACTIONS = {
     renderXKiroState(s);
     return s.configured ? 'stored key cleared; env key still active' : s.message;
   }),
-  saveOpenCode: (btn) => act(btn, 'msgOpenCode', async () => {
-    const model = document.getElementById('opencodeModel').value;
-    const execEnabled = document.getElementById('opencodeExecEnabled').checked;
-    const s = await api('POST', '/api/opencode-config', { model, execEnabled });
-    const status = await api('GET', '/api/opencode-status');
-    renderOpenCodeState(status);
-    return s.message + ' · ' + s.model + (status.execEnabled ? ' · write worker ON' : ' · write worker off');
-  }),
-  refreshOpenCode: (btn) => act(btn, 'msgOpenCode', () => checkOpenCodeStatus(true)),
-  testOpenCode: (btn) => act(btn, 'msgOpenCode', async () => (await api('POST', '/api/opencode-test')).message),
   saveContextOptimizer: (btn) => act(btn, 'msgContextOptimizer', async () => {
     const enabled = document.getElementById('contextOptimizerEnabled').checked;
     const budgetTokens = Number(document.getElementById('contextBudgetTokens').value);
@@ -633,5 +586,4 @@ loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forE
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });
 checkXKiroQuota().then((m) => say('msgXKiro', m, m.startsWith('ready'))).catch((e) => say('msgXKiro', e.message, false));
-checkOpenCodeStatus().then((m) => say('msgOpenCode', m, m.startsWith('ready'))).catch((e) => say('msgOpenCode', e.message, false));
 checkContextOptimizerStatus().then((m) => say('msgContextOptimizer', m, m.startsWith('ready'))).catch((e) => say('msgContextOptimizer', e.message, false));

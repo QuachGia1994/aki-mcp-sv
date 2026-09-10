@@ -97,20 +97,13 @@ test('xKiro panel config is local-only and never renders a saved secret', () => 
   assert.doesNotMatch(html, /value="sk-xt-/);
 });
 
-test('OpenCode panel reuses CLI auth and exposes only free-model controls', () => {
+test('retired OpenCode controls and routes stay absent from the panel', () => {
   const html = render();
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
-  assert.match(html, /id="tab-opencode"/);
-  assert.match(html, /opencode auth login/);
-  assert.match(html, /id="opencodeModel"/);
-  assert.match(html, /id="opencodeExecEnabled"/);
-  assert.match(html, /local__opencode_exec/);
-  assert.match(html, /data-act="refreshOpenCode"/);
-  assert.match(html, /data-act="testOpenCode"/);
-  assert.doesNotMatch(html, /id="opencodeKey"/);
-  assert.match(client, /\/api\/opencode-status/);
-  assert.match(client, /\/api\/opencode-refresh/);
-  assert.match(client, /\/api\/opencode-test/);
+  assert.doesNotMatch(html, /id="tab-opencode"/);
+  assert.doesNotMatch(html, /opencode auth login/i);
+  assert.doesNotMatch(html, /local__opencode_/);
+  assert.doesNotMatch(client, /\/api\/opencode-/);
 });
 
 test('Astra 6 panel guidance names native Luna delegation and truthful fallback', () => {
@@ -168,8 +161,8 @@ test('generated workflow is lean, reuses evidence, and keeps routed context out 
   assert.match(client, /delegate if ROI>coordination/);
   assert.match(client, /AGENTS\/HANDOFF 30-100 lines/);
   assert.match(client, /no sandbox\/temp unless asked/);
-  assert.match(client, /multi=context_packet;code=opencode_exec;tests=run_cmd cwd=repo/);
-  assert.match(client, /deep=agent_read;code=opencode_exec;tests=run_cmd cwd=repo/);
+  assert.match(client, /multi=context_packet;code=edit_file\/write_file;tests=run_cmd cwd=repo/);
+  assert.match(client, /deep=agent_read;code=edit_file\/write_file;tests=run_cmd cwd=repo/);
   assert.match(client, /browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix/);
 });
 

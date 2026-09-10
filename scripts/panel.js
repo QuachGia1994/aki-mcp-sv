@@ -15,7 +15,6 @@ import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
 import { readXKiroConfig, writeXKiroConfig, getXKiroUsage, ensureFreeXKiroModel } from './xkiro-mcp.js';
-import { readOpenCodeConfig, getOpenCodeStatus, saveOpenCodeModel, runOpenCodeRead } from './opencode-mcp.js';
 import { getContextOptimizerStatus, writeContextOptimizerConfig } from './context-optimizer.js';
 import { getBudgetRouterStatus, readCostLedger } from './budget-router.js';
 import { getProjectGraphStatus, syncProjectGraph } from './project-graph.js';
@@ -225,7 +224,6 @@ export const ROUTES = {
     ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
     ingressConfig: readIngressConfig(),
     xkiro: (() => { const c = readXKiroConfig(); return { configured: c.configured, model: c.model, source: c.source }; })(),
-    opencode: readOpenCodeConfig(),
     contextOptimizer: getContextOptimizerStatus(),
     freeFirst: { ledger: readCostLedger().totals, graph: getProjectGraphStatus(REPO_ROOT), checkpoints: getTaskCheckpointStatus() },
   }),
@@ -239,15 +237,6 @@ export const ROUTES = {
     return { ok: true, message: 'saved xKiro worker config', ...writeXKiroConfig({ apiKey: body.apiKey, model: body.model }) };
   },
   'POST /api/xkiro-clear': async () => ({ ok: true, message: 'cleared stored xKiro key', ...writeXKiroConfig({ clear: true }) }),
-  'GET /api/opencode-status': async () => getOpenCodeStatus(),
-  'POST /api/opencode-refresh': async () => getOpenCodeStatus({ refresh: true }),
-  'POST /api/opencode-config': async (body) => ({ ok: true, message: 'saved OpenCode Zen free model and executor setting', ...(await saveOpenCodeModel(body.model, { execEnabled: body.execEnabled === true })) }),
-  'POST /api/opencode-test': async () => {
-    const result = await runOpenCodeRead({ prompt: 'Read package.json and return exactly NAME=<name> VERSION=<version>.', cwd: REPO_ROOT });
-    const text = result?.content?.map((part) => part?.text || '').join('\n').trim() || '';
-    if (result?.isError) throw new Error(text || 'OpenCode worker test failed');
-    return { ok: true, message: text };
-  },
   'GET /api/context-optimizer-status': async () => getContextOptimizerStatus(),
   'POST /api/context-optimizer-config': async (body) => ({ ok: true, message: 'saved Aki Context Optimizer settings', ...writeContextOptimizerConfig({ enabled: body.enabled === true, budgetTokens: body.budgetTokens, hotWindowMinutes: body.hotWindowMinutes }) }),
   'GET /api/budget-router-status': async () => getBudgetRouterStatus(),

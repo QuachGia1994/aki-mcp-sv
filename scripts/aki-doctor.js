@@ -8,9 +8,7 @@ import { getRoots, overlaps } from './roots.js';
 import { loadAllowlistDirs, readSettings } from './allowlist.js';
 import { getLocalVersions } from './update-check.js';
 import { readXKiroConfig, getXKiroUsage } from './xkiro-mcp.js';
-import { readOpenCodeConfig, getOpenCodeStatus, resolveOpenCodeExecutable } from './opencode-mcp.js';
 import { resolveAgyExecutable } from './agy-mcp.js';
-import { resolveKiroExecutable } from './kiro-mcp.js';
 import { getContextOptimizerStatus } from './context-optimizer.js';
 import { getBudgetRouterStatus, readCostLedger } from './budget-router.js';
 import { getProjectGraphStatus } from './project-graph.js';
@@ -64,18 +62,13 @@ export function diagnoseRootsAndSecurity() {
 
 export async function diagnoseWorkers({ deep = false } = {}) {
   const agy = executableState(resolveAgyExecutable());
-  const kiro = executableState(resolveKiroExecutable());
-  const openCodeExecutable = executableState(resolveOpenCodeExecutable());
   const xConfig = readXKiroConfig();
-  const oConfig = readOpenCodeConfig();
   let xkiro = { status: xConfig.configured ? 'PASS' : 'WARN', configured: xConfig.configured, model: xConfig.model };
-  let opencode = { status: openCodeExecutable.status === 'FAIL' ? 'FAIL' : 'WARN', configured: null, selectedModel: oConfig.model, execEnabled: oConfig.execEnabled, executable: openCodeExecutable };
   if (deep) {
-    const [xStatus, oStatus] = await Promise.all([getXKiroUsage().catch((error) => ({ error: error.message })), getOpenCodeStatus({ refresh: true }).catch((error) => ({ error: error.message }))]);
+    const xStatus = await getXKiroUsage().catch((error) => ({ error: error.message }));
     xkiro = { ...xStatus, status: xStatus.configured && !xStatus.error ? 'PASS' : 'WARN' };
-    opencode = { ...oStatus, executable: openCodeExecutable, status: oStatus.configured && !oStatus.error && openCodeExecutable.status !== 'FAIL' ? 'PASS' : openCodeExecutable.status === 'FAIL' ? 'FAIL' : 'WARN' };
   }
-  return { status: worst(xkiro.status, opencode.status, agy.status, kiro.status), xkiro, opencode, agy, kiro };
+  return { status: worst(xkiro.status, agy.status), xkiro, agy };
 }
 
 export async function diagnoseSubsystems({ deep = false } = {}) {
@@ -99,11 +92,11 @@ function mark(status) {
 }
 
 export function renderDoctorMarkdown(report) {
-  const lines = [`Aki Doctor ${report.status} · ${new Date(report.at).toISOString()}`, `${mark(report.transport.status)} MCP transport: ${report.transport.status} · loopback=${report.transport.loopbackMcp ? 'up' : 'down'} panel=${report.transport.panel ? 'up' : 'down'} oauth=${report.transport.oauth ? 'ready' : 'incomplete'}`, `${mark(report.security.status)} Roots/rules: ${report.security.status} · roots=${report.security.allowedRoots.length} rules=${report.security.rules.files} trusted-conflicts=${report.security.trustedWritableConflicts.length}`, `${mark(report.workers.status)} Workers: ${report.workers.status} · xKiro=${report.workers.xkiro.status} OpenCode=${report.workers.opencode.status} AGY=${report.workers.agy.status} Kiro=${report.workers.kiro.status}`, `${mark(report.subsystems.status)} Free-first subsystems: ${report.subsystems.status} · context=${report.subsystems.contextOptimizer.enabled ? 'on' : 'off'} graph-projects=${report.subsystems.projectGraph.projectCount} checkpoints=${report.subsystems.taskCheckpoint.entries}`];
-  if (!report.deep) lines.push('Run with deep=true to refresh live xKiro/OpenCode status; Doctor never repairs or mutates configuration.');
+  const lines = [`Aki Doctor ${report.status} · ${new Date(report.at).toISOString()}`, `${mark(report.transport.status)} MCP transport: ${report.transport.status} · loopback=${report.transport.loopbackMcp ? 'up' : 'down'} panel=${report.transport.panel ? 'up' : 'down'} oauth=${report.transport.oauth ? 'ready' : 'incomplete'}`, `${mark(report.security.status)} Roots/rules: ${report.security.status} · roots=${report.security.allowedRoots.length} rules=${report.security.rules.files} trusted-conflicts=${report.security.trustedWritableConflicts.length}`, `${mark(report.workers.status)} Workers: ${report.workers.status} · xKiro=${report.workers.xkiro.status} AGY=${report.workers.agy.status}`, `${mark(report.subsystems.status)} Free-first subsystems: ${report.subsystems.status} · context=${report.subsystems.contextOptimizer.enabled ? 'on' : 'off'} graph-projects=${report.subsystems.projectGraph.projectCount} checkpoints=${report.subsystems.taskCheckpoint.entries}`];
+  if (!report.deep) lines.push('Run with deep=true to refresh live xKiro status; Doctor never repairs or mutates configuration.');
   return lines.join('\n');
 }
 
 export function register(server) {
-  server.registerTool('aki_doctor', { title: 'Aki Doctor', description: 'Read-only unified health report for local MCP transport, roots/rules, worker availability, Context Optimizer, Budget Router/ledger, Project Graph and task checkpoints. deep=true refreshes live xKiro/OpenCode status; Doctor never repairs anything.', inputSchema: { deep: z.boolean().optional().default(false) } }, async ({ deep }) => { const report = await runAkiDoctor({ deep }); return ok(`${renderDoctorMarkdown(report)}\n\n${JSON.stringify(report, null, 2)}`); });
+  server.registerTool('aki_doctor', { title: 'Aki Doctor', description: 'Read-only unified health report for local MCP transport, roots/rules, worker availability, Context Optimizer, Budget Router/ledger, Project Graph and task checkpoints. deep=true refreshes live xKiro status; Doctor never repairs anything.', inputSchema: { deep: z.boolean().optional().default(false) } }, async ({ deep }) => { const report = await runAkiDoctor({ deep }); return ok(`${renderDoctorMarkdown(report)}\n\n${JSON.stringify(report, null, 2)}`); });
 }

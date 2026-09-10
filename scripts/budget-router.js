@@ -5,16 +5,13 @@ import { USER_DIR } from './userdata.js';
 import { resolveOrFail } from './roots.js';
 import { readJsonObject, writeJsonAtomic } from './user-state.js';
 import { getXKiroUsage, runXKiroRead } from './xkiro-mcp.js';
-import { getOpenCodeStatus, runOpenCodeRead } from './opencode-mcp.js';
 import { buildAgyArgs, resolveAgyExecutable, runAgy } from './agy-mcp.js';
-import { resolveKiroExecutable, runKiroRead } from './kiro-mcp.js';
 import { ok, err } from './mcp-tool.js';
 import { observeProviderResult, quotaAvailability, readProviderStatuses } from './quota-status.js';
 
 export const COST_LEDGER_PATH = path.join(USER_DIR, 'cost-ledger.json');
 export const DEFAULT_BUDGET_ROUTER_CONFIG = Object.freeze({ cooldownMs: 60_000, maxLedgerEntries: 1000, ttlDays: 30 });
 const AGY_MODEL = 'gemini-3.7-flash-high';
-const KIRO_MODEL = 'claude-sonnet-4.5';
 const unhealthyUntil = new Map();
 let statusCache = { at: 0, value: null };
 const STATUS_CACHE_MS = 30_000;
@@ -106,27 +103,20 @@ async function statusWithin(promise, label, timeoutMs = HEALTH_PROBE_TIMEOUT_MS)
   finally { clearTimeout(timer); }
 }
 
-export async function getWorkerHealthMatrix({ refresh = false, now = Date.now, xkiroStatus = getXKiroUsage, openCodeStatus = getOpenCodeStatus, probeTimeoutMs = HEALTH_PROBE_TIMEOUT_MS } = {}) {
+export async function getWorkerHealthMatrix({ refresh = false, now = Date.now, xkiroStatus = getXKiroUsage, probeTimeoutMs = HEALTH_PROBE_TIMEOUT_MS } = {}) {
   if (!refresh && statusCache.value && now() - statusCache.at < STATUS_CACHE_MS) return statusCache.value;
-  const [xkiro, opencode] = await Promise.all([statusWithin(xkiroStatus(), 'xKiro', probeTimeoutMs), statusWithin(openCodeStatus(), 'OpenCode', probeTimeoutMs)]);
+  const xkiro = await statusWithin(xkiroStatus(), 'xKiro', probeTimeoutMs);
   const observed = readProviderStatuses({ now: now() });
   const agyQuota = quotaAvailability(observed.providers.agy, { now: now() });
-  const kiroQuota = quotaAvailability(observed.providers.kiro, { now: now() });
   const xRemaining = xkiro?.usage?.free_tokens?.remaining;
   const agyExecutable = resolveAgyExecutable();
-  const kiroExecutable = resolveKiroExecutable();
   const matrix = {
     xkiro: {
       available: xkiro.configured === true && !xkiro.error && (xRemaining === undefined || xRemaining === null || Number(xRemaining) > 0),
       costClass: 'free', model: xkiro.effectiveModel || xkiro.model || '', freeRemaining: xRemaining ?? null,
       reason: xkiro.error || (xkiro.configured ? (Number(xRemaining) <= 0 ? 'free quota exhausted' : '') : 'not configured'),
     },
-    opencode: {
-      available: opencode.configured === true && Array.isArray(opencode.freeModels) && opencode.freeModels.length > 0,
-      costClass: 'free', model: opencode.effectiveModel || '', reason: opencode.error || (opencode.configured ? '' : 'not authenticated'),
-    },
     agy: { available: executableObservable(agyExecutable) !== false && !agyQuota.blocked, costClass: 'quota', model: AGY_MODEL, executable: agyExecutable, quota: agyQuota.quota, reason: executableObservable(agyExecutable) === false ? 'executable missing' : agyQuota.blocked ? 'quota exhausted' : '' },
-    kiro: { available: executableObservable(kiroExecutable) !== false && !kiroQuota.blocked, costClass: 'quota', model: KIRO_MODEL, executable: kiroExecutable, quota: kiroQuota.quota, reason: executableObservable(kiroExecutable) === false ? 'executable missing' : kiroQuota.blocked ? 'quota exhausted' : '' },
   };
   for (const [name, info] of Object.entries(matrix)) {
     const cooldownUntil = unhealthyUntil.get(name) || 0;
@@ -145,9 +135,7 @@ export async function rankReadWorkers({ prompt, cwd, taskType = 'deep_retrieval'
   const scoped = scopePrompt(prompt, cwd);
   const candidates = [
     { name: 'xkiro', provider: 'xKiro', model: health.xkiro.model, costClass: 'free', score: 0, available: health.xkiro.available, invoke: () => runXKiroRead({ prompt: scoped, cwd, reasoning: 'none' }) },
-    { name: 'opencode', provider: 'OpenCode Zen', model: health.opencode.model, costClass: 'free', score: 10, available: health.opencode.available, invoke: () => runOpenCodeRead({ prompt: scoped, cwd }) },
-    { name: 'agy', provider: 'Antigravity', model: AGY_MODEL, costClass: 'quota', score: 20, available: health.agy.available, invoke: () => runAgy(buildAgyArgs({ prompt: scoped, mode: 'plan', model: AGY_MODEL, effort: 'low', outputFormat: 'text' }), cwd) },
-    { name: 'kiro', provider: 'Kiro', model: KIRO_MODEL, costClass: 'quota', score: 30, available: health.kiro.available, invoke: () => runKiroRead({ prompt: scoped, effort: 'low', cwd }) },
+    { name: 'agy', provider: 'Antigravity', model: AGY_MODEL, costClass: 'quota', score: 10, available: health.agy.available, invoke: () => runAgy(buildAgyArgs({ prompt: scoped, mode: 'plan', model: AGY_MODEL, effort: 'low', outputFormat: 'text' }), cwd) },
   ];
   return candidates.filter((candidate) => candidate.available && (!freeOnly || candidate.costClass === 'free')).sort((a, b) => a.score - b.score);
 }
@@ -167,7 +155,6 @@ export async function runBudgetedRead({ prompt, cwd, taskType = 'deep_retrieval'
     const success = !result?.isError;
     const errorText = success ? '' : textOf(result).trim().split('\n')[0];
     if (!success && candidate.name === 'agy') observeProviderResult('agy', result, { now: now() });
-    if (!success && candidate.name === 'kiro') observeProviderResult('kiro', result, { now: now() });
     recorder({ provider: candidate.provider, model: candidate.model, costClass: candidate.costClass, taskType, success, durationMs, actualProviderTokens: actualTokensFromResult(result), estimatedInputTokens: estimateTokens(prompt), error: errorText });
     if (success) {
       unhealthyUntil.delete(candidate.name);
@@ -182,13 +169,14 @@ export async function runBudgetedRead({ prompt, cwd, taskType = 'deep_retrieval'
 
 export async function getBudgetRouterStatus({ refresh = false } = {}) {
   const ledger = readCostLedger();
-  return { health: await getWorkerHealthMatrix({ refresh }), quotaProviders: readProviderStatuses().providers, totals: ledger.totals, recent: ledger.entries.slice(0, 20) };
+  const providers = readProviderStatuses().providers;
+  return { health: await getWorkerHealthMatrix({ refresh }), quotaProviders: { agy: providers.agy ?? null }, totals: ledger.totals, recent: ledger.entries.slice(0, 20) };
 }
 
 export function register(server) {
   server.registerTool('budget_router_read', {
     title: 'Aki Budget Router Read',
-    description: 'Run one scoped read-only task through the cheapest healthy eligible worker. Free xKiro/OpenCode are preferred; quota workers are fallback. Routing uses observable health/quota only and records a local cost/token ledger without prompts or secrets.',
+    description: 'Run one scoped read-only task through the cheapest healthy eligible worker. Configured xKiro free quota is preferred, with AGY as the fallback. Routing uses observable health/quota only and records a local cost/token ledger without prompts or secrets.',
     inputSchema: { prompt: z.string().min(1), cwd: z.string(), taskType: z.enum(['fast_scan', 'broad_retrieval', 'deep_retrieval', 'context_compress']).optional().default('deep_retrieval'), freeOnly: z.boolean().optional().default(false) },
   }, runBudgetedRead);
   server.registerTool('budget_router_status', { title: 'Aki Budget Router Status', description: 'Report observable worker health/free quota and the local token/context ledger. Actual provider tokens, estimates, and cache hits remain separate metrics.', inputSchema: { refresh: z.boolean().optional().default(false) } }, async ({ refresh }) => ok(JSON.stringify(await getBudgetRouterStatus({ refresh }), null, 2)));

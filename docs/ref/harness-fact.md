@@ -1,38 +1,24 @@
-# CLI arm harness facts — agy & kiro
+# AGY CLI arm harness facts
 
-Facts the two "arm" MCPs (`scripts/agy-mcp.js`, `scripts/kiro-mcp.js`) depend on. Each is marked and dated, because all of it is version-bound and expected to rot. Style borrowed from akidevrule's `references/harness-facts.md`, scoped to what *this* repo actually invokes.
+Facts the current local AGY arm (`scripts/agy-mcp.js`) depends on. Each fact is version-bound and should be re-verified after a CLI upgrade.
 
-- **[obs]** — observed here by running the CLI on this machine. True-until-contradicted; re-verify before relying on a detail.
-- **[owner]** — supplied by the owner / upstream docs, not runnable here. Weakest tier: a rule leaning on it must carry a verification step.
+- **[obs]** — observed by running the CLI on this machine. True-until-contradicted; re-verify before relying on a changed version.
+- **[owner]** — supplied by the owner or upstream docs but not runnable here. A rule leaning on it must carry a verification step.
 
 If a fact changes, revisit the code that encodes it rather than patching around it.
 
 ## agy (Antigravity CLI) — `scripts/agy-mcp.js`
 
-Fully runnable on this machine; facts are [obs] unless noted.
-
 | Fact | Checked | Where it is encoded |
 |---|---|---|
-| `-p`/`--print` takes the prompt as its **value**, so it must be the **last** arg — anything after it is swallowed into the prompt, not parsed as a flag, and the call returns a confident, unrelated answer with no error. | 2026-08-09 | `agy-mcp.js:74` pushes `-p` last, after `--mode`/`--model`/`--effort`/`--output-format`. |
-| `--effort` accepts **`low`, `medium`, `high`** only. Live `agy --help` rejects `xhigh`/`max` (those exist for kiro, not agy — do not copy one CLI's enum onto the other). | 2026-08-09 | `agy-mcp.js:53` `z.enum(['low','medium','high'])`. |
-| `--mode plan` is read-only **by mechanism**, not by prompt wording. It is the only mode enabled by default; others must be opted in via `setting.json → agy.allowedModes`. | 2026-08-09 | `agy-mcp.js:12,59-63` (`DEFAULT_MODES=['plan']`, allowlist gate). |
-| Valid `--model` ids: `gemini-3.7-flash-{low,medium,high}`, `gemini-3.6-flash-{low,medium,high}`, `gemini-3.5-flash-{low,medium,high}`, `gemini-3.1-pro-{low,high}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`. Note the Claude ids use a **hyphen** minor (`-4-6`), not a dot — a different convention from kiro's `claude-sonnet-4.5`. | 2026-08-15 | `agy-mcp.js` (`DEFAULT_MODEL` is `gemini-3.7-flash-high`; ids are listed in the `model` description). |
-| `gemini-3.7-flash-high` is available and accepts a headless `--mode plan` call. This fork intentionally uses it as the default discovery tier after the Windows worker hardening; upstream 1.12 uses `gemini-3.7-flash-medium`, so the fork override must survive upstream merges. | 2026-08-31 | `agy-mcp.js` hard-locks the fork default; `buildAgyArgs()` constructs the headless invocation. |
-| agy writes its **own errors to stdout**, not stderr; a denied action still exits 0 with an **empty** response. Empty stdout is inconclusive (possible silent denial), never a clean empty result. | 2026-08-09 | `agy-mcp.js:24-31` checks `stdout` first, treats empty as `err`. |
-| agy's global workspace index resolves paths **outside `cwd`**, so `cwd` is not a hard scope boundary — the prompt must name exact paths. | 2026-08-09 | Documented in the `agy_run` tool description (`agy-mcp.js:46-48`). |
+| `-p`/`--print` takes the prompt as its value, so it must be the last arg; anything after it is swallowed into the prompt instead of parsed as a flag. | 2026-08-09 | `agy-mcp.js` builds flags first and appends `-p` last. |
+| `--effort` accepts `low`, `medium`, `high`. | 2026-08-09 | `agy-mcp.js` effort schema. |
+| `--mode plan` is read-only by mechanism and is the only mode enabled by default; other modes require `setting.json → agy.allowedModes`. | 2026-08-09 | `agy-mcp.js` mode allowlist. |
+| Valid model ids include `gemini-3.7-flash-{low,medium,high}`, `gemini-3.6-flash-{low,medium,high}`, `gemini-3.5-flash-{low,medium,high}`, `gemini-3.1-pro-{low,high}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, and `gpt-oss-120b-medium`. | 2026-08-15 | `agy-mcp.js` model description. |
+| `gemini-3.7-flash-high` is available and accepts a headless `--mode plan` call; this fork intentionally keeps it as the default discovery tier. | 2026-08-31 | `agy-mcp.js` default model and `buildAgyArgs()`. |
+| AGY writes some errors to stdout and a denied action can exit 0 with empty output. Empty stdout is therefore inconclusive and must be returned as an error, never as a successful empty result. | 2026-08-09 | `agy-mcp.js` output classification. |
+| AGY's workspace index can resolve paths outside `cwd`, so prompts must name exact paths; `cwd` alone is not a hard scope boundary. | 2026-08-09 | `agy_run` tool description. |
 
-## kiro (kiro-cli 2.16.2) — `scripts/kiro-mcp.js`
+## Retired worker arms
 
-Installed at `~/.local/bin/kiro-cli`; every row below was run-verified on this machine 2026-08-09, so all are **[obs]**. Still version-bound — re-check after a kiro-cli upgrade.
-
-| Fact | Checked | Where it is encoded |
-|---|---|---|
-| Headless invocation is `kiro-cli chat --no-interactive <prompt>`, prompt passed as a separate `execFile` arg (no shell tokenizing). `--list-models` and `--effort` are `chat` subflags, not top-level. | 2026-08-09 | `kiro-mcp.js:20-22` |
-| Tool grant is set by `--trust-tools=fs_read` (read-only); `--trust-tools=` (empty) trusts nothing. `kiro_write` (`fs_read,fs_write`) was removed 2026-08-10 — redundant with the `filesystem` MCP arm's `write_file`/`edit_file` (`docs/plan/done/remove-kiro-write.md`). Flag name confirmed verbatim in `chat --help`. | 2026-08-09 | `kiro-mcp.js:41` (single `registerTool`) |
-| Model is hard-locked to `claude-sonnet-4.5` (dot-minor form) — confirmed a real id in `chat --list-models` (1.30x credits). Note this is genuinely different from agy's `claude-sonnet-4-6`; the two CLIs use different conventions, so neither literal is portable to the other. Not a tool parameter, so a prompt cannot escalate tier. | 2026-08-09 | `kiro-mcp.js:12` `const MODEL` |
-| `--effort` accepts `low\|medium\|high\|xhigh\|max` — confirmed in `chat --help` (`e.g. low, medium, high, xhigh, max`). Unlike agy (`low\|medium\|high` only), kiro's full range is real. | 2026-08-09 | `kiro-mcp.js:39` `effortSchema` |
-| A missing binary or denied action must fail loud, never fabricate output. Empty stdout is reported as a possible silent denial. | 2026-08-09 | `kiro-mcp.js:25-31` — ENOENT → `err`, empty stdout → `err`. |
-
-## Why this file exists
-
-The 1.2.0 release shipped agy tuning verified against live `--help` **and** a kiro arm whose literals came from upstream docs the same release proved unreliable elsewhere (agy's `--effort` docs said `xhigh|max`; live output said otherwise). The evidence-tier split kept the then-unverified kiro literals from reading as settled fact and carried the exact promotion command. On 2026-08-09 `kiro-cli` 2.16.2 was installed here and every kiro row was promoted `[owner]→[obs]`; the split now records that history and stays the discipline for the next unverified arm. On 2026-08-15 the akidevrule source re-probed `agy models` and the `gemini-3.7-flash-*` family was confirmed live on this machine too (`[obs]`); the new default-tier fact is carried as its own row, not folded into the model-list row, so the "what is available" vs "what is the default" distinction stays explicit until `DEFAULT_MODEL` in `agy-mcp.js` is actually changed.
+OpenCode and Kiro were removed from Aki MCP by owner decision on 2026-09-10. Their old operational facts are no longer current runtime guidance; historical integration/removal records remain in released CHANGELOG entries and `docs/plan/done/`.

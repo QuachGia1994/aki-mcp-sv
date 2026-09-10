@@ -21,7 +21,7 @@ test('agent router stops at the first healthy provider', async () => {
       health: new Map(),
       providers: [
         ['agy', async () => { calls.push('agy'); return ok('found'); }],
-        ['kiro', async () => { calls.push('kiro'); return ok('unused'); }],
+        ['backup', async () => { calls.push('backup'); return ok('unused'); }],
       ],
     },
   );
@@ -40,12 +40,12 @@ test('agent router falls back and cools down failed providers', async () => {
       now: () => 1000,
       providers: [
         ['agy', async () => { calls.push('agy'); return err('quota exceeded'); }],
-        ['kiro', async () => { calls.push('kiro'); return ok('fallback'); }],
+        ['backup', async () => { calls.push('backup'); return ok('fallback'); }],
       ],
     },
   );
   assert.equal(result.content[0].text, 'fallback');
-  assert.deepEqual(calls, ['agy', 'kiro']);
+  assert.deepEqual(calls, ['agy', 'backup']);
   assert.equal(health.get('agy'), 61000);
 });
 
@@ -57,11 +57,11 @@ test('agent router reports compact provider failures', async () => {
       now: () => 1000,
       providers: [
         ['agy', async () => err('quota exceeded\nmore detail')],
-        ['kiro', async () => err('login required')],
+        ['backup', async () => err('login required')],
       ],
     },
   );
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /agy: quota exceeded/);
-  assert.match(result.content[0].text, /kiro: login required/);
+  assert.match(result.content[0].text, /backup: login required/);
 });

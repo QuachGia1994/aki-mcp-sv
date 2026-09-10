@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-09-08 · v1.14.0
+> updated 2026-09-10 · v1.15.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini / Postman) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -13,7 +13,6 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 > The third-party `@modelcontextprotocol/server-filesystem` package this replaced also exposed `list_directory`/`directory_tree`/`search_files`/`read_multiple_files`/`read_media_file` — dropped outright rather than prompt-banned, since `find_path`/`search_content` already supersede the listing/search family in practice and the rest had no evidence of real use (`docs/plan/done/2.0.0-improve.md` §7). Cheap to re-add if a real need shows up.
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-high` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
-| `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
 | `xkiro` | `xkiro_read`, `xkiro_status` | Use xKiro's free-tier API as a bounded read-only worker. The remote xKiro model receives only five scoped Aki read primitives inside the requested `cwd`; model selection is checked against the live catalog and must remain `access_tier=free`. | The remote model delegates; xKiro reasons and calls Aki's read-only primitives |
 | `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is the private lab `aiobox/labs/aki-pmcontrol`; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
 | `image-inbox` (`scripts/image-inbox.js`) | `image_inbox` | Exposes only the owner's dedicated local screenshot/photo inbox as MCP-native image content. `latest` reads the newest supported direct-child image, `read` takes one exact basename, and `list` disambiguates; MIME is sniffed from bytes and one image is capped at 8 MiB. | The remote model, directly — read-only visual context |
@@ -24,7 +23,7 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 
 For a live-site-to-concept workflow, the order is fixed: inspect the live/current target with the browser skill, read the local implementation through Aki MCP, then use the ImageGen skill for the requested concept/artwork. If a host lacks the needed native capability, the skill reports the limitation instead of inventing a tool or substituting unrelated web images. The `skills/` directory is included in standalone payloads so the same routing works from source and packaged installs.
 
-On Windows, both arms resolve their native per-user executables instead of relying only on the parent process PATH. `agy` plan mode also auto-approves CLI confirmation prompts because `--mode plan` remains the read-only enforcement boundary; non-plan modes do not receive that bypass. Kiro CLI 2.x is natively supported on Windows and the standard MSI installs per-user under `%LOCALAPPDATA%\\Kiro-Cli`.
+On Windows, `agy` resolves its native per-user executable instead of relying only on the parent process PATH. Plan mode auto-approves CLI confirmation prompts because `--mode plan` remains the read-only enforcement boundary; non-plan modes do not receive that bypass.
 
 ## Web transports without custom MCP
 
@@ -36,13 +35,9 @@ Kimi Web K3 and Qwen Coder Web (`coder.qwen.ai`) are both live-verified through 
 
 **Direct primitives** (`filesystem`, `search`, `shell`) — the remote model calls them and does the reasoning itself.
 
-**Agent arms / "hands"** (`xkiro`, `agy`, `kiro`) — the remote model hands off a *whole task* to another model/agent that reasons and uses a tightly scoped tool surface, then returns a conclusion. `xkiro` is the network/free-quota arm; `agy` and `kiro` remain local CLI arms.
+**Agent arms / "hands"** (`xkiro`, `agy`) — the remote model hands off a *whole task* to another model/agent that reasons and uses a tightly scoped tool surface, then returns a conclusion. `xkiro` is the network/free-quota arm; `agy` is the local CLI arm.
 
-An audit that only pattern-matches capabilities will call `kiro_read` "redundant — the model already has `find_path`/`search_content`/`run_cmd`." **That is a misclassification and the arms must not be removed on that basis.** An arm is not a file-reader; it is agent delegation, and it buys three things a direct primitive cannot:
-
-- **Offload multi-step repository work** — a delegated model/agent runs the investigate/read/synthesize loop against scoped local evidence and returns a conclusion, instead of the calling model paying round-trips and context for every intermediate read.
-- **Local trust scoping by mechanism** — the arm runs under its own locked tool set (`kiro` → `fs_read` only; `agy` → `plan` mode only), a boundary the remote model cannot widen from a prompt.
-- **Model/tier choice per task** — `xkiro` consumes a free xKiro model only, `agy` reaches a wide-context discovery tier, and `kiro` is pinned to a specific Sonnet id for cost/behavior determinism.
+Agent arms are not equivalent to direct file primitives: they offload a whole investigate/read/synthesize loop and return a conclusion. `xkiro` is constrained to free tool-capable models and scoped read primitives; `agy` is constrained by its plan-mode boundary for read-only retrieval.
 
 ## Search ladder — how the model should compose a hunt
 
@@ -58,10 +53,10 @@ An audit that only pattern-matches capabilities will call `kiro_read` "redundant
 
 ## Anchor — load-bearing, do not remove
 
-`xkiro`, `agy`, and `kiro` are anchored owner worker requirements. They are **load-bearing** in the subtraction-audit sense: they carry real behavior (free-quota or local agent delegation) that direct primitives do not provide. Any future audit finding proposing their removal is rejected unless the owner re-decides the anchor. `xkiro` must remain free-only by default; the model lock on `kiro` (`claude-sonnet-4.5`) remains a hard requirement.
+`xkiro` and `agy` are the current owner worker requirements. They carry real behavior (free-quota or local agent delegation) that direct primitives do not provide. `xkiro` must remain free-only by default. OpenCode and Kiro were retired by owner decision on 2026-09-10 and are no longer part of the runtime/tool surface.
 
 ## History
 
-- `kiro_write` was removed 2026-08-10 — it duplicated the `filesystem` arm's `write_file`/`edit_file` (a genuine primitive-vs-primitive duplication, unlike `kiro_read`). `docs/plan/done/remove-kiro-write.md`.
-- Arm CLI facts (flags, model ids, effort enums) by evidence tier: `docs/ref/harness-fact.md`.
-- Integration: `docs/plan/done/integrate-kiro-cli.md`, `docs/plan/done/integrate-gemini-grok.md`.
+- Kiro was integrated historically and `kiro_write` was removed 2026-08-10; the remaining Kiro arm was retired by owner decision on 2026-09-10. Historical plans remain under `docs/plan/done/`.
+- Current AGY CLI facts by evidence tier: `docs/ref/harness-fact.md`.
+- Historical integration records: `docs/plan/done/integrate-kiro-cli.md`, `docs/plan/done/remove-kiro-write.md`, `docs/plan/done/integrate-gemini-grok.md`.
