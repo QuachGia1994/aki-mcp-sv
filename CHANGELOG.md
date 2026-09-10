@@ -5,7 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ## [Unreleased]
 
 ### Added
-- **Optional Chrome/CDP Postman pool backend.** Authorized pool joins can use a dedicated non-default Chrome user-data directory, attach Selenium to Chrome's loopback CDP endpoint, and dispatch normal pointer events to the Postman `Accept Invite` / `Join Team` control while preserving the existing manual-only Cloudflare verification checkpoint. LibreWolf remains the default backend.
+- **Chrome/CDP Postman pool browser path.** Authorized pool joins use a dedicated non-default Chrome user-data directory, attach Selenium to Chrome's loopback CDP endpoint, and dispatch normal pointer events to the Postman `Accept Invite` / `Join Team` control while preserving the manual-only Cloudflare verification checkpoint.
 
 ### Fixed
 - File moves refuse existing destinations; concurrent file moves cannot overwrite the same destination.
@@ -21,6 +21,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Astra 6 native Luna handoff policy.** Any Astra 6 variant reviews and settles scope before delegating approximately 90% of remaining substantive implementation/tests to native host `gpt-5.6-luna` at high reasoning effort, then reviews evidence and risky diffs. Unavailable native Luna is reported once before an allowed fallback, with no provider reconfiguration or false claim of execution.
 
 ### Removed
+- **LibreWolf/Firefox Postman pool backend.** Postman pool join now has one browser path only: dedicated Chrome profiles controlled through CDP. Legacy `browserBackend`, `profileRoot`, and `librewolfBinary` config fields are ignored and removed when the setup tool rewrites the local config.
 - **OpenCode and Kiro worker integrations.** Aki no longer registers `local__opencode_read`, `local__opencode_exec`, `local__opencode_status`, or `local__kiro_read`; their panel/API controls, worker routing, OpenCode agent profiles/provider asset, dedicated launcher, implementation modules, and integration tests were removed. The Budget Router and Doctor now cover xKiro + AGY only, while normal Aki write/edit tools remain the local implementation path.
 
 ## [1.15.0] - 2026-09-08

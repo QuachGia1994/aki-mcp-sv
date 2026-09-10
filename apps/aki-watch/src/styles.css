@@ -82,8 +82,7 @@ label {
   font-size: 13px;
 }
 
-input,
-select {
+input {
   padding: 7px 9px;
   font-size: 14px;
   border: 1px solid rgba(128, 128, 128, 0.5);
@@ -131,8 +130,7 @@ button:disabled {
     color: #eaeaea;
     background: #1e1e1e;
   }
-  input,
-  select {
+  input {
     background: #262626;
     color: #eaeaea;
   }

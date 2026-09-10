@@ -4,7 +4,7 @@ Goal: a small Tauri v2 desktop GUI so a non-technical owner can set up and run A
 
 ## Scope-lock (MVP) and non-goals
 
-- MVP **wraps existing runtimes**; it does NOT bundle Node/Python/Telethon/Selenium or a browser. LibreWolf remains the default pool backend; optional `chrome-cdp` requires Google Chrome plus its own dedicated non-default user-data directory. Target machine already has this repo plus the selected dependencies. A self-contained installer that ships runtimes is a later phase.
+- MVP **wraps existing runtimes**; it does NOT bundle Node/Python/Telethon/Selenium or Google Chrome. The pool uses Chrome/CDP only and requires a dedicated non-default Chrome user-data directory. Target machine already has this repo plus those dependencies. A self-contained installer that ships runtimes is a later phase.
 - MVP reuses `~/.aki/mcpsv/postman-pool.json` (the scripts' own loader). Moving secrets into the OS keychain is a follow-up.
 - MVP produces an **unsigned** Windows build (SmartScreen warning expected). Code signing + Tauri updater are follow-ups.
 - No automation logic is reimplemented in Rust — the app shells out to the Node/Python that is already tested (131/131).
@@ -24,7 +24,7 @@ cargo 1.97.1 · rustc 1.97.1 · node v26.7.0 · npm 11.19.0. Tauri v2 is feasibl
 ## MVP screens
 
 1. Environment check — runs the `--check` path, shows the readiness table.
-2. Setup wizard — API creds form (link my.telegram.org) → launch login (console) → pick `sourceChatId` → capture `adminUserIds` → bot token + `reportChatId` → choose `librewolf` or `chrome-cdp` browser settings → validate → send test → enable toggle.
+2. Setup wizard — API creds form (link my.telegram.org) → launch login (console) → pick `sourceChatId` → capture `adminUserIds` → bot token + `reportChatId` → configure Chrome binary + dedicated user-data/profile directories → validate → send test → enable toggle.
 3. Status/control — enabled state, missing fields, send outbound test, open the onboarding doc.
 
 ## Security/boundary (inherited, unchanged)

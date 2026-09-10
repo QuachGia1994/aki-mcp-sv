@@ -50,7 +50,7 @@ const verificationEvent = parsePostmanPoolWorkerEvent('[postman-pool:event] {"ty
 assert.deepEqual(verificationEvent, { type: 'manual_verification_required', profile: 'Hồ sơ 5', email: 'five@example.com' });
 assert.equal(parsePostmanPoolWorkerEvent('[postman-pool] normal log'), null);
 assert.match(formatManualVerificationReport(verificationEvent), /five@example\.com/);
-assert.match(formatManualVerificationReport({ ...verificationEvent, browser: 'Chrome' }), /open Chrome window/);
+assert.match(formatManualVerificationReport(verificationEvent), /open Chrome window/);
 assert.doesNotMatch(formatManualVerificationReport(verificationEvent), /invite_code=/);
 assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'manual_verification_timeout' }] }), true);
 assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'failed' }] }), false);
@@ -94,10 +94,15 @@ writeFileSync(configPath, JSON.stringify({
   adminUserIds: ['42'],
   reportBotToken: 'not-a-real-bot-token',
   reportChatId: '42',
+  browserBackend: 'librewolf',
+  profileRoot: 'legacy-profile-root',
+  librewolfBinary: 'legacy-librewolf.exe',
 }));
 const defaultPoolConfig = loadPostmanPoolConfig(configPath);
-assert.equal(defaultPoolConfig.browserBackend, 'librewolf');
 assert.deepEqual(defaultPoolConfig.chromeProfileDirectories, []);
+assert.equal('browserBackend' in defaultPoolConfig, false);
+assert.equal('profileRoot' in defaultPoolConfig, false);
+assert.equal('librewolfBinary' in defaultPoolConfig, false);
 const spawns = [];
 const fakeSpawn = (file, args) => {
   const child = fakeChild();
@@ -157,6 +162,7 @@ assert.doesNotMatch(integrationSpawns[1].args.join(' '), /invite_code=/, 'invite
 await waitFor(() => joinInputs.length === 1, 'first join worker did not receive stdin input');
 assert.equal(JSON.parse(joinInputs[0]).inviteUrl, entityInvite);
 assert.match(integrationSpawns[1].args.join(' '), /--manual-verification-timeout 300/);
+assert.doesNotMatch(integrationSpawns[1].args.join(' '), /--browser-backend|--profile-root|--librewolf-binary/);
 integrationSpawns[1].child.stderr.write('[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 1","email":"one@example.com"}\n');
 await waitFor(() => reportCalls.length === 1, 'manual verification progress was not reported while the worker remained open');
 const verificationReportBody = JSON.parse(reportCalls[0].options.body);
@@ -276,13 +282,12 @@ writeFileSync(chromeConfigPath, JSON.stringify({
   adminUserIds: ['42'],
   reportBotToken: 'not-a-real-bot-token',
   reportChatId: '42',
-  browserBackend: 'chrome-cdp',
   chromeBinary: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   chromeUserDataRoot: 'D:\\LacViet\\.aki-postman-cdp\\chrome-user-data',
   chromeProfileDirectories: ['Default', 'Profile 1'],
 }));
 const loadedChromeConfig = loadPostmanPoolConfig(chromeConfigPath);
-assert.equal(loadedChromeConfig.browserBackend, 'chrome-cdp');
+assert.equal('browserBackend' in loadedChromeConfig, false);
 assert.equal(loadedChromeConfig.chromeBinary, 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe');
 assert.equal(loadedChromeConfig.chromeUserDataRoot, 'D:\\LacViet\\.aki-postman-cdp\\chrome-user-data');
 assert.deepEqual(loadedChromeConfig.chromeProfileDirectories, ['Default', 'Profile 1']);
@@ -304,7 +309,7 @@ const chromeWatcher = startPostmanPoolWatcher({
 chromeSpawns[0].child.stdout.write(`${JSON.stringify({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite })}\n`);
 await waitFor(() => chromeSpawns.length === 2, 'Chrome/CDP config did not start a join worker');
 const chromeWorkerArgs = chromeSpawns[1].args.join(' ');
-assert.match(chromeWorkerArgs, /--browser-backend chrome-cdp/);
+assert.doesNotMatch(chromeWorkerArgs, /--browser-backend|--profile-root|--librewolf-binary/);
 assert.match(chromeWorkerArgs, /--chrome-user-data-root D:\\LacViet\\\.aki-postman-cdp\\chrome-user-data/);
 assert.match(chromeWorkerArgs, /--chrome-profile-directory Default/);
 assert.match(chromeWorkerArgs, /--chrome-profile-directory Profile 1/);

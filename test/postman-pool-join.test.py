@@ -64,7 +64,7 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         MODULE.emit_progress = lambda event: events.append(event)
         try:
             driver = Driver()
-            self.assertTrue(MODULE.wait_for_security_verification(driver, By, 1, {"profile": "Hồ sơ 1"}, poll_seconds=0))
+            self.assertTrue(MODULE.wait_for_security_verification(driver, By, 1, {"profile": "Profile 1"}, poll_seconds=0))
         finally:
             MODULE.emit_progress = original_emit
         self.assertEqual(driver.reads, 2)
@@ -103,6 +103,21 @@ class PostmanJoinVerificationTests(unittest.TestCase):
                 conn.close()
             self.assertEqual(MODULE.chrome_identity_history_email(profile, scratch, 0), "chrome@example.com")
 
+    def test_cdp_wait_allows_windows_launcher_to_exit_before_endpoint_is_ready(self):
+        class Process:
+            def poll(self):
+                return 0
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch.object(MODULE, "urlopen", return_value=Response()), patch.object(MODULE.json, "load", return_value={"webSocketDebuggerUrl": "ws://127.0.0.1/devtools/browser/test"}):
+            MODULE.wait_for_cdp_endpoint(Process(), 9222, 1)
+
     def test_cdp_click_dispatches_normal_pointer_events_at_element_center(self):
         class Driver:
             def __init__(self):
@@ -120,7 +135,7 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertTrue(all(method == "Input.dispatchMouseEvent" for method, _ in driver.commands))
         self.assertTrue(all(payload["x"] == 30 and payload["y"] == 30 for _, payload in driver.commands))
 
-    def test_profile_identity_temp_stays_under_supplied_scratch_root(self):
+    def test_chrome_identity_temp_stays_under_supplied_scratch_root(self):
         with tempfile.TemporaryDirectory() as temp_name:
             root = Path(temp_name)
             profile = root / "Profile 1"
@@ -128,15 +143,15 @@ class PostmanJoinVerificationTests(unittest.TestCase):
             profile.mkdir()
             scratch.mkdir()
             captured = []
-            original_profiles = MODULE.preferred_profiles
-            original_email = MODULE.profile_email
+            original_profiles = MODULE.chrome_profile_directories
+            original_email = MODULE.chrome_identity_history_email
             try:
-                MODULE.preferred_profiles = lambda _root: [("Profile 1", profile)]
-                MODULE.profile_email = lambda _profile, temp_dir, _index: captured.append(temp_dir) or "one@example.com"
-                rows = MODULE.discover_rows(root, scratch)
+                MODULE.chrome_profile_directories = lambda _root, _requested: ["Profile 1"]
+                MODULE.chrome_identity_history_email = lambda _profile, temp_dir, _index: captured.append(temp_dir) or "one@example.com"
+                rows = MODULE.discover_rows(root, [], scratch)
             finally:
-                MODULE.preferred_profiles = original_profiles
-                MODULE.profile_email = original_email
+                MODULE.chrome_profile_directories = original_profiles
+                MODULE.chrome_identity_history_email = original_email
             self.assertEqual(rows[0]["email"], "one@example.com")
             self.assertEqual(captured[0].parent, scratch.resolve())
 
