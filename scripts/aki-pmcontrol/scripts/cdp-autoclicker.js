@@ -287,6 +287,48 @@
     });
   }
 
+  // Continue / Try again are rendered inline in the chat conversation stream, NOT inside a
+  // tool-approval card or a modal dialog, so permissionCards() never returns them. Scan the chat
+  // container directly and click only those inline actions; Approve/Run still flow through the
+  // card/dialog path in tickPermissionCards, so nothing is double-handled here.
+  const INLINE_CHAT_CONFIG_KEYS = ['autoContinue', 'autoRetry'];
+
+  // Steady-state chat buttons that must never be auto-clicked, confirmed by a live CDP DOM probe
+  // (Postman 12.26.x): thinking-accordion toggles and per-tool inspect buttons. Their current
+  // aria-labels ("Thought for…", empty) don't match our keywords, but skipping them by class
+  // keeps the scan safe even if Postman later puts an ambiguous label on them.
+  const CHAT_NON_ACTION_CLASSES = ['ai-chat-agent-thinking-message-header', 'ai-chat-tool-inspect-button'];
+
+  function isChatNonAction(btn) {
+    const cls = (btn.className || '').toString();
+    return CHAT_NON_ACTION_CLASSES.some((c) => cls.includes(c));
+  }
+
+  function chatActionRoot() {
+    return document.querySelector('[data-testid="ai-chat-conversation-container"]')
+      || document.querySelector('[data-testid="ai-chat-container"]');
+  }
+
+  function tickChatActionButtons(cfg) {
+    if (window.__pmPendingAgentSwitch) return;
+    const root = chatActionRoot();
+    if (!root) return;
+    const buttons = [...root.querySelectorAll('button')]
+      .filter((b) => isVisible(b) && !b.disabled && !b.closest('#aki-control-panel'));
+    for (const btn of buttons) {
+      if (btn.dataset.akiPressed === '1') continue;
+      if (isChatNonAction(btn)) continue;
+      const label = buttonLabel(btn);
+      if (!label || isDeclineButton(btn)) continue;
+      const row = autoClicker.matchPrimary(label);
+      if (!row || !INLINE_CHAT_CONFIG_KEYS.includes(row.configKey) || !cfg[row.configKey]) continue;
+      btn.dataset.akiPressed = '1';
+      window.__pmArmedCard = { kind: 'confirm', copy: label, label, el: btn };
+      press(btn);
+      if (!btn.isConnected) creditArm();
+    }
+  }
+
   function triggerPostman(eventName) {
     const mediator = window.pm && window.pm.mediator;
     if (!mediator || typeof mediator.trigger !== 'function') return false;
@@ -1535,6 +1577,7 @@
     positionAkiWidget();
     applyPendingAgentSwitch();
     tickPermissionCards(config);
+    tickChatActionButtons(config);
     checkAndInjectInstruction();
   }
 

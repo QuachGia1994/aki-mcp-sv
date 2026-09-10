@@ -309,13 +309,44 @@ function saveAkiData(data) {
 function runCmd(command, args, cwd) {
   return new Promise((resolve) => {
     execFile(command, args, { cwd, timeout: 180000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
-      if (err) resolve({ ok: false, msg: (stderr || err.message || '').trim().slice(-400) });
+      if (err) resolve({ ok: false, msg: (stderr || stdout || err.message || '').trim().slice(-400) });
       else resolve({ ok: true, msg: (stdout || stderr || '(no output)').trim() });
     });
   });
 }
 
-// Bắt chước aki-mcp-sv panel.js installRules: .source-repo hoặc clone/pull akidevrule, rồi bash install.sh (unattended — install.py chỉ prompt khi stdin là TTY).
+// install.sh / install.ps1 are thin launchers for install.py (the cross-platform SSOT).
+// On Windows, `bash.exe` from PATH is usually C:\Windows\System32\bash.exe — the WSL launcher —
+// which fails with "no installed distributions" (printed to stdout, not stderr) when WSL isn't
+// set up, so it can never run install.sh here. Run install.py directly via Python instead, and
+// fall back to the PowerShell launcher; only non-Windows uses bash.
+async function runInstaller(repo) {
+  const installPy = path.join(repo, 'install.py');
+  const installPs1 = path.join(repo, 'install.ps1');
+  const installSh = path.join(repo, 'install.sh');
+
+  if (process.platform !== 'win32') {
+    return runCmd('bash', [installSh], repo);
+  }
+
+  if (fs.existsSync(installPy)) {
+    const notFound = /ENOENT|not recognized|cannot find|not found/i;
+    const candidates = [['py', ['-3', installPy]], ['python', [installPy]], ['python3', [installPy]]];
+    for (const [cmd, args] of candidates) {
+      const r = await runCmd(cmd, args, repo);
+      if (r.ok) return r;
+      // Python ran but the installer itself failed — report that instead of trying the next interpreter.
+      if (!notFound.test(r.msg)) return r;
+    }
+  }
+  if (fs.existsSync(installPs1)) {
+    return runCmd('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', installPs1], repo);
+  }
+  return { ok: false, msg: 'No Python 3 found on PATH. Install Python 3.7+ from python.org and retry.' };
+}
+
+// Mimics aki-mcp-sv panel.js installRules: use .source-repo or clone/pull akidevrule, then run
+// the installer unattended (install.py only prompts when stdin is a TTY).
 async function installAkiRule() {
   const recorded = fs.existsSync(RULES_SOURCE_FILE) ? fs.readFileSync(RULES_SOURCE_FILE, 'utf8').trim() : null;
   let repo = recorded && fs.existsSync(path.join(recorded, 'install.sh')) ? recorded : null;
@@ -330,11 +361,7 @@ async function installAkiRule() {
     }
     repo = RULES_CLONE_DIR;
   }
-  const bash = process.platform === 'win32' ? 'bash.exe' : 'bash';
-  const install = await runCmd(bash, [path.join(repo, 'install.sh')], repo);
-  if (!install.ok && process.platform === 'win32' && /ENOENT|not found/i.test(install.msg)) {
-    return { ok: false, msg: 'bash not found — install Git for Windows (includes bash)' };
-  }
+  const install = await runInstaller(repo);
   const last = (install.msg || '').split('\n').filter(Boolean).pop() || install.msg;
   return { ok: install.ok, msg: `${last} (source: ${repo})`, version: getLocalVersions().current };
 }
