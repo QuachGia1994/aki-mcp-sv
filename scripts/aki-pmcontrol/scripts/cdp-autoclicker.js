@@ -304,9 +304,15 @@
     return CHAT_NON_ACTION_CLASSES.some((c) => cls.includes(c));
   }
 
+  // Scope is the whole chat container, not just the conversation list. Confirmed via live DOM:
+  // "Continue" is a <button data-testid="aether-button" aria-label="Continue"> inside the
+  // conversation list, but "Try again" is a <button ... aria-label="Try again"> in the chat
+  // FOOTER (.ai-chat-footer, a sibling of the conversation list) — scanning only the conversation
+  // container missed it. The footer's other controls (Copy ID, Settings, model menu, cancel)
+  // don't match the continue/try-again keywords, so widening the scope stays safe.
   function chatActionRoot() {
-    return document.querySelector('[data-testid="ai-chat-conversation-container"]')
-      || document.querySelector('[data-testid="ai-chat-container"]');
+    return document.querySelector('[data-testid="ai-chat-container"]')
+      || document.querySelector('[data-testid="ai-chat-conversation-container"]');
   }
 
   function tickChatActionButtons(cfg) {
