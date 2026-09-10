@@ -9,11 +9,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
 from urllib.parse import parse_qs, unquote, urlparse
+from urllib.request import urlopen
 
 if sys.platform == "win32":
     try:
@@ -24,6 +27,7 @@ if sys.platform == "win32":
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 NUMBERED_PROFILE_RE = re.compile(r"(?:profile|hồ sơ)\s*\d+$", re.IGNORECASE)
+CHROME_PROFILE_RE = re.compile(r"^(?:Default|Profile \d+)$", re.IGNORECASE)
 POSTMAN_HOST_SUFFIXES = ("postman.com", "getpostman.com", "postman.co")
 POSTMAN_APP_HOSTS = {"app.getpostman.com", "go.postman.co", "web.postman.co"}
 JOINED_MARKERS = ("already a member", "already joined", "already part of", "you joined", "joined the team")
@@ -239,6 +243,118 @@ def profile_email(profile: Path, temp_dir: Path, index: int) -> str | None:
     return stored[0] if stored else None
 
 
+def chrome_identity_history_email(profile: Path, temp_dir: Path, index: int) -> str | None:
+    source = profile / "History"
+    if not source.exists():
+        return None
+    try:
+        copy = temp_dir / f"chrome_identity_history_{index}.sqlite"
+        shutil.copy2(source, copy)
+        with closing(sqlite3.connect(copy)) as conn:
+            rows = conn.execute(
+                "SELECT url FROM urls WHERE url LIKE '%identity.getpostman.com%' ORDER BY last_visit_time DESC"
+            ).fetchall()
+        for (url,) in rows:
+            parsed = urlparse(unquote(url))
+            if parsed.hostname != "identity.getpostman.com":
+                continue
+            for value in parse_qs(parsed.query).get("email", []):
+                email = value.strip().lower()
+                if EMAIL_RE.fullmatch(email):
+                    return email
+    except (OSError, sqlite3.Error):
+        return None
+    return None
+
+
+def chrome_profile_directories(root: Path, requested: list[str] | None = None) -> list[str]:
+    root = root.resolve()
+    available: set[str] = set()
+    local_state = root / "Local State"
+    if local_state.exists():
+        try:
+            info_cache = json.loads(local_state.read_text(encoding="utf-8")).get("profile", {}).get("info_cache", {})
+            for name in info_cache:
+                if CHROME_PROFILE_RE.fullmatch(name) and (root / name).is_dir():
+                    available.add(name)
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+    try:
+        for candidate in root.iterdir():
+            if candidate.is_dir() and CHROME_PROFILE_RE.fullmatch(candidate.name):
+                available.add(candidate.name)
+    except OSError:
+        pass
+
+    def sort_key(name: str) -> tuple[int, int, str]:
+        if name.casefold() == "default":
+            return (0, 0, name.casefold())
+        match = re.search(r"(\d+)$", name)
+        return (1, int(match.group(1)) if match else 0, name.casefold())
+
+    if requested:
+        selected = []
+        for name in requested:
+            if name not in available:
+                raise RuntimeError(f"Chrome profile directory not found: {name}")
+            selected.append(name)
+        return sorted(dict.fromkeys(selected), key=sort_key)
+    return sorted(available, key=sort_key)
+
+
+def is_default_chrome_user_data_root(root: Path) -> bool:
+    candidates: list[Path] = []
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            base = Path(local) / "Google"
+            candidates.extend([
+                base / "Chrome" / "User Data",
+                base / "Chrome Beta" / "User Data",
+                base / "Chrome Dev" / "User Data",
+                base / "Chrome SxS" / "User Data",
+            ])
+    normalized = os.path.normcase(os.path.abspath(str(root)))
+    return any(normalized == os.path.normcase(os.path.abspath(str(candidate))) for candidate in candidates)
+
+
+def discover_chrome_user_data_root(explicit: str | None) -> Path:
+    if explicit:
+        root = Path(explicit).expanduser()
+    elif os.name == "nt" and Path("D:/").exists():
+        root = Path(r"D:\LacViet\.aki-postman-cdp\chrome-user-data")
+    else:
+        root = Path.home() / ".aki" / "mcpsv" / "postman-chrome"
+    root = root.resolve()
+    if is_default_chrome_user_data_root(root):
+        raise RuntimeError("Chrome/CDP requires a dedicated non-default user-data directory")
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def discover_chrome_binary(explicit: str | None) -> Path:
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+    env_binary = os.environ.get("CHROME_BINARY")
+    if env_binary:
+        candidates.append(Path(env_binary))
+    if os.name == "nt":
+        for env_name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            base = os.environ.get(env_name)
+            if base:
+                candidates.append(Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe")
+    else:
+        for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
+            found = shutil.which(name)
+            if found:
+                candidates.append(Path(found))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    raise RuntimeError("Chrome binary not found; set chromeBinary/--chrome-binary")
+
+
 def discover_profile_root(explicit: str | None) -> Path:
     candidates = []
     if explicit:
@@ -329,17 +445,103 @@ def firefox_driver(profile_clone: Path, binary: Path, scratch_root: Path):
     return webdriver.Firefox(options=options, service=service)
 
 
-def accept_invite(
+def chrome_selenium_modules():
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+    except ImportError as exc:
+        raise RuntimeError("Selenium is not installed; run `py -3 -m pip install selenium`") from exc
+    return webdriver, Options
+
+
+def free_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def wait_for_cdp_endpoint(process: subprocess.Popen, port: int, timeout: int) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError("Chrome exited before its CDP endpoint became ready")
+        try:
+            with urlopen(f"http://127.0.0.1:{port}/json/version", timeout=0.5) as response:
+                if json.load(response).get("webSocketDebuggerUrl"):
+                    return
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+        time.sleep(0.1)
+    raise RuntimeError("Chrome CDP endpoint did not start; close any Chrome window using this dedicated user-data directory and retry")
+
+
+def launch_chrome_cdp(binary: Path, user_data_root: Path, profile_directory: str, timeout: int) -> tuple[subprocess.Popen, int]:
+    port = free_local_port()
+    command = [
+        str(binary),
+        f"--remote-debugging-port={port}",
+        "--remote-debugging-address=127.0.0.1",
+        f"--user-data-dir={user_data_root}",
+        f"--profile-directory={profile_directory}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "about:blank",
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        wait_for_cdp_endpoint(process, port, min(timeout, 20))
+        return process, port
+    except Exception:
+        if process.poll() is None:
+            process.terminate()
+        raise
+
+
+def chrome_cdp_driver(port: int, binary: Path):
+    webdriver, Options = chrome_selenium_modules()
+    options = Options()
+    options.binary_location = str(binary)
+    options.debugger_address = f"127.0.0.1:{port}"
+    return webdriver.Chrome(options=options)
+
+
+def close_chrome_cdp(driver, process: subprocess.Popen | None) -> None:
+    if driver:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+    if not process or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def cdp_click_element(driver, element) -> None:
+    rect = driver.execute_script(
+        "arguments[0].scrollIntoView({block:'center',inline:'center'}); const r=arguments[0].getBoundingClientRect(); return {x:r.left,y:r.top,width:r.width,height:r.height};",
+        element,
+    )
+    x = float(rect["x"]) + float(rect["width"]) / 2
+    y = float(rect["y"]) + float(rect["height"]) / 2
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": x, "y": y})
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mousePressed", "x": x, "y": y, "button": "left", "buttons": 1, "clickCount": 1})
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mouseReleased", "x": x, "y": y, "button": "left", "buttons": 0, "clickCount": 1})
+
+
+def accept_invite_with_driver(
+    driver,
     invite_url: str,
-    profile_clone: Path,
-    binary: Path,
-    scratch_root: Path,
     timeout: int,
     manual_verification_timeout: int,
     progress: dict | None = None,
+    click_mode: str = "webdriver",
 ) -> tuple[str, str | None]:
     _, By, _, _, EC, WebDriverWait = selenium_modules()
-    driver = firefox_driver(profile_clone, binary, scratch_root)
 
     def body_text() -> str:
         try:
@@ -350,61 +552,99 @@ def accept_invite(
     def verification_cleared() -> bool:
         return wait_for_security_verification(driver, By, manual_verification_timeout, progress)
 
-    try:
+    if click_mode == "cdp":
+        driver.execute_cdp_cmd("Page.navigate", {"url": invite_url})
+    else:
         driver.get(invite_url)
-        wait = WebDriverWait(driver, timeout)
-        wait.until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
-        if not verification_cleared():
-            return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
+    wait = WebDriverWait(driver, timeout)
+    wait.until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
+    if not verification_cleared():
+        return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
 
-        initial_url = driver.current_url
-        lower_body = lambda: body_text().lower()
-        button_xpaths = [
-            "//button[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
-            "//a[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
-            "//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'join team')]",
-            "//a[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'join team')]",
-        ]
-        clickable = None
-        for xpath in button_xpaths:
-            try:
-                clickable = WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.XPATH, xpath)))
-                break
-            except Exception:
-                if not verification_cleared():
-                    return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
-                continue
-        if clickable is None:
-            body = lower_body()
-            if joined_signal(body):
-                return "already_joined", None
-            if invite_failure_signal(body):
-                if any(marker in body for marker in ("sign in", "log in", "sign up")):
-                    return "failed", "Postman session is not signed in"
-                return "failed", "Postman rejected or expired the invite"
-            if postman_app_destination(driver.current_url):
-                return "already_joined", None
-            return "failed", "Accept Invite button not found"
-
-        clickable.click()
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            time.sleep(0.5)
+    initial_url = driver.current_url
+    lower_body = lambda: body_text().lower()
+    button_xpaths = [
+        "//button[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
+        "//a[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
+        "//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'join team')]",
+        "//a[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'join team')]",
+    ]
+    clickable = None
+    for xpath in button_xpaths:
+        try:
+            clickable = WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+            break
+        except Exception:
             if not verification_cleared():
                 return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
-            current_url = driver.current_url
-            body = lower_body()
-            if invite_failure_signal(body):
-                if any(marker in body for marker in ("sign in", "log in", "sign up")):
-                    return "failed", "Postman session is not signed in"
-                return "failed", "Postman rejected or expired the invite"
-            if joined_signal(body):
-                return "joined", None
-            if current_url != initial_url and postman_app_destination(current_url):
-                return "joined", None
-        return "failed", "invite click did not reach a confirmed Postman team page"
+            continue
+    if clickable is None:
+        body = lower_body()
+        if joined_signal(body):
+            return "already_joined", None
+        if invite_failure_signal(body):
+            if any(marker in body for marker in ("sign in", "log in", "sign up")):
+                return "failed", "Postman session is not signed in"
+            return "failed", "Postman rejected or expired the invite"
+        if postman_app_destination(driver.current_url):
+            return "already_joined", None
+        return "failed", "Accept Invite button not found"
+
+    if click_mode == "cdp":
+        cdp_click_element(driver, clickable)
+    else:
+        clickable.click()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(0.5)
+        if not verification_cleared():
+            return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
+        current_url = driver.current_url
+        body = lower_body()
+        if invite_failure_signal(body):
+            if any(marker in body for marker in ("sign in", "log in", "sign up")):
+                return "failed", "Postman session is not signed in"
+            return "failed", "Postman rejected or expired the invite"
+        if joined_signal(body):
+            return "joined", None
+        if current_url != initial_url and postman_app_destination(current_url):
+            return "joined", None
+    return "failed", "invite click did not reach a confirmed Postman team page"
+
+
+def accept_invite(
+    invite_url: str,
+    profile_clone: Path,
+    binary: Path,
+    scratch_root: Path,
+    timeout: int,
+    manual_verification_timeout: int,
+    progress: dict | None = None,
+) -> tuple[str, str | None]:
+    driver = firefox_driver(profile_clone, binary, scratch_root)
+    try:
+        return accept_invite_with_driver(driver, invite_url, timeout, manual_verification_timeout, progress)
     finally:
         driver.quit()
+
+
+def accept_invite_chrome_cdp(
+    invite_url: str,
+    user_data_root: Path,
+    profile_directory: str,
+    binary: Path,
+    timeout: int,
+    manual_verification_timeout: int,
+    progress: dict | None = None,
+) -> tuple[str, str | None]:
+    process = None
+    driver = None
+    try:
+        process, port = launch_chrome_cdp(binary, user_data_root, profile_directory, timeout)
+        driver = chrome_cdp_driver(port, binary)
+        return accept_invite_with_driver(driver, invite_url, timeout, manual_verification_timeout, progress, click_mode="cdp")
+    finally:
+        close_chrome_cdp(driver, process)
 
 
 def smoke_browser(profile_root: Path, binary: Path, scratch_root: Path) -> dict:
@@ -424,6 +664,21 @@ def smoke_browser(profile_root: Path, binary: Path, scratch_root: Path) -> dict:
             if driver:
                 driver.quit()
             shutil.rmtree(clone, ignore_errors=True)
+
+
+def smoke_chrome_browser(user_data_root: Path, binary: Path, profile_directories: list[str], scratch_root: Path, timeout: int) -> dict:
+    profiles = discover_chrome_rows(user_data_root, profile_directories, scratch_root)
+    if not profiles:
+        raise RuntimeError("no Chrome profiles found")
+    process = None
+    driver = None
+    try:
+        process, port = launch_chrome_cdp(binary, user_data_root, profiles[0]["profile"], timeout)
+        driver = chrome_cdp_driver(port, binary)
+        driver.execute_cdp_cmd("Page.navigate", {"url": "about:blank"})
+        return {"ok": driver.current_url == "about:blank", "profile": profiles[0]["profile"], "userDataRoot": str(user_data_root)}
+    finally:
+        close_chrome_cdp(driver, process)
 
 
 def write_joined_emails(rows: list[dict]) -> Path:
@@ -455,34 +710,86 @@ def discover_rows(profile_root: Path, scratch_root: Path) -> list[dict]:
     return deduped
 
 
-def run(invite_url: str, profile_root: Path, binary: Path, scratch_root: Path, timeout: int, manual_verification_timeout: int) -> dict:
+def discover_chrome_rows(user_data_root: Path, profile_directories: list[str], scratch_root: Path) -> list[dict]:
+    with tempfile.TemporaryDirectory(prefix="identity-chrome-", dir=scratch_root) as temp_name:
+        temp_dir = Path(temp_name)
+        rows = []
+        for index, profile_directory in enumerate(chrome_profile_directories(user_data_root, profile_directories)):
+            profile = user_data_root / profile_directory
+            rows.append({"profile": profile_directory, "name": profile_directory, "path": str(profile), "email": chrome_identity_history_email(profile, temp_dir, index)})
+    deduped = []
+    seen_emails: set[str] = set()
+    for row in rows:
+        email = row.get("email")
+        if email and email in seen_emails:
+            continue
+        if email:
+            seen_emails.add(email)
+        deduped.append(row)
+    return deduped
+
+
+def run(
+    invite_url: str,
+    browser_backend: str,
+    profile_root: Path | None,
+    binary: Path | None,
+    scratch_root: Path,
+    timeout: int,
+    manual_verification_timeout: int,
+    chrome_user_data_root: Path | None = None,
+    chrome_binary: Path | None = None,
+    chrome_profile_directories_requested: list[str] | None = None,
+) -> dict:
     if not valid_invite_url(invite_url):
         raise RuntimeError("not a recognized Postman invite URL")
     joined: list[dict] = []
     skipped: list[dict] = []
     failed: list[dict] = []
-    profiles = discover_rows(profile_root, scratch_root)
-    if not profiles:
-        raise RuntimeError("no LibreWolf profiles found")
     cleanup_stale_runs(scratch_root)
 
-    with tempfile.TemporaryDirectory(prefix="run-", dir=scratch_root) as run_name:
-        run_root = Path(run_name)
+    if browser_backend == "chrome-cdp":
+        if not chrome_user_data_root or not chrome_binary:
+            raise RuntimeError("Chrome/CDP browser configuration is incomplete")
+        profiles = discover_chrome_rows(chrome_user_data_root, chrome_profile_directories_requested or [], scratch_root)
+        if not profiles:
+            raise RuntimeError("no Chrome profiles found")
+        run_root = None
+    else:
+        if not profile_root or not binary:
+            raise RuntimeError("LibreWolf browser configuration is incomplete")
+        profiles = discover_rows(profile_root, scratch_root)
+        if not profiles:
+            raise RuntimeError("no LibreWolf profiles found")
+        run_root = Path(tempfile.mkdtemp(prefix="run-", dir=scratch_root))
+
+    try:
         for row in profiles:
-            source = Path(row["path"])
             clone = None
             try:
                 log(f"[postman-pool] {row['profile']} -> {row.get('email') or 'email unknown'}")
-                clone = clone_profile(source, run_root)
-                status, error = accept_invite(
-                    invite_url,
-                    clone,
-                    binary,
-                    run_root,
-                    timeout,
-                    manual_verification_timeout,
-                    {"profile": row["profile"], "email": row.get("email")},
-                )
+                progress = {"profile": row["profile"], "email": row.get("email"), "browser": "Chrome" if browser_backend == "chrome-cdp" else "LibreWolf"}
+                if browser_backend == "chrome-cdp":
+                    status, error = accept_invite_chrome_cdp(
+                        invite_url,
+                        chrome_user_data_root,
+                        row["profile"],
+                        chrome_binary,
+                        timeout,
+                        manual_verification_timeout,
+                        progress,
+                    )
+                else:
+                    clone = clone_profile(Path(row["path"]), run_root)
+                    status, error = accept_invite(
+                        invite_url,
+                        clone,
+                        binary,
+                        run_root,
+                        timeout,
+                        manual_verification_timeout,
+                        progress,
+                    )
                 result = {"profile": row["profile"], "email": row.get("email"), "status": status}
                 if error:
                     result["error"] = error
@@ -497,17 +804,24 @@ def run(invite_url: str, profile_root: Path, binary: Path, scratch_root: Path, t
             finally:
                 if clone:
                     shutil.rmtree(clone, ignore_errors=True)
+    finally:
+        if run_root:
+            shutil.rmtree(run_root, ignore_errors=True)
 
     email_file = write_joined_emails(joined)
     return {"joined": joined, "skipped": skipped, "failed": failed, "emailFile": str(email_file)}
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Join a Postman invite with existing LibreWolf profiles")
+    parser = argparse.ArgumentParser(description="Join a Postman invite with existing browser profiles")
     parser.add_argument("--json-stdin", action="store_true")
     parser.add_argument("--invite")
+    parser.add_argument("--browser-backend", choices=("librewolf", "chrome-cdp"), default="librewolf")
     parser.add_argument("--profile-root")
     parser.add_argument("--librewolf-binary")
+    parser.add_argument("--chrome-binary")
+    parser.add_argument("--chrome-user-data-root")
+    parser.add_argument("--chrome-profile-directory", action="append", default=[])
     parser.add_argument("--scratch-root")
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--manual-verification-timeout", type=int, default=300)
@@ -527,24 +841,44 @@ def main() -> int:
             print(json.dumps({"error": "invalid JSON input"}))
             return 2
     try:
-        profile_root = discover_profile_root(args.profile_root)
-        binary = discover_binary(args.librewolf_binary)
         scratch_root = choose_scratch_root(args.scratch_root)
-        if args.dry_run:
-            print(json.dumps({"profileRoot": str(profile_root), "librewolfBinary": str(binary), "scratchRoot": str(scratch_root), "profiles": discover_rows(profile_root, scratch_root)}, ensure_ascii=False))
-            return 0
-        if args.smoke_browser:
-            print(json.dumps(smoke_browser(profile_root, binary, scratch_root), ensure_ascii=False))
-            return 0
+        profile_root = None
+        binary = None
+        chrome_user_data_root = None
+        chrome_binary = None
+        if args.browser_backend == "chrome-cdp":
+            chrome_user_data_root = discover_chrome_user_data_root(args.chrome_user_data_root)
+            chrome_binary = discover_chrome_binary(args.chrome_binary)
+            profiles = discover_chrome_rows(chrome_user_data_root, args.chrome_profile_directory, scratch_root)
+            if args.dry_run:
+                print(json.dumps({"browserBackend": "chrome-cdp", "chromeBinary": str(chrome_binary), "chromeUserDataRoot": str(chrome_user_data_root), "scratchRoot": str(scratch_root), "profiles": profiles}, ensure_ascii=False))
+                return 0
+            if args.smoke_browser:
+                print(json.dumps(smoke_chrome_browser(chrome_user_data_root, chrome_binary, args.chrome_profile_directory, scratch_root, max(10, min(120, args.timeout))), ensure_ascii=False))
+                return 0
+        else:
+            profile_root = discover_profile_root(args.profile_root)
+            binary = discover_binary(args.librewolf_binary)
+            profiles = discover_rows(profile_root, scratch_root)
+            if args.dry_run:
+                print(json.dumps({"browserBackend": "librewolf", "profileRoot": str(profile_root), "librewolfBinary": str(binary), "scratchRoot": str(scratch_root), "profiles": profiles}, ensure_ascii=False))
+                return 0
+            if args.smoke_browser:
+                print(json.dumps(smoke_browser(profile_root, binary, scratch_root), ensure_ascii=False))
+                return 0
         if not invite_url:
             raise RuntimeError("invite URL is required")
         result = run(
             invite_url,
+            args.browser_backend,
             profile_root,
             binary,
             scratch_root,
             max(10, min(120, args.timeout)),
             max(60, min(900, args.manual_verification_timeout)),
+            chrome_user_data_root,
+            chrome_binary,
+            args.chrome_profile_directory,
         )
         print(json.dumps(result, ensure_ascii=False))
         return 0

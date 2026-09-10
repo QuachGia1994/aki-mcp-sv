@@ -50,6 +50,7 @@ const verificationEvent = parsePostmanPoolWorkerEvent('[postman-pool:event] {"ty
 assert.deepEqual(verificationEvent, { type: 'manual_verification_required', profile: 'Hồ sơ 5', email: 'five@example.com' });
 assert.equal(parsePostmanPoolWorkerEvent('[postman-pool] normal log'), null);
 assert.match(formatManualVerificationReport(verificationEvent), /five@example\.com/);
+assert.match(formatManualVerificationReport({ ...verificationEvent, browser: 'Chrome' }), /open Chrome window/);
 assert.doesNotMatch(formatManualVerificationReport(verificationEvent), /invite_code=/);
 assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'manual_verification_timeout' }] }), true);
 assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'failed' }] }), false);
@@ -94,6 +95,9 @@ writeFileSync(configPath, JSON.stringify({
   reportBotToken: 'not-a-real-bot-token',
   reportChatId: '42',
 }));
+const defaultPoolConfig = loadPostmanPoolConfig(configPath);
+assert.equal(defaultPoolConfig.browserBackend, 'librewolf');
+assert.deepEqual(defaultPoolConfig.chromeProfileDirectories, []);
 const spawns = [];
 const fakeSpawn = (file, args) => {
   const child = fakeChild();
@@ -261,6 +265,55 @@ assert.equal(poolStatus.ready, true);
 assert.deepEqual(poolStatus.missing, []);
 assert.equal(poolStatus.enabled, true);
 assert.equal(poolStatus.tokenSource, 'config');
+
+const chromeConfigPath = path.join(tempDir, 'chrome-pool.json');
+writeFileSync(chromeConfigPath, JSON.stringify({
+  enabled: true,
+  telegramApiId: 12345,
+  telegramApiHash: 'not-a-real-secret',
+  telegramSessionPath: path.join(tempDir, 'telegram-session-cdp'),
+  sourceChatId: '-100123',
+  adminUserIds: ['42'],
+  reportBotToken: 'not-a-real-bot-token',
+  reportChatId: '42',
+  browserBackend: 'chrome-cdp',
+  chromeBinary: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  chromeUserDataRoot: 'D:\\LacViet\\.aki-postman-cdp\\chrome-user-data',
+  chromeProfileDirectories: ['Default', 'Profile 1'],
+}));
+const loadedChromeConfig = loadPostmanPoolConfig(chromeConfigPath);
+assert.equal(loadedChromeConfig.browserBackend, 'chrome-cdp');
+assert.equal(loadedChromeConfig.chromeBinary, 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe');
+assert.equal(loadedChromeConfig.chromeUserDataRoot, 'D:\\LacViet\\.aki-postman-cdp\\chrome-user-data');
+assert.deepEqual(loadedChromeConfig.chromeProfileDirectories, ['Default', 'Profile 1']);
+const chromeSpawns = [];
+const chromeReports = [];
+const chromeWatcher = startPostmanPoolWatcher({
+  configPath: chromeConfigPath,
+  statePath: path.join(tempDir, 'chrome-state.json'),
+  spawnImpl: (file, args) => {
+    const child = fakeChild();
+    chromeSpawns.push({ file, args, child });
+    return child;
+  },
+  fetchImpl: async (url, options) => {
+    chromeReports.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
+  },
+});
+chromeSpawns[0].child.stdout.write(`${JSON.stringify({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite })}\n`);
+await waitFor(() => chromeSpawns.length === 2, 'Chrome/CDP config did not start a join worker');
+const chromeWorkerArgs = chromeSpawns[1].args.join(' ');
+assert.match(chromeWorkerArgs, /--browser-backend chrome-cdp/);
+assert.match(chromeWorkerArgs, /--chrome-user-data-root D:\\LacViet\\\.aki-postman-cdp\\chrome-user-data/);
+assert.match(chromeWorkerArgs, /--chrome-profile-directory Default/);
+assert.match(chromeWorkerArgs, /--chrome-profile-directory Profile 1/);
+assert.doesNotMatch(chromeWorkerArgs, /not-a-real-secret|not-a-real-bot-token/);
+chromeSpawns[1].child.stdout.write(JSON.stringify({ joined: [], skipped: [], failed: [] }));
+chromeSpawns[1].child.exitCode = 0;
+chromeSpawns[1].child.emit('exit', 0);
+await waitFor(() => chromeReports.length === 1, 'Chrome/CDP worker completion was not reported');
+chromeWatcher.close();
 
 rmSync(tempDir, { recursive: true, force: true });
 

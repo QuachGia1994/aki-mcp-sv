@@ -106,7 +106,8 @@ export function parsePostmanPoolWorkerEvent(line) {
 export function formatManualVerificationReport(event) {
   const account = event?.email || event?.profile || 'unknown account';
   const profile = event?.email && event?.profile ? ` (${event.profile})` : '';
-  return `Postman pool: Cloudflare verification required for ${account}${profile}. Complete it in the open LibreWolf window; Aki will resume automatically.`;
+  const browser = event?.browser === 'Chrome' ? 'Chrome' : 'LibreWolf';
+  return `Postman pool: Cloudflare verification required for ${account}${profile}. Complete it in the open ${browser} window; Aki will resume automatically.`;
 }
 
 export function postmanPoolResultIsRetryable(result) {
@@ -132,6 +133,9 @@ export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
   const telegramApiHash = process.env.AKI_POSTMAN_POOL_TELEGRAM_API_HASH || raw.telegramApiHash;
   const reportBotToken = process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN || raw.reportBotToken || raw.botToken;
   const adminUserIds = Array.isArray(raw.adminUserIds) ? raw.adminUserIds.map(String).filter(Boolean) : [];
+  const browserBackend = raw.browserBackend || 'librewolf';
+  if (!['librewolf', 'chrome-cdp'].includes(browserBackend)) throw new Error('postman-pool.json browserBackend must be librewolf or chrome-cdp');
+  const chromeProfileDirectories = Array.isArray(raw.chromeProfileDirectories) ? raw.chromeProfileDirectories.map(String).filter(Boolean) : [];
   if (!Number.isSafeInteger(telegramApiId) || telegramApiId <= 0 || !telegramApiHash || !raw.sourceChatId || adminUserIds.length === 0) {
     throw new Error('postman-pool.json enabled but telegramApiId/telegramApiHash/sourceChatId/adminUserIds is incomplete');
   }
@@ -145,8 +149,12 @@ export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
     reportBotToken,
     reportChatId: String(raw.reportChatId),
     adminUserIds,
+    browserBackend,
     profileRoot: raw.profileRoot || null,
     librewolfBinary: raw.librewolfBinary || null,
+    chromeBinary: raw.chromeBinary || null,
+    chromeUserDataRoot: raw.chromeUserDataRoot || null,
+    chromeProfileDirectories,
     scratchRoot: raw.scratchRoot || null,
     timeoutSeconds: Number.isFinite(Number(raw.timeoutSeconds)) ? Math.max(10, Math.min(120, Number(raw.timeoutSeconds))) : 45,
     manualVerificationSeconds: Number.isFinite(Number(raw.manualVerificationSeconds)) ? Math.max(60, Math.min(900, Number(raw.manualVerificationSeconds))) : 300,
@@ -164,9 +172,15 @@ function pythonCommand(scriptPath, extraArgs = []) {
 function runJoinWorker(inviteUrl, config, spawnImpl = cp.spawn, onProgress = null) {
   return new Promise((resolve, reject) => {
     const command = pythonCommand(JOIN_WORKER_PATH, ['--json-stdin']);
-    const args = [...command.args];
-    if (config.profileRoot) args.push('--profile-root', config.profileRoot);
-    if (config.librewolfBinary) args.push('--librewolf-binary', config.librewolfBinary);
+    const args = [...command.args, '--browser-backend', config.browserBackend || 'librewolf'];
+    if (config.browserBackend === 'chrome-cdp') {
+      if (config.chromeBinary) args.push('--chrome-binary', config.chromeBinary);
+      if (config.chromeUserDataRoot) args.push('--chrome-user-data-root', config.chromeUserDataRoot);
+      for (const profileDirectory of config.chromeProfileDirectories || []) args.push('--chrome-profile-directory', profileDirectory);
+    } else {
+      if (config.profileRoot) args.push('--profile-root', config.profileRoot);
+      if (config.librewolfBinary) args.push('--librewolf-binary', config.librewolfBinary);
+    }
     if (config.scratchRoot) args.push('--scratch-root', config.scratchRoot);
     args.push('--timeout', String(config.timeoutSeconds));
     args.push('--manual-verification-timeout', String(config.manualVerificationSeconds));
@@ -236,6 +250,7 @@ export function getPostmanPoolConfigStatus(configPath = POSTMAN_POOL_CONFIG_PATH
   if (!reportChatId) missing.push('reportChatId');
   return {
     enabled: raw.enabled === true,
+    browserBackend: ['librewolf', 'chrome-cdp'].includes(raw.browserBackend) ? raw.browserBackend : 'librewolf',
     sourceChatId: raw.sourceChatId ? String(raw.sourceChatId) : '',
     adminUserIds,
     reportChatId,

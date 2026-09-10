@@ -66,10 +66,15 @@ function withDefaults(config) {
     adminUserIds: [],
     reportBotToken: '',
     reportChatId: '',
+    browserBackend: 'librewolf',
     profileRoot: '',
     librewolfBinary: IS_WIN ? 'C:\\Program Files\\LibreWolf\\librewolf.exe' : '',
+    chromeBinary: IS_WIN ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '',
+    chromeUserDataRoot: '',
+    chromeProfileDirectories: [],
     scratchRoot: '',
     timeoutSeconds: 45,
+    manualVerificationSeconds: 300,
     ...config,
   };
 }
@@ -101,10 +106,15 @@ function configView(configPath) {
     hasReportBotToken: !status.missing.includes('reportBotToken'),
     tokenSource: status.tokenSource,
     reportChatId: raw.reportChatId ? String(raw.reportChatId) : '',
+    browserBackend: ['librewolf', 'chrome-cdp'].includes(raw.browserBackend) ? raw.browserBackend : 'librewolf',
     profileRoot: raw.profileRoot || '',
     librewolfBinary: raw.librewolfBinary || '',
+    chromeBinary: raw.chromeBinary || '',
+    chromeUserDataRoot: raw.chromeUserDataRoot || '',
+    chromeProfileDirectories: Array.isArray(raw.chromeProfileDirectories) ? raw.chromeProfileDirectories : [],
     scratchRoot: raw.scratchRoot || '',
     timeoutSeconds: Number(raw.timeoutSeconds) || 45,
+    manualVerificationSeconds: Number(raw.manualVerificationSeconds) || 300,
   };
 }
 
@@ -116,6 +126,8 @@ async function setConfigFromStdin(configPath) {
     merged.adminUserIds = merged.adminUserIds.map((n) => Number(n)).filter((n) => Number.isSafeInteger(n) && n > 0);
   }
   merged.telegramApiId = Number(merged.telegramApiId) || 0;
+  if (!['librewolf', 'chrome-cdp'].includes(merged.browserBackend)) throw new Error('browserBackend must be librewolf or chrome-cdp');
+  merged.chromeProfileDirectories = Array.isArray(merged.chromeProfileDirectories) ? merged.chromeProfileDirectories.map(String).filter(Boolean) : [];
   writeConfig(configPath, merged);
 }
 
@@ -138,7 +150,9 @@ function printCheck(configPath) {
   const status = getPostmanPoolConfigStatus(configPath);
   const raw = readConfig(configPath);
   const pyVer = pyCapture(['--version']);
+  const browserBackend = ['librewolf', 'chrome-cdp'].includes(raw.browserBackend) ? raw.browserBackend : 'librewolf';
   const librewolf = raw.librewolfBinary || '';
+  const chrome = raw.chromeBinary || '';
   console.log('Aki Watch - environment check\n');
   const line = (k, v) => console.log(`  ${String(k).padEnd(18)} ${v}`);
   line('node', process.version);
@@ -146,7 +160,13 @@ function printCheck(configPath) {
   line('telethon', moduleVersion('telethon') || 'NOT INSTALLED (py -3 -m pip install telethon)');
   line('selenium', moduleVersion('selenium') || 'NOT INSTALLED (py -3 -m pip install selenium)');
   line('geckodriver', 'Selenium 4 auto-manages it (needs network on first run)');
-  line('librewolf', librewolf ? (existsSync(librewolf) ? librewolf : `MISSING: ${librewolf}`) : 'not set');
+  line('browserBackend', browserBackend);
+  if (browserBackend === 'chrome-cdp') {
+    line('chrome', chrome ? (existsSync(chrome) ? chrome : `MISSING: ${chrome}`) : 'auto-discover');
+    line('chromeUserDataRoot', raw.chromeUserDataRoot || 'auto-select dedicated root');
+  } else {
+    line('librewolf', librewolf ? (existsSync(librewolf) ? librewolf : `MISSING: ${librewolf}`) : 'not set');
+  }
   console.log(`\nConfig: ${configPath}`);
   line('enabled', status.enabled);
   line('sourceChatId', status.sourceChatId || '(missing)');
@@ -200,10 +220,29 @@ async function runSetup(configPath) {
 
     console.log('Step 6 - reportChatId: for a private DM use your own userId (the SELF line) and press Start on the bot first.');
     config.reportChatId = String(await ask('reportChatId', config.reportChatId));
+
+    const backend = await ask('Step 7 - browserBackend (librewolf or chrome-cdp)', config.browserBackend);
+    if (!['librewolf', 'chrome-cdp'].includes(backend)) throw new Error('browserBackend must be librewolf or chrome-cdp');
+    config.browserBackend = backend;
+    if (backend === 'chrome-cdp') {
+      config.chromeBinary = await ask('chromeBinary', config.chromeBinary);
+      config.chromeUserDataRoot = await ask('chromeUserDataRoot (dedicated, not Chrome default profile)', config.chromeUserDataRoot);
+      const profiles = await ask('chromeProfileDirectories (comma-separated; blank = discover all)', config.chromeProfileDirectories.join(','));
+      config.chromeProfileDirectories = profiles ? profiles.split(',').map((part) => part.trim()).filter(Boolean) : [];
+    }
     writeConfig(configPath, config);
 
     if (await yes('Check Postman profile discovery now (postman-pool-join.py --dry-run)?')) {
-      pyInherit([JOIN_SCRIPT, '--dry-run']);
+      const browserArgs = ['--browser-backend', config.browserBackend];
+      if (config.browserBackend === 'chrome-cdp') {
+        if (config.chromeBinary) browserArgs.push('--chrome-binary', config.chromeBinary);
+        if (config.chromeUserDataRoot) browserArgs.push('--chrome-user-data-root', config.chromeUserDataRoot);
+        for (const profileDirectory of config.chromeProfileDirectories) browserArgs.push('--chrome-profile-directory', profileDirectory);
+      } else {
+        if (config.profileRoot) browserArgs.push('--profile-root', config.profileRoot);
+        if (config.librewolfBinary) browserArgs.push('--librewolf-binary', config.librewolfBinary);
+      }
+      pyInherit([JOIN_SCRIPT, ...browserArgs, '--dry-run']);
     }
 
     const status = getPostmanPoolConfigStatus(configPath);

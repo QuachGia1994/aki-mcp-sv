@@ -31,10 +31,15 @@ async function loadConfig() {
     form.adminUserIds.value = (cfg.adminUserIds || []).join(", ");
     form.reportChatId.value = cfg.reportChatId || "";
     form.telegramSessionPath.value = cfg.telegramSessionPath || "";
+    form.browserBackend.value = cfg.browserBackend || "librewolf";
     form.librewolfBinary.value = cfg.librewolfBinary || "";
     form.profileRoot.value = cfg.profileRoot || "";
+    form.chromeBinary.value = cfg.chromeBinary || "";
+    form.chromeUserDataRoot.value = cfg.chromeUserDataRoot || "";
+    form.chromeProfileDirectories.value = (cfg.chromeProfileDirectories || []).join(", ");
     form.scratchRoot.value = cfg.scratchRoot || "";
     form.timeoutSeconds.value = cfg.timeoutSeconds || 45;
+    form.manualVerificationSeconds.value = cfg.manualVerificationSeconds || 300;
     form.telegramApiHash.value = "";
     form.reportBotToken.value = "";
     $("#tag-apihash").textContent = cfg.hasApiHash ? "set" : "not set";
@@ -55,10 +60,15 @@ async function saveConfig(event) {
     adminUserIds: form.adminUserIds.value.split(",").map((s) => Number(s.trim())).filter((n) => Number.isSafeInteger(n) && n > 0),
     reportChatId: form.reportChatId.value.trim(),
     telegramSessionPath: form.telegramSessionPath.value.trim(),
+    browserBackend: form.browserBackend.value,
     librewolfBinary: form.librewolfBinary.value.trim(),
     profileRoot: form.profileRoot.value.trim(),
+    chromeBinary: form.chromeBinary.value.trim(),
+    chromeUserDataRoot: form.chromeUserDataRoot.value.trim(),
+    chromeProfileDirectories: form.chromeProfileDirectories.value.split(",").map((s) => s.trim()).filter(Boolean),
     scratchRoot: form.scratchRoot.value.trim(),
     timeoutSeconds: Number(form.timeoutSeconds.value) || 45,
+    manualVerificationSeconds: Number(form.manualVerificationSeconds.value) || 300,
   };
   if (form.telegramApiHash.value.trim()) patch.telegramApiHash = form.telegramApiHash.value.trim();
   if (form.reportBotToken.value.trim()) patch.reportBotToken = form.reportBotToken.value.trim();
@@ -104,6 +114,7 @@ async function refreshStatus() {
     const s = JSON.parse(await invoke("config_status"));
     out.textContent = [
       `enabled:       ${s.enabled}`,
+      `browser:       ${s.browserBackend || "librewolf"}`,
       `ready:         ${s.ready ? "YES" : "NO"}`,
       `missing:       ${s.missing.length ? s.missing.join(", ") : "none"}`,
       `sourceChatId:  ${s.sourceChatId || "(none)"}`,

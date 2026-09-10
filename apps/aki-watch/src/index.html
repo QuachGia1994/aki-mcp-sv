@@ -44,10 +44,20 @@
           <label>Report bot token <span class="tag" id="tag-token"></span><input name="reportBotToken" type="password" placeholder="leave blank to keep / use env" autocomplete="off" /></label>
           <label>Report chat ID<input name="reportChatId" /></label>
           <label>Telegram session path<input name="telegramSessionPath" /></label>
+          <label>Browser backend
+            <select name="browserBackend">
+              <option value="librewolf">LibreWolf / Selenium</option>
+              <option value="chrome-cdp">Chrome / CDP</option>
+            </select>
+          </label>
           <label>LibreWolf binary<input name="librewolfBinary" /></label>
-          <label>Profile root<input name="profileRoot" /></label>
+          <label>LibreWolf profile root<input name="profileRoot" /></label>
+          <label>Chrome binary<input name="chromeBinary" /></label>
+          <label>Chrome user-data root (dedicated)<input name="chromeUserDataRoot" placeholder="Never use Chrome's normal User Data root" /></label>
+          <label>Chrome profile directories (comma-separated)<input name="chromeProfileDirectories" placeholder="blank = discover Default and Profile N" /></label>
           <label>Scratch root<input name="scratchRoot" /></label>
           <label>Timeout (seconds)<input name="timeoutSeconds" type="number" inputmode="numeric" /></label>
+          <label>Manual verification wait (seconds)<input name="manualVerificationSeconds" type="number" inputmode="numeric" min="60" max="900" /></label>
           <div class="row">
             <button type="button" id="reload-btn">Reload</button>
             <button type="submit">Save</button>

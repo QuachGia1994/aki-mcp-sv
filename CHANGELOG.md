@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- **Optional Chrome/CDP Postman pool backend.** Authorized pool joins can use a dedicated non-default Chrome user-data directory, attach Selenium to Chrome's loopback CDP endpoint, and dispatch normal pointer events to the Postman `Accept Invite` / `Join Team` control while preserving the existing manual-only Cloudflare verification checkpoint. LibreWolf remains the default backend.
+
 ### Fixed
 - File moves refuse existing destinations; concurrent file moves cannot overwrite the same destination.
 - Partial text reads preserve UTF-8 characters across chunk boundaries, normalize CRLF consistently, count trailing line endings correctly, and validate non-negative line limits including zero.
