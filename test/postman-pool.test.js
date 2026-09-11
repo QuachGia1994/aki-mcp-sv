@@ -7,6 +7,7 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
   extractPostmanInviteUrl,
+  formatManualAcceptReport,
   formatManualVerificationReport,
   formatPostmanPoolReport,
   getPostmanPoolConfigStatus,
@@ -36,21 +37,31 @@ const report = formatPostmanPoolReport({
     { profile: 'Hồ sơ 1', email: 'one@example.com', status: 'joined' },
     { profile: 'Hồ sơ 2', email: 'two@example.com', status: 'already_joined' },
   ],
+  manualAccept: [{ profile: 'Hồ sơ 5', email: 'five@example.com', status: 'manual_accept_required' }],
   skipped: [{ profile: 'Hồ sơ 3', email: null, status: 'locked' }],
   failed: [{ profile: 'Hồ sơ 4', email: 'four@example.com', status: 'failed', error: `failed at ${invite}` }],
 });
 assert.match(report, /2 joined\/already joined/);
 assert.match(report, /one@example\.com/);
 assert.match(report, /two@example\.com/);
+assert.match(report, /1 manual accept/);
+assert.match(report, /five@example\.com/);
+assert.match(report, /manual accept required/i);
 assert.match(report, /1 skipped/);
 assert.match(report, /1 failed/);
 assert.doesNotMatch(report, /invite_code=/, 'Telegram report must never echo the invite bearer URL');
+
+const manualAcceptReport = formatManualAcceptReport({ type: 'manual_accept_required', profile: 'Hồ sơ 6', email: 'six@example.com' });
+assert.match(manualAcceptReport, /manual accept required/i);
+assert.match(manualAcceptReport, /six@example\.com/);
+assert.match(manualAcceptReport, /normal browser/);
+assert.doesNotMatch(manualAcceptReport, /invite_code=/, 'manual accept report must never echo the invite bearer URL');
 
 const verificationEvent = parsePostmanPoolWorkerEvent('[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 5","email":"five@example.com"}');
 assert.deepEqual(verificationEvent, { type: 'manual_verification_required', profile: 'Hồ sơ 5', email: 'five@example.com' });
 assert.equal(parsePostmanPoolWorkerEvent('[postman-pool] normal log'), null);
 assert.match(formatManualVerificationReport(verificationEvent), /five@example\.com/);
-assert.match(formatManualVerificationReport(verificationEvent), /open Chrome window/);
+assert.match(formatManualVerificationReport(verificationEvent), /open LibreWolf window/);
 assert.doesNotMatch(formatManualVerificationReport(verificationEvent), /invite_code=/);
 assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'manual_verification_timeout' }] }), true);
 assert.equal(postmanPoolResultIsRetryable({ failed: [{ status: 'failed' }] }), false);
@@ -94,15 +105,18 @@ writeFileSync(configPath, JSON.stringify({
   adminUserIds: ['42'],
   reportBotToken: 'not-a-real-bot-token',
   reportChatId: '42',
-  browserBackend: 'librewolf',
-  profileRoot: 'legacy-profile-root',
-  librewolfBinary: 'legacy-librewolf.exe',
+  chromeBinary: 'legacy-chrome.exe',
+  chromeUserDataRoot: 'legacy-user-data',
+  chromeProfileDirectories: ['Default'],
 }));
 const defaultPoolConfig = loadPostmanPoolConfig(configPath);
-assert.deepEqual(defaultPoolConfig.chromeProfileDirectories, []);
-assert.equal('browserBackend' in defaultPoolConfig, false);
-assert.equal('profileRoot' in defaultPoolConfig, false);
-assert.equal('librewolfBinary' in defaultPoolConfig, false);
+assert.deepEqual(defaultPoolConfig.profileDirectories, [], 'no profileDirectories configured -> discover all');
+assert.equal(defaultPoolConfig.librewolfBinary, null);
+assert.equal(defaultPoolConfig.profilesRoot, null);
+assert.equal(defaultPoolConfig.headless, false);
+assert.equal('chromeBinary' in defaultPoolConfig, false, 'legacy Chrome keys must be dropped');
+assert.equal('chromeUserDataRoot' in defaultPoolConfig, false);
+assert.equal('chromeProfileDirectories' in defaultPoolConfig, false);
 const spawns = [];
 const fakeSpawn = (file, args) => {
   const child = fakeChild();
@@ -162,7 +176,7 @@ assert.doesNotMatch(integrationSpawns[1].args.join(' '), /invite_code=/, 'invite
 await waitFor(() => joinInputs.length === 1, 'first join worker did not receive stdin input');
 assert.equal(JSON.parse(joinInputs[0]).inviteUrl, entityInvite);
 assert.match(integrationSpawns[1].args.join(' '), /--manual-verification-timeout 300/);
-assert.doesNotMatch(integrationSpawns[1].args.join(' '), /--browser-backend|--profile-root|--librewolf-binary/);
+assert.doesNotMatch(integrationSpawns[1].args.join(' '), /--chrome-binary|--chrome-user-data-root|--chrome-profile-directory/, 'Chrome/CDP flags must never be passed to the worker');
 integrationSpawns[1].child.stderr.write('[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 1","email":"one@example.com"}\n');
 await waitFor(() => reportCalls.length === 1, 'manual verification progress was not reported while the worker remained open');
 const verificationReportBody = JSON.parse(reportCalls[0].options.body);
@@ -272,53 +286,57 @@ assert.deepEqual(poolStatus.missing, []);
 assert.equal(poolStatus.enabled, true);
 assert.equal(poolStatus.tokenSource, 'config');
 
-const chromeConfigPath = path.join(tempDir, 'chrome-pool.json');
-writeFileSync(chromeConfigPath, JSON.stringify({
+const librewolfConfigPath = path.join(tempDir, 'librewolf-pool.json');
+writeFileSync(librewolfConfigPath, JSON.stringify({
   enabled: true,
   telegramApiId: 12345,
   telegramApiHash: 'not-a-real-secret',
-  telegramSessionPath: path.join(tempDir, 'telegram-session-cdp'),
+  telegramSessionPath: path.join(tempDir, 'telegram-session-lw'),
   sourceChatId: '-100123',
   adminUserIds: ['42'],
   reportBotToken: 'not-a-real-bot-token',
   reportChatId: '42',
-  chromeBinary: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  chromeUserDataRoot: 'D:\\LacViet\\.aki-postman-cdp\\chrome-user-data',
-  chromeProfileDirectories: ['Default', 'Profile 1'],
+  librewolfBinary: '/opt/librewolf/librewolf',
+  profilesRoot: '/home/pool/librewolf/Profiles',
+  profileDirectories: ['Hồ sơ 1', 'Hồ sơ 2'],
+  headless: true,
 }));
-const loadedChromeConfig = loadPostmanPoolConfig(chromeConfigPath);
-assert.equal('browserBackend' in loadedChromeConfig, false);
-assert.equal(loadedChromeConfig.chromeBinary, 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe');
-assert.equal(loadedChromeConfig.chromeUserDataRoot, 'D:\\LacViet\\.aki-postman-cdp\\chrome-user-data');
-assert.deepEqual(loadedChromeConfig.chromeProfileDirectories, ['Default', 'Profile 1']);
-const chromeSpawns = [];
-const chromeReports = [];
-const chromeWatcher = startPostmanPoolWatcher({
-  configPath: chromeConfigPath,
-  statePath: path.join(tempDir, 'chrome-state.json'),
+const loadedLibrewolfConfig = loadPostmanPoolConfig(librewolfConfigPath);
+assert.equal('chromeBinary' in loadedLibrewolfConfig, false);
+assert.equal(loadedLibrewolfConfig.librewolfBinary, '/opt/librewolf/librewolf');
+assert.equal(loadedLibrewolfConfig.profilesRoot, '/home/pool/librewolf/Profiles');
+assert.deepEqual(loadedLibrewolfConfig.profileDirectories, ['Hồ sơ 1', 'Hồ sơ 2']);
+assert.equal(loadedLibrewolfConfig.headless, true);
+const librewolfSpawns = [];
+const librewolfReports = [];
+const librewolfWatcher = startPostmanPoolWatcher({
+  configPath: librewolfConfigPath,
+  statePath: path.join(tempDir, 'librewolf-state.json'),
   spawnImpl: (file, args) => {
     const child = fakeChild();
-    chromeSpawns.push({ file, args, child });
+    librewolfSpawns.push({ file, args, child });
     return child;
   },
   fetchImpl: async (url, options) => {
-    chromeReports.push({ url, options });
+    librewolfReports.push({ url, options });
     return { ok: true, status: 200, json: async () => ({ ok: true, result: {} }) };
   },
 });
-chromeSpawns[0].child.stdout.write(`${JSON.stringify({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite })}\n`);
-await waitFor(() => chromeSpawns.length === 2, 'Chrome/CDP config did not start a join worker');
-const chromeWorkerArgs = chromeSpawns[1].args.join(' ');
-assert.doesNotMatch(chromeWorkerArgs, /--browser-backend|--profile-root|--librewolf-binary/);
-assert.match(chromeWorkerArgs, /--chrome-user-data-root D:\\LacViet\\\.aki-postman-cdp\\chrome-user-data/);
-assert.match(chromeWorkerArgs, /--chrome-profile-directory Default/);
-assert.match(chromeWorkerArgs, /--chrome-profile-directory Profile 1/);
-assert.doesNotMatch(chromeWorkerArgs, /not-a-real-secret|not-a-real-bot-token/);
-chromeSpawns[1].child.stdout.write(JSON.stringify({ joined: [], skipped: [], failed: [] }));
-chromeSpawns[1].child.exitCode = 0;
-chromeSpawns[1].child.emit('exit', 0);
-await waitFor(() => chromeReports.length === 1, 'Chrome/CDP worker completion was not reported');
-chromeWatcher.close();
+librewolfSpawns[0].child.stdout.write(`${JSON.stringify({ chat: { id: -100123 }, from: { id: 42 }, text: entityInvite })}\n`);
+await waitFor(() => librewolfSpawns.length === 2, 'LibreWolf config did not start a join worker');
+const librewolfWorkerArgs = librewolfSpawns[1].args.join(' ');
+assert.doesNotMatch(librewolfWorkerArgs, /--chrome-binary|--chrome-user-data-root|--chrome-profile-directory/);
+assert.match(librewolfWorkerArgs, /--librewolf-binary \/opt\/librewolf\/librewolf/);
+assert.match(librewolfWorkerArgs, /--profiles-root \/home\/pool\/librewolf\/Profiles/);
+assert.match(librewolfWorkerArgs, /--profile-directory Hồ sơ 1/);
+assert.match(librewolfWorkerArgs, /--profile-directory Hồ sơ 2/);
+assert.match(librewolfWorkerArgs, /--headless/);
+assert.doesNotMatch(librewolfWorkerArgs, /not-a-real-secret|not-a-real-bot-token/);
+librewolfSpawns[1].child.stdout.write(JSON.stringify({ joined: [], skipped: [], failed: [] }));
+librewolfSpawns[1].child.exitCode = 0;
+librewolfSpawns[1].child.emit('exit', 0);
+await waitFor(() => librewolfReports.length === 1, 'LibreWolf worker completion was not reported');
+librewolfWatcher.close();
 
 rmSync(tempDir, { recursive: true, force: true });
 

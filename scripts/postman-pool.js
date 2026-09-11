@@ -83,10 +83,12 @@ function shortError(value) {
 
 export function formatPostmanPoolReport(result) {
   const joined = Array.isArray(result?.joined) ? result.joined : [];
+  const manualAccept = Array.isArray(result?.manualAccept) ? result.manualAccept : [];
   const skipped = Array.isArray(result?.skipped) ? result.skipped : [];
   const failed = Array.isArray(result?.failed) ? result.failed : [];
-  const lines = [`Postman pool: ${joined.length} joined/already joined · ${skipped.length} skipped · ${failed.length} failed`];
+  const lines = [`Postman pool: ${joined.length} joined/already joined · ${manualAccept.length} manual accept · ${skipped.length} skipped · ${failed.length} failed`];
   for (const row of joined) lines.push(`✓ ${row.email || row.profile || 'unknown account'}${row.profile && row.email ? ` (${row.profile})` : ''}`);
+  for (const row of manualAccept) lines.push(`⚠ ${row.email || row.profile || 'unknown account'}${row.profile && row.email ? ` (${row.profile})` : ''}: manual accept required (Postman re-auth)`);
   for (const row of skipped) lines.push(`- ${row.email || row.profile || 'unknown account'}: ${shortError(row.status || row.error || 'skipped')}`);
   for (const row of failed) lines.push(`✗ ${row.email || row.profile || 'unknown account'}: ${shortError(row.error || row.status || 'failed')}`);
   return lines.join('\n');
@@ -106,7 +108,13 @@ export function parsePostmanPoolWorkerEvent(line) {
 export function formatManualVerificationReport(event) {
   const account = event?.email || event?.profile || 'unknown account';
   const profile = event?.email && event?.profile ? ` (${event.profile})` : '';
-  return `Postman pool: Cloudflare verification required for ${account}${profile}. Complete it in the open Chrome window; Aki will resume automatically.`;
+  return `Postman pool: Cloudflare verification required for ${account}${profile}. Complete it in the open LibreWolf window; Aki will resume automatically.`;
+}
+
+export function formatManualAcceptReport(event) {
+  const account = event?.email || event?.profile || 'unknown account';
+  const profile = event?.email && event?.profile ? ` (${event.profile})` : '';
+  return `Postman pool: manual accept required for ${account}${profile}. Postman forces a re-auth (Cloudflare) to accept team invites, so open the invite in a normal browser and accept it there.`;
 }
 
 export function postmanPoolResultIsRetryable(result) {
@@ -132,7 +140,7 @@ export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
   const telegramApiHash = process.env.AKI_POSTMAN_POOL_TELEGRAM_API_HASH || raw.telegramApiHash;
   const reportBotToken = process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN || raw.reportBotToken || raw.botToken;
   const adminUserIds = Array.isArray(raw.adminUserIds) ? raw.adminUserIds.map(String).filter(Boolean) : [];
-  const chromeProfileDirectories = Array.isArray(raw.chromeProfileDirectories) ? raw.chromeProfileDirectories.map(String).filter(Boolean) : [];
+  const profileDirectories = Array.isArray(raw.profileDirectories) ? raw.profileDirectories.map(String).filter(Boolean) : [];
   if (!Number.isSafeInteger(telegramApiId) || telegramApiId <= 0 || !telegramApiHash || !raw.sourceChatId || adminUserIds.length === 0) {
     throw new Error('postman-pool.json enabled but telegramApiId/telegramApiHash/sourceChatId/adminUserIds is incomplete');
   }
@@ -146,9 +154,10 @@ export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
     reportBotToken,
     reportChatId: String(raw.reportChatId),
     adminUserIds,
-    chromeBinary: raw.chromeBinary || null,
-    chromeUserDataRoot: raw.chromeUserDataRoot || null,
-    chromeProfileDirectories,
+    librewolfBinary: raw.librewolfBinary || null,
+    profilesRoot: raw.profilesRoot || null,
+    profileDirectories,
+    headless: raw.headless === true,
     scratchRoot: raw.scratchRoot || null,
     timeoutSeconds: Number.isFinite(Number(raw.timeoutSeconds)) ? Math.max(10, Math.min(120, Number(raw.timeoutSeconds))) : 45,
     manualVerificationSeconds: Number.isFinite(Number(raw.manualVerificationSeconds)) ? Math.max(60, Math.min(900, Number(raw.manualVerificationSeconds))) : 300,
@@ -167,10 +176,11 @@ function runJoinWorker(inviteUrl, config, spawnImpl = cp.spawn, onProgress = nul
   return new Promise((resolve, reject) => {
     const command = pythonCommand(JOIN_WORKER_PATH, ['--json-stdin']);
     const args = [...command.args];
-    if (config.chromeBinary) args.push('--chrome-binary', config.chromeBinary);
-    if (config.chromeUserDataRoot) args.push('--chrome-user-data-root', config.chromeUserDataRoot);
-    for (const profileDirectory of config.chromeProfileDirectories || []) args.push('--chrome-profile-directory', profileDirectory);
+    if (config.librewolfBinary) args.push('--librewolf-binary', config.librewolfBinary);
+    if (config.profilesRoot) args.push('--profiles-root', config.profilesRoot);
+    for (const profileDirectory of config.profileDirectories || []) args.push('--profile-directory', profileDirectory);
     if (config.scratchRoot) args.push('--scratch-root', config.scratchRoot);
+    if (config.headless) args.push('--headless');
     args.push('--timeout', String(config.timeoutSeconds));
     args.push('--manual-verification-timeout', String(config.manualVerificationSeconds));
     const child = spawnImpl(command.file, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
@@ -319,6 +329,9 @@ export function startPostmanPoolWatcher({ configPath = POSTMAN_POOL_CONFIG_PATH,
           await report(formatManualVerificationReport(event));
         } else if (event?.type === 'manual_verification_resolved') {
           console.log(`[postman-pool] ${event.email || event.profile || 'account'} Cloudflare verification resolved; resuming`);
+        } else if (event?.type === 'manual_accept_required') {
+          console.warn(`[postman-pool] ${event.email || event.profile || 'account'} needs manual invite acceptance (Postman re-auth)`);
+          await report(formatManualAcceptReport(event));
         }
       });
       if (!postmanPoolResultIsRetryable(result)) remember(hash);

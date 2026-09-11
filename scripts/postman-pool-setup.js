@@ -57,7 +57,7 @@ function writeConfig(configPath, config) {
 
 function withDefaults(config) {
   const dir = path.dirname(POSTMAN_POOL_CONFIG_PATH);
-  const { browserBackend: _browserBackend, profileRoot: _profileRoot, librewolfBinary: _librewolfBinary, ...current } = config || {};
+  const { chromeBinary: _chromeBinary, chromeUserDataRoot: _chromeUserDataRoot, chromeProfileDirectories: _chromeProfileDirectories, browserBackend: _browserBackend, profileRoot: _profileRoot, ...current } = config || {};
   return {
     enabled: false,
     telegramApiId: 0,
@@ -67,9 +67,10 @@ function withDefaults(config) {
     adminUserIds: [],
     reportBotToken: '',
     reportChatId: '',
-    chromeBinary: IS_WIN ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '',
-    chromeUserDataRoot: '',
-    chromeProfileDirectories: [],
+    librewolfBinary: IS_WIN ? 'C:\\Program Files\\LibreWolf\\librewolf.exe' : '',
+    profilesRoot: '',
+    profileDirectories: [],
+    headless: false,
     scratchRoot: '',
     timeoutSeconds: 45,
     manualVerificationSeconds: 300,
@@ -104,9 +105,10 @@ function configView(configPath) {
     hasReportBotToken: !status.missing.includes('reportBotToken'),
     tokenSource: status.tokenSource,
     reportChatId: raw.reportChatId ? String(raw.reportChatId) : '',
-    chromeBinary: raw.chromeBinary || '',
-    chromeUserDataRoot: raw.chromeUserDataRoot || '',
-    chromeProfileDirectories: Array.isArray(raw.chromeProfileDirectories) ? raw.chromeProfileDirectories : [],
+    librewolfBinary: raw.librewolfBinary || '',
+    profilesRoot: raw.profilesRoot || '',
+    profileDirectories: Array.isArray(raw.profileDirectories) ? raw.profileDirectories : [],
+    headless: raw.headless === true,
     scratchRoot: raw.scratchRoot || '',
     timeoutSeconds: Number(raw.timeoutSeconds) || 45,
     manualVerificationSeconds: Number(raw.manualVerificationSeconds) || 300,
@@ -121,7 +123,7 @@ async function setConfigFromStdin(configPath) {
     merged.adminUserIds = merged.adminUserIds.map((n) => Number(n)).filter((n) => Number.isSafeInteger(n) && n > 0);
   }
   merged.telegramApiId = Number(merged.telegramApiId) || 0;
-  merged.chromeProfileDirectories = Array.isArray(merged.chromeProfileDirectories) ? merged.chromeProfileDirectories.map(String).filter(Boolean) : [];
+  merged.profileDirectories = Array.isArray(merged.profileDirectories) ? merged.profileDirectories.map(String).filter(Boolean) : [];
   writeConfig(configPath, merged);
 }
 
@@ -144,15 +146,15 @@ function printCheck(configPath) {
   const status = getPostmanPoolConfigStatus(configPath);
   const raw = readConfig(configPath);
   const pyVer = pyCapture(['--version']);
-  const chrome = raw.chromeBinary || '';
+  const librewolf = raw.librewolfBinary || '';
   console.log('Aki Watch - environment check\n');
   const line = (k, v) => console.log(`  ${String(k).padEnd(18)} ${v}`);
   line('node', process.version);
   line(`${PY} ${PY_PREFIX.join(' ')}`.trim(), pyVer.ok ? pyVer.text : 'NOT FOUND');
   line('telethon', moduleVersion('telethon') || 'NOT INSTALLED (py -3 -m pip install telethon)');
   line('selenium', moduleVersion('selenium') || 'NOT INSTALLED (py -3 -m pip install selenium)');
-  line('chrome', chrome ? (existsSync(chrome) ? chrome : `MISSING: ${chrome}`) : 'auto-discover');
-  line('chromeUserDataRoot', raw.chromeUserDataRoot || 'auto-select dedicated root');
+  line('librewolf', librewolf ? (existsSync(librewolf) ? librewolf : `MISSING: ${librewolf}`) : 'auto-discover');
+  line('profilesRoot', raw.profilesRoot || 'auto-detect (%APPDATA%/librewolf/Profiles)');
   console.log(`\nConfig: ${configPath}`);
   line('enabled', status.enabled);
   line('sourceChatId', status.sourceChatId || '(missing)');
@@ -207,18 +209,18 @@ async function runSetup(configPath) {
     console.log('Step 6 - reportChatId: for a private DM use your own userId (the SELF line) and press Start on the bot first.');
     config.reportChatId = String(await ask('reportChatId', config.reportChatId));
 
-    console.log('Step 7 - Chrome/CDP settings. Use a dedicated user-data directory, not Chrome\'s normal profile root.');
-    config.chromeBinary = await ask('chromeBinary', config.chromeBinary);
-    config.chromeUserDataRoot = await ask('chromeUserDataRoot (dedicated)', config.chromeUserDataRoot);
-    const profiles = await ask('chromeProfileDirectories (comma-separated; blank = discover all)', config.chromeProfileDirectories.join(','));
-    config.chromeProfileDirectories = profiles ? profiles.split(',').map((part) => part.trim()).filter(Boolean) : [];
+    console.log('Step 7 - LibreWolf settings. Point at your LibreWolf binary and the Profiles directory that holds your pool profiles.');
+    config.librewolfBinary = await ask('librewolfBinary', config.librewolfBinary);
+    config.profilesRoot = await ask('profilesRoot (…/librewolf/Profiles; blank = auto-detect)', config.profilesRoot);
+    const profiles = await ask('profileDirectories (comma-separated folder or "Hồ sơ N" names; blank = discover all)', config.profileDirectories.join(','));
+    config.profileDirectories = profiles ? profiles.split(',').map((part) => part.trim()).filter(Boolean) : [];
     writeConfig(configPath, config);
 
-    if (await yes('Check Postman Chrome profile discovery now (postman-pool-join.py --dry-run)?')) {
+    if (await yes('Check Postman LibreWolf profile discovery now (postman-pool-join.py --dry-run)?')) {
       const browserArgs = [];
-      if (config.chromeBinary) browserArgs.push('--chrome-binary', config.chromeBinary);
-      if (config.chromeUserDataRoot) browserArgs.push('--chrome-user-data-root', config.chromeUserDataRoot);
-      for (const profileDirectory of config.chromeProfileDirectories) browserArgs.push('--chrome-profile-directory', profileDirectory);
+      if (config.librewolfBinary) browserArgs.push('--librewolf-binary', config.librewolfBinary);
+      if (config.profilesRoot) browserArgs.push('--profiles-root', config.profilesRoot);
+      for (const profileDirectory of config.profileDirectories) browserArgs.push('--profile-directory', profileDirectory);
       pyInherit([JOIN_SCRIPT, ...browserArgs, '--dry-run']);
     }
 
