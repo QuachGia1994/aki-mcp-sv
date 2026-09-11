@@ -1,27 +1,39 @@
 # Postman pool auto-join
 
-Windows-only local automation for the owner's existing Postman accounts in dedicated Chrome profiles. Aki listens to a Telegram group through the owner's Telegram user session (Telethon/MTProto), so the group does not need to add a bot. When an allowlisted admin posts a Postman team invite link, Aki launches the selected Chrome profile from a dedicated non-default user-data directory, attaches Selenium through Chrome DevTools Protocol (CDP), clicks the normal `Accept Invite` / `Join Team` control, verifies the joined outcome, and reports the result through a Telegram bot DM/chat.
+Local automation for the owner's existing Postman accounts in LibreWolf profiles. Aki Watch owns the Telegram watcher as a separate local background process, so the group does not need to add a bot and toggling the watcher does not restart Aki MCP. When an allowlisted admin posts a Postman team invite link, the watcher serially drives session-only copies of selected LibreWolf profiles through Selenium/geckodriver, accepts normal Postman invite UI when possible, verifies the joined outcome, and reports through a Telegram bot DM/chat. The Tauri GUI also supports pasting an invite for an immediate all-profile run with live progress/logs.
 
 ## Boundary
 
 - The group listener is the owner's Telegram account, not a bot. The account must already be a member of the source group and able to see the admin's message.
 - Trigger authorization requires both the exact source chat ID and an allowlisted sender user ID from `~/.aki/mcpsv/postman-pool.json`; another group member posting an invite does nothing.
 - `telegramApiHash`, the Telethon `.session`, and `reportBotToken` are credentials. They stay only under the user-local Aki config/session directory and never enter git.
-- The report bot is outbound-only for this feature. It may already use a webhook elsewhere: Aki never calls `getUpdates`, `setWebhook`, or `deleteWebhook` on that bot, so an existing webhook owner keeps exclusive inbound control.
-- The invite URL is treated like a bearer link: it is passed to the Python worker through stdin, never logged and never echoed in the Telegram result.
-- Chrome must use a dedicated persistent user-data directory. The worker refuses Chrome's normal `%LOCALAPPDATA%\Google\Chrome\User Data` root. Initialize the dedicated profiles manually, sign them into Postman, then close those Chrome windows before Aki owns a join run.
-- Aki does not copy, parse, or decrypt Chrome cookies, access tokens, saved passwords, or Password Manager data. It only reads Postman identity history metadata when available so reports can name the account email.
-- CDP is used for normal browser navigation and the Postman invite control. If Postman/Cloudflare presents Human Verify, Aki reports a manual checkpoint and waits in the same browser context. It does not solve, click, spoof, inject into, or otherwise bypass the challenge.
+- The report bot is outbound-only for this feature. Aki never calls `getUpdates`, `setWebhook`, or `deleteWebhook` on that bot.
+- The invite URL is treated like a bearer link: it is passed to the Python worker through stdin, never logged, and never echoed in the Telegram result.
+- The worker copies only the session material it needs into a scratch profile, drives that copy, then deletes it. Original LibreWolf profiles may remain open and are not modified by the join worker.
+- Aki does not attempt to solve or click Cloudflare/Human Verify. When a security-verification page appears, it emits a manual checkpoint and waits in the same visible browser context for the owner to clear it.
+- If Postman redirects invite acceptance into a forced interactive re-auth wall, Aki reports `manual_accept_required` instead of looping until timeout.
 
-## One-time setup
+## Requirements
 
-Install the optional Python packages into the Windows Python used by Aki:
+Install Python packages into the Python used by Aki:
 
 ```powershell
 py -3 -m pip install selenium telethon
 ```
 
-Install Google Chrome. Create or edit `~/.aki/mcpsv/postman-pool.json` while keeping `enabled=false`:
+Install LibreWolf. Selenium 4 uses Selenium Manager/geckodriver for Firefox-compatible automation; no Chrome/CDP profile is required by the current implementation.
+
+Default profile roots:
+
+- Windows: `%APPDATA%\librewolf\Profiles`
+- Linux: `~/.librewolf` or `~/.mozilla/librewolf`
+- macOS: `~/Library/Application Support/librewolf/Profiles`
+
+The worker also accepts explicit `librewolfBinary`, `profilesRoot`, and `profileDirectories` values when auto-discovery does not match the host.
+
+## Config
+
+Create or edit `~/.aki/mcpsv/postman-pool.json`:
 
 ```json
 {
@@ -33,75 +45,94 @@ Install Google Chrome. Create or edit `~/.aki/mcpsv/postman-pool.json` while kee
   "adminUserIds": [],
   "reportBotToken": "<existing-report-bot-token>",
   "reportChatId": "<your-private-chat-id-with-the-bot>",
-  "chromeBinary": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "chromeUserDataRoot": "D:\\LacViet\\.aki-postman-cdp\\chrome-user-data",
-  "chromeProfileDirectories": [],
+  "librewolfBinary": "C:\\Program Files\\LibreWolf\\librewolf.exe",
+  "profilesRoot": "C:\\Users\\YOU\\AppData\\Roaming\\librewolf\\Profiles",
+  "profileDirectories": [],
+  "headless": false,
   "scratchRoot": "D:\\LacViet\\.aki-tmp\\postman-pool",
   "timeoutSeconds": 45,
   "manualVerificationSeconds": 300
 }
 ```
 
+Aki Watch blocks auto-join/verify while `headless=true` because Human Verify is manual-only and requires a visible LibreWolf window. `profileDirectories=[]` means discover all valid LibreWolf/Firefox-style profile directories under `profilesRoot`; otherwise choose specific profiles in the GUI picker or provide exact directory/display names. The legacy `enabled` field remains in local config compatibility, but `npm start` no longer owns the watcher lifecycle; the Aki Watch GUI starts/stops the background watcher directly.
+
+## Telegram setup
+
 `telegramApiId` and `telegramApiHash` come from the owner's Telegram application at `my.telegram.org/apps`; they are Telegram user-client credentials, not the bot token.
 
-Log in once and list the groups visible to that Telegram account:
+Login once and list groups visible to that Telegram account:
 
 ```powershell
 py -3 scripts/postman-pool-telegram.py --login --config C:\Users\YOU\.aki\mcpsv\postman-pool.json
 ```
 
-The script prompts for phone/login code and 2FA if enabled, stores the Telethon session at `telegramSessionPath`, prints the owner's immutable Telegram user ID, then prints each group/channel as `chatId=<immutable-id> type=<group|channel> title=<name>`. Copy the intended pool group's ID into `sourceChatId`.
-
-After that first login, re-list dialogs without any OTP prompt using:
+After the first login, re-list dialogs without an OTP prompt:
 
 ```powershell
 py -3 scripts/postman-pool-telegram.py --list-dialogs --config C:\Users\YOU\.aki\mcpsv\postman-pool.json
 ```
 
-To learn the pool admin's immutable sender ID without adding a bot to the group, run:
+Observe immutable sender IDs without adding a bot to the group:
 
 ```powershell
 py -3 scripts/postman-pool-telegram.py --observe-senders --config C:\Users\YOU\.aki\mcpsv\postman-pool.json
 ```
 
-Wait until the intended admin posts a normal message, copy that `senderUserId` into `adminUserIds`, then stop with Ctrl+C. The observer prints sender identity only; it does not print message text or execute a Postman join.
+Copy the intended pool group's ID into `sourceChatId` and the authorized admin's sender ID into `adminUserIds`.
 
-## Chrome profile setup
+## Aki Watch GUI control
 
-Chrome 136+ requires remote debugging to use a non-default `--user-data-dir`. Do not point `chromeUserDataRoot` at `%LOCALAPPDATA%\Google\Chrome\User Data`; the worker rejects that normal Chrome root.
+`apps/aki-watch` is the primary runtime controller. At launch and before actions it runs a machine-readable readiness preflight. **Join Now** mirrors the uploaded Postman Team Auto-Joiner flow: paste an invite, scan profiles, Start/Stop, per-account progress, and realtime logs. **Auto Watch** starts/stops the Telegram watcher as a detached local process through `scripts/postman-pool-control.js`; no Aki MCP restart is required. Verify Login is also detached/cancellable with per-profile progress. **Settings** edits the same `~/.aki/mcpsv/postman-pool.json` source of truth and uses a scanned profile picker.
 
-Initialize the dedicated browser state manually once. Create the Chrome profiles you want under a directory such as `D:\LacViet\.aki-postman-cdp\chrome-user-data`, sign each selected profile into Postman, then close Chrome. Leave `chromeProfileDirectories` empty to discover `Default` plus `Profile N` directories, or list exact names such as `["Default", "Profile 1"]`.
+The GUI control layer never puts the invite URL in process argv. Manual joins send the invite through stdin to `postman-pool-join.py`; watcher invites already follow the same stdin boundary.
 
-Check profile discovery without opening Chrome:
+## Browser/profile checks
 
-```powershell
-py -3 scripts/postman-pool-join.py --chrome-user-data-root D:\LacViet\.aki-postman-cdp\chrome-user-data --dry-run
-```
-
-Check that Chrome/CDP can launch the first selected dedicated profile without touching Postman:
+Check environment and config without opening a browser:
 
 ```powershell
-py -3 scripts/postman-pool-join.py --chrome-user-data-root D:\LacViet\.aki-postman-cdp\chrome-user-data --smoke-browser
+node scripts/postman-pool-setup.js --check
 ```
 
-Finally set `enabled=true` and restart Aki. On boot Aki prints only the authorized source chat ID; it never prints Telegram credentials or the invite URL.
+List discovered profiles and inferred Postman email metadata without opening LibreWolf:
+
+```powershell
+py -3 scripts/postman-pool-join.py --dry-run
+```
+
+Launch a session-only copy of the first profile against `about:blank` to verify Selenium/geckodriver can drive LibreWolf:
+
+```powershell
+py -3 scripts/postman-pool-join.py --smoke-browser
+```
+
+Check whether profile copies still carry a usable Postman session:
+
+```powershell
+py -3 scripts/postman-pool-join.py --verify-login
+```
+
+`--smoke-browser` and `--verify-login` open a real browser and are runtime checks. They do not accept a team invite by themselves.
 
 ## Reusing an existing webhook bot
 
-A separate report bot is not required merely because the existing bot has a webhook. This feature uses the bot only for Telegram Bot API `sendMessage`. The source-group listener is the Telethon user session, so there is no `getUpdates` versus webhook conflict.
+A separate report bot is not required merely because the existing bot has a webhook. This feature only uses the Bot API `sendMessage`; the source-group listener is Telethon, so there is no `getUpdates` versus webhook conflict.
 
-For the ROBOT SLTP setup, the cloud control installs `https://www.oakgatekeeper.uk/api/telegram/webhook` with `setWebhook` and separately uses the same token for outbound `sendMessage`. Reusing `@hathawayVN_bot` for outbound pool reports is therefore compatible with its webhook as long as the bot can send to `reportChatId`. Do not move the bot's webhook, call `deleteWebhook`, or point Aki at `getUpdates`.
-
-ROBOT SLTP does not currently expose that bot token through a clean local shared-secret file or generic authenticated report endpoint: its H1 cloud config stores the token encrypted in Redis. Aki must not scrape/decrypt that vault or couple this automation to ROBOT SLTP's storage internals. To use `@hathawayVN_bot`, supply the existing token once through `AKI_POSTMAN_POOL_REPORT_BOT_TOKEN` or the user-local `reportBotToken` field; do not commit or print it.
+For the ROBOT SLTP setup, the cloud control may retain webhook ownership while the same token is used for outbound reporting. Do not move or delete the bot webhook for Postman pool automation. Supply the existing token through `AKI_POSTMAN_POOL_REPORT_BOT_TOKEN` or the local `reportBotToken` field; do not commit or print it.
 
 ## Runtime flow
 
-1. The configured admin posts a Postman team invite link in the configured Telegram group; no bot membership is required.
-2. The local Telethon session emits the message to Aki. Aki validates sender ID, chat ID, HTTPS host, and invite-shaped URL, deduplicates the link, and queues one join run at a time.
-3. `scripts/postman-pool-join.py` discovers `Default` and `Profile N` under the dedicated Chrome user-data root, optionally restricted by `chromeProfileDirectories`.
-4. For each profile, Aki launches visible Chrome with a loopback-only CDP port, attaches Selenium, navigates through CDP, and dispatches normal pointer events only to the Postman `Accept Invite` / `Join Team` control. Success requires an explicit joined/already-member signal or a redirect to a known Postman application host.
-5. If Postman/Cloudflare shows a security-verification page, Aki stops normal UI automation, sends a `manual verification required` notice, and waits up to `manualVerificationSeconds` (default 300, bounded 60-900) for the owner to complete the challenge. When the challenge disappears in the same browser context, Aki resumes automatically. A verification timeout is retryable and the invite hash is not newly deduplicated by that run.
-6. Joined account emails are written to `~/.aki/mcpsv/postman-emails.txt`; the report bot sends joined/already-joined, skipped, and failed counts plus account emails/profile names to `reportChatId`.
-7. A failed account does not prevent the remaining Chrome profiles from running.
+1. The configured admin posts a Postman team invite link in the configured Telegram group.
+2. The Aki Watch background watcher receives the Telethon message. `scripts/postman-pool.js` validates sender ID, chat ID, HTTPS Postman host, and invite-shaped URL, deduplicates the link, and queues one join run at a time.
+3. `scripts/postman-pool-join.py` discovers selected LibreWolf profiles. Email labels are inferred from Postman identity URLs in each profile's `places.sqlite` when available.
+4. For each profile, the worker creates a lightweight session-only copy containing the signed-in session files and Postman web storage, starts LibreWolf through Selenium/geckodriver, then opens the invite.
+5. Normal Postman controls such as `Accept Invite` / `Join Team` may be clicked automatically. `Keep these accounts separate` and bounded Postman rate-limit refresh handling are normal interstitial handling.
+6. If Cloudflare/Human Verify appears, Aki reports `manual_verification_required` and only waits. After the owner clears the challenge in the same window, Aki emits `manual_verification_resolved` and resumes. It does not interact with challenge controls.
+7. If invite acceptance forces a Postman re-auth wall, Aki reports `manual_accept_required` for that account and continues the remaining profiles.
+8. Success requires an explicit joined/already-member signal or a redirect to a recognized Postman application/team host. One failed account does not stop the remaining profiles.
+9. Joined account emails are written to `~/.aki/mcpsv/postman-emails.txt`; the report bot sends joined/already-joined, manual-accept, skipped, and failed counts plus account/profile labels.
 
-If a selected Chrome profile is no longer signed into Postman, the worker reports that profile as failed instead of attempting to enter credentials. Human Verify remains manual by design.
+## Current architecture note
+
+The production path is LibreWolf/geckodriver. Lightpanda is not a runtime dependency, and undocumented Postman Root APIs are not used for authentication or invite acceptance. Future account-chooser optimization should preserve the existing profile path until it has live Postman evidence.

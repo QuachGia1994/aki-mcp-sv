@@ -5,19 +5,54 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+use tauri::Manager;
+
+static BUNDLED_RUNTIME_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+fn has_runtime_scripts(root: &Path) -> bool {
+    root.join("package.json").is_file()
+        && root
+            .join("scripts")
+            .join("postman-pool-control.js")
+            .is_file()
+        && root.join("scripts").join("postman-pool.js").is_file()
+        && root.join("scripts").join("postman-pool-setup.js").is_file()
+        && root.join("scripts").join("postman-pool-join.py").is_file()
+        && root
+            .join("scripts")
+            .join("postman-pool-telegram.py")
+            .is_file()
+        && root.join("scripts").join("userdata.js").is_file()
+}
 
 fn repo_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("AKI_WATCH_REPO_DIR") {
-        return PathBuf::from(dir);
+        let root = PathBuf::from(dir);
+        if has_runtime_scripts(&root) {
+            return root;
+        }
     }
-    // apps/aki-watch/src-tauri -> repo root (three levels up). Baked at build time;
-    // a shared build on another machine can override it with AKI_WATCH_REPO_DIR.
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("..")
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("."))
+    if let Some(root) = BUNDLED_RUNTIME_DIR.get() {
+        if has_runtime_scripts(root) {
+            return root.clone();
+        }
+    }
+    #[cfg(debug_assertions)]
+    {
+        // Development fallback only. Release builds must use packaged resources (or an explicit valid override)
+        // so an installer can never silently depend on the build machine's source checkout.
+        return Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from("."));
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        PathBuf::from("__aki_watch_bundled_runtime_missing__")
+    }
 }
 
 fn config_path() -> PathBuf {
@@ -35,13 +70,20 @@ fn setup_script() -> PathBuf {
     repo_dir().join("scripts").join("postman-pool-setup.js")
 }
 
+fn control_script() -> PathBuf {
+    repo_dir().join("scripts").join("postman-pool-control.js")
+}
+
 fn telegram_script() -> PathBuf {
     repo_dir().join("scripts").join("postman-pool-telegram.py")
 }
 
-fn run_node_io(args: &[&str], stdin_data: Option<&str>) -> Result<String, String> {
+fn run_node_script(
+    script: PathBuf,
+    args: &[&str],
+    stdin_data: Option<&str>,
+) -> Result<String, String> {
     let repo = repo_dir();
-    let script = setup_script();
     let mut command = Command::new("node");
     command
         .arg(&script)
@@ -81,12 +123,25 @@ fn run_node_io(args: &[&str], stdin_data: Option<&str>) -> Result<String, String
 
 // Capture the Telegram transport script's output (e.g. --list-dialogs). -X utf8 keeps
 // emoji-titled groups from crashing the Windows console codec.
+fn python_command() -> Command {
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("py");
+        command.arg("-3");
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new("python3")
+    }
+}
+
 fn run_py_capture(args: &[&str]) -> Result<String, String> {
     let repo = repo_dir();
     let script = telegram_script();
     let cfg = config_path();
-    let output = Command::new("py")
-        .arg("-3")
+    let mut command = python_command();
+    let output = command
         .arg("-X")
         .arg("utf8")
         .arg(&script)
@@ -95,7 +150,7 @@ fn run_py_capture(args: &[&str]) -> Result<String, String> {
         .arg(&cfg)
         .current_dir(&repo)
         .output()
-        .map_err(|e| format!("failed to run py ({}): {}", script.display(), e))?;
+        .map_err(|e| format!("failed to run Python ({}): {}", script.display(), e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     if output.status.success() {
@@ -116,8 +171,8 @@ fn spawn_py_console(args: &[&str]) -> Result<String, String> {
     let repo = repo_dir();
     let script = telegram_script();
     let cfg = config_path();
-    Command::new("py")
-        .arg("-3")
+    let mut command = python_command();
+    command
         .arg("-X")
         .arg("utf8")
         .arg(&script)
@@ -131,15 +186,102 @@ fn spawn_py_console(args: &[&str]) -> Result<String, String> {
     Ok("Opened a console window. Complete the prompts there, then return here.".to_string())
 }
 
-#[cfg(not(windows))]
-fn spawn_py_console(_args: &[&str]) -> Result<String, String> {
-    Err("Console launch is only supported on Windows.".to_string())
+#[cfg(target_os = "macos")]
+fn spawn_py_console(args: &[&str]) -> Result<String, String> {
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+    fn applescript_quote(value: &str) -> String {
+        value.replace('\\', "\\\\").replace('"', "\\\"")
+    }
+
+    let repo = repo_dir();
+    let script = telegram_script();
+    let cfg = config_path();
+    let mut parts = vec![
+        "python3".to_string(),
+        "-X".to_string(),
+        "utf8".to_string(),
+        script.to_string_lossy().into_owned(),
+    ];
+    parts.extend(args.iter().map(|value| (*value).to_string()));
+    parts.push("--config".to_string());
+    parts.push(cfg.to_string_lossy().into_owned());
+    let command_line = format!(
+        "cd {} && {}",
+        shell_quote(&repo.to_string_lossy()),
+        parts
+            .iter()
+            .map(|part| shell_quote(part))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let script_line = format!(
+        "tell application \"Terminal\" to do script \"{}\"",
+        applescript_quote(&command_line)
+    );
+    Command::new("/usr/bin/osascript")
+        .arg("-e")
+        .arg(script_line)
+        .spawn()
+        .map_err(|e| format!("failed to open Terminal: {}", e))?;
+    Ok("Opened Terminal. Complete the prompts there, then return here.".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_py_console(args: &[&str]) -> Result<String, String> {
+    let repo = repo_dir();
+    let script = telegram_script();
+    let cfg = config_path();
+    let python_args = {
+        let mut values = vec![
+            "-X".to_string(),
+            "utf8".to_string(),
+            script.to_string_lossy().into_owned(),
+        ];
+        values.extend(args.iter().map(|value| (*value).to_string()));
+        values.push("--config".to_string());
+        values.push(cfg.to_string_lossy().into_owned());
+        values
+    };
+    let terminals: [(&str, &[&str]); 3] = [
+        ("x-terminal-emulator", &["-e"]),
+        ("gnome-terminal", &["--"]),
+        ("konsole", &["-e"]),
+    ];
+    for (terminal, prefix) in terminals {
+        let mut command = Command::new(terminal);
+        command
+            .args(prefix)
+            .arg("python3")
+            .args(&python_args)
+            .current_dir(&repo);
+        if command.spawn().is_ok() {
+            return Ok(format!(
+                "Opened {}. Complete the prompts there, then return here.",
+                terminal
+            ));
+        }
+    }
+    Err(
+        "No supported terminal launcher found (x-terminal-emulator, gnome-terminal, or konsole)."
+            .to_string(),
+    )
 }
 
 async fn node_command(args: Vec<String>, stdin_data: Option<String>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        run_node_io(&arg_refs, stdin_data.as_deref())
+        run_node_script(setup_script(), &arg_refs, stdin_data.as_deref())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking panicked: {}", e))?
+}
+
+async fn control_command(args: Vec<String>, stdin_data: Option<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        run_node_script(control_script(), &arg_refs, stdin_data.as_deref())
     })
     .await
     .map_err(|e| format!("spawn_blocking panicked: {}", e))?
@@ -161,6 +303,11 @@ async fn py_console(args: Vec<String>) -> Result<String, String> {
     })
     .await
     .map_err(|e| format!("spawn_blocking panicked: {}", e))?
+}
+
+#[tauri::command]
+async fn preflight() -> Result<String, String> {
+    node_command(vec!["--preflight-json".into()], None).await
 }
 
 #[tauri::command]
@@ -203,11 +350,77 @@ async fn launch_observe() -> Result<String, String> {
     py_console(vec!["--observe-senders".into()]).await
 }
 
+#[tauri::command]
+async fn watcher_status() -> Result<String, String> {
+    control_command(vec!["--watcher-status-json".into()], None).await
+}
+
+#[tauri::command]
+async fn watcher_start() -> Result<String, String> {
+    control_command(vec!["--watcher-start-json".into()], None).await
+}
+
+#[tauri::command]
+async fn watcher_stop() -> Result<String, String> {
+    control_command(vec!["--watcher-stop-json".into()], None).await
+}
+
+#[tauri::command]
+async fn profiles_scan() -> Result<String, String> {
+    control_command(vec!["--profiles-scan-json".into()], None).await
+}
+
+#[tauri::command]
+async fn profiles_verify() -> Result<String, String> {
+    control_command(vec!["--profiles-verify-json".into()], None).await
+}
+
+#[tauri::command]
+async fn verify_start() -> Result<String, String> {
+    control_command(vec!["--verify-start-json".into()], None).await
+}
+
+#[tauri::command]
+async fn verify_status() -> Result<String, String> {
+    control_command(vec!["--verify-status-json".into()], None).await
+}
+
+#[tauri::command]
+async fn verify_stop() -> Result<String, String> {
+    control_command(vec!["--verify-stop-json".into()], None).await
+}
+
+#[tauri::command]
+async fn join_start(invite_url: String) -> Result<String, String> {
+    let payload = serde_json::json!({ "inviteUrl": invite_url }).to_string();
+    control_command(vec!["--join-start-json".into()], Some(payload)).await
+}
+
+#[tauri::command]
+async fn join_status() -> Result<String, String> {
+    control_command(vec!["--join-status-json".into()], None).await
+}
+
+#[tauri::command]
+async fn join_stop() -> Result<String, String> {
+    control_command(vec!["--join-stop-json".into()], None).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let runtime = resource_dir.join("aki-watch-runtime");
+                if has_runtime_scripts(&runtime) {
+                    let _ = BUNDLED_RUNTIME_DIR.set(runtime);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            preflight,
             env_check,
             config_status,
             get_config,
@@ -215,7 +428,18 @@ pub fn run() {
             send_test,
             list_dialogs,
             launch_login,
-            launch_observe
+            launch_observe,
+            watcher_status,
+            watcher_start,
+            watcher_stop,
+            profiles_scan,
+            profiles_verify,
+            verify_start,
+            verify_status,
+            verify_stop,
+            join_start,
+            join_status,
+            join_stop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

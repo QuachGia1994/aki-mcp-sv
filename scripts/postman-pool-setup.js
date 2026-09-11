@@ -142,6 +142,68 @@ async function sendTestReport(configPath) {
   }
 }
 
+function browserArgsFromConfig(config) {
+  const args = [];
+  if (config.librewolfBinary) args.push('--librewolf-binary', config.librewolfBinary);
+  if (config.profilesRoot) args.push('--profiles-root', config.profilesRoot);
+  for (const profile of config.profileDirectories || []) args.push('--profile-directory', profile);
+  if (config.scratchRoot) args.push('--scratch-root', config.scratchRoot);
+  return args;
+}
+
+function geckodriverStatus() {
+  const code = 'from pathlib import Path; import shutil; p=shutil.which("geckodriver"); r=Path.home()/".cache"/"selenium"/"geckodriver"; h=[str(x) for x in r.rglob("geckodriver*") if x.is_file()] if r.exists() else []; print(p or (h[-1] if h else "managed-by-selenium-manager"))';
+  const result = pyCapture(['-c', code]);
+  return result.ok ? result.text : 'unknown';
+}
+
+function preflightView(configPath) {
+  const configExists = existsSync(configPath);
+  const raw = withDefaults(readConfig(configPath));
+  const status = getPostmanPoolConfigStatus(configPath);
+  const pyVer = pyCapture(['--version']);
+  const telethon = moduleVersion('telethon');
+  const selenium = moduleVersion('selenium');
+  const scan = pyVer.ok ? pyCapture([JOIN_SCRIPT, ...browserArgsFromConfig(raw), '--dry-run']) : { ok: false, text: 'Python not found' };
+  let scanData = null;
+  if (scan.ok) {
+    try { scanData = JSON.parse(scan.text.split(/\r?\n/).filter(Boolean).at(-1) || '{}'); } catch {}
+  }
+  const joinIssues = [];
+  if (!configExists) joinIssues.push({ code: 'config_missing', message: 'Save Settings once to create the local Aki Watch config.' });
+  if (!pyVer.ok) joinIssues.push({ code: 'python_missing', message: 'Python 3 is required. Install Python 3 and ensure py/python3 is on PATH.' });
+  if (!selenium) joinIssues.push({ code: 'selenium_missing', message: 'Selenium is missing. Install with: python -m pip install selenium' });
+  if (!scan.ok) joinIssues.push({ code: 'browser_scan_failed', message: scan.text || 'LibreWolf/profile discovery failed.' });
+  else if (!(scanData?.profiles?.length > 0)) joinIssues.push({ code: 'profiles_missing', message: 'No valid LibreWolf profiles were found.' });
+  if (raw.headless) joinIssues.push({ code: 'headless_manual_verify', message: 'Headless is blocked because Human Verify requires a visible LibreWolf window.' });
+
+  const watcherIssues = [...joinIssues];
+  if (!telethon) watcherIssues.push({ code: 'telethon_missing', message: 'Telethon is missing. Install with: python -m pip install telethon' });
+  if (!status.ready) watcherIssues.push({ code: 'config_incomplete', message: `Complete Settings: ${status.missing.join(', ')}` });
+
+  return {
+    ready: joinIssues.length === 0 && watcherIssues.length === 0,
+    joinReady: joinIssues.length === 0,
+    watcherReady: watcherIssues.length === 0,
+    joinIssues,
+    watcherIssues,
+    issues: watcherIssues,
+    headless: raw.headless === true,
+    configReady: status.ready,
+    missingConfig: status.missing,
+    dependencies: {
+      node: process.version,
+      python: pyVer.ok ? pyVer.text : null,
+      telethon,
+      selenium,
+      geckodriver: pyVer.ok ? geckodriverStatus() : null,
+      librewolfBinary: scanData?.librewolfBinary || raw.librewolfBinary || null,
+    },
+    profiles: scanData?.profiles?.length || 0,
+    profilesRoot: scanData?.profilesRoot || raw.profilesRoot || null,
+  };
+}
+
 function printCheck(configPath) {
   const status = getPostmanPoolConfigStatus(configPath);
   const raw = readConfig(configPath);
@@ -156,7 +218,8 @@ function printCheck(configPath) {
   line('librewolf', librewolf ? (existsSync(librewolf) ? librewolf : `MISSING: ${librewolf}`) : 'auto-discover');
   line('profilesRoot', raw.profilesRoot || 'auto-detect (%APPDATA%/librewolf/Profiles)');
   console.log(`\nConfig: ${configPath}`);
-  line('enabled', status.enabled);
+  line('watcher owner', 'Aki Watch GUI');
+  line('legacy enabled', status.enabled);
   line('sourceChatId', status.sourceChatId || '(missing)');
   line('adminUserIds', status.adminUserIds.length ? status.adminUserIds.join(', ') : '(missing)');
   line('reportChatId', status.reportChatId || '(missing)');
@@ -241,14 +304,7 @@ async function runSetup(configPath) {
       }
     }
 
-    if (await yes('Enable the watcher now (set enabled=true)?')) {
-      config = withDefaults(readConfig(configPath));
-      config.enabled = true;
-      writeConfig(configPath, config);
-      console.log('enabled=true written. Restart Aki so the watcher process picks it up.');
-    } else {
-      console.log('Left enabled=false. Set it to true and restart Aki when ready.');
-    }
+    console.log('Setup complete. Start or stop the watcher from Aki Watch > Auto Watch; no Aki MCP restart is required.');
   } finally {
     rl.close();
   }
@@ -274,6 +330,10 @@ async function main() {
   }
   if (args.includes('--send-test-json')) {
     await sendTestReport(configPath);
+    return 0;
+  }
+  if (args.includes('--preflight-json')) {
+    console.log(JSON.stringify(preflightView(configPath)));
     return 0;
   }
   if (args.includes('--check')) {

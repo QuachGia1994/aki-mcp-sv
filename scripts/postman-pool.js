@@ -133,9 +133,10 @@ function writeJsonAtomic(pathName, value) {
   renameSync(tmp, pathName);
 }
 
-export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
+export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH, { allowDisabled = false } = {}) {
   const raw = readJson(configPath, null);
-  if (!raw?.enabled) return { enabled: false };
+  if (!raw) return { enabled: false };
+  if (!raw.enabled && !allowDisabled) return { enabled: false };
   const telegramApiId = Number(process.env.AKI_POSTMAN_POOL_TELEGRAM_API_ID || raw.telegramApiId);
   const telegramApiHash = process.env.AKI_POSTMAN_POOL_TELEGRAM_API_HASH || raw.telegramApiHash;
   const reportBotToken = process.env.AKI_POSTMAN_POOL_REPORT_BOT_TOKEN || raw.reportBotToken || raw.botToken;
@@ -294,13 +295,13 @@ function startTelegramUserListener(config, onMessage, spawnImpl = cp.spawn) {
   return child;
 }
 
-export function startPostmanPoolWatcher({ configPath = POSTMAN_POOL_CONFIG_PATH, statePath = POSTMAN_POOL_STATE_PATH, fetchImpl = fetch, spawnImpl = cp.spawn } = {}) {
+export function startPostmanPoolWatcher({ configPath = POSTMAN_POOL_CONFIG_PATH, statePath = POSTMAN_POOL_STATE_PATH, fetchImpl = fetch, spawnImpl = cp.spawn, forceEnabled = false } = {}) {
   let config;
-  try { config = loadPostmanPoolConfig(configPath); } catch (error) {
+  try { config = loadPostmanPoolConfig(configPath, { allowDisabled: forceEnabled }); } catch (error) {
     console.error(`[postman-pool] disabled: ${error.message}`);
     return { enabled: false, close() {} };
   }
-  if (!config.enabled) return { enabled: false, close() {} };
+  if (!config.enabled && !forceEnabled) return { enabled: false, close() {} };
 
   const state = readJson(statePath, { seen: [] });
   const seen = new Set(Array.isArray(state.seen) ? state.seen.slice(-MAX_SEEN) : []);

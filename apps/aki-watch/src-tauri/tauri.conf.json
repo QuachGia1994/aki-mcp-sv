@@ -10,18 +10,34 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Aki Watch",
-        "width": 800,
-        "height": 600
+        "title": "Aki Watch — Postman Team Auto-Joiner",
+        "width": 1080,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 640
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' asset: http://asset.localhost data:",
+        "style-src": "'self' 'unsafe-inline'"
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["msi"],
+    "targets": "all",
+    "resources": {
+      "../package.json": "aki-watch-runtime/package.json",
+      "../../../scripts/postman-pool-control.js": "aki-watch-runtime/scripts/postman-pool-control.js",
+      "../../../scripts/postman-pool.js": "aki-watch-runtime/scripts/postman-pool.js",
+      "../../../scripts/postman-pool-setup.js": "aki-watch-runtime/scripts/postman-pool-setup.js",
+      "../../../scripts/postman-pool-join.py": "aki-watch-runtime/scripts/postman-pool-join.py",
+      "../../../scripts/postman-pool-telegram.py": "aki-watch-runtime/scripts/postman-pool-telegram.py",
+      "../../../scripts/userdata.js": "aki-watch-runtime/scripts/userdata.js"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -5,9 +5,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ## [Unreleased]
 
 ### Added
-- **Chrome/CDP Postman pool browser path.** Authorized pool joins use a dedicated non-default Chrome user-data directory, attach Selenium to Chrome's loopback CDP endpoint, and dispatch normal pointer events to the Postman `Accept Invite` / `Join Team` control while preserving the manual-only Cloudflare verification checkpoint.
+- **Aki Watch Postman Team Auto-Joiner GUI.** A Tauri desktop controller now supports manual invite runs with per-account progress, background Telegram watcher Start/Stop, profile scan/login verification, readiness preflight, profile selection, and a native Windows/macOS/Linux CI build matrix while keeping Human Verify manual.
 
 ### Fixed
+- **Aki Watch packaging and runtime readiness.** Packaged builds carry the minimal controller/worker scripts instead of relying on the build machine's source path, preflight blocks missing dependencies/config, headless auto-join is rejected when Human Verify may be required, Verify Login is cancellable with per-profile progress, and watcher health distinguishes unresponsive from healthy running state.
 - File moves refuse existing destinations; concurrent file moves cannot overwrite the same destination.
 - Partial text reads preserve UTF-8 characters across chunk boundaries, normalize CRLF consistently, count trailing line endings correctly, and validate non-negative line limits including zero.
 - Recursive directory creation accepts missing parent chains while retaining root and symlink/junction containment checks.
@@ -21,7 +22,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Astra 6 native Luna handoff policy.** Any Astra 6 variant reviews and settles scope before delegating approximately 90% of remaining substantive implementation/tests to native host `gpt-5.6-luna` at high reasoning effort, then reviews evidence and risky diffs. Unavailable native Luna is reported once before an allowed fallback, with no provider reconfiguration or false claim of execution.
 
 ### Removed
-- **LibreWolf/Firefox Postman pool backend.** Postman pool join now has one browser path only: dedicated Chrome profiles controlled through CDP. Legacy `browserBackend`, `profileRoot`, and `librewolfBinary` config fields are ignored and removed when the setup tool rewrites the local config.
+- **Chrome/CDP dependency from Postman pool auto-join.** The join path now uses LibreWolf/geckodriver session copies only; Chrome-specific profile/CDP configuration and challenge-click behavior are no longer part of Aki Watch.
 - **OpenCode and Kiro worker integrations.** Aki no longer registers `local__opencode_read`, `local__opencode_exec`, `local__opencode_status`, or `local__kiro_read`; their panel/API controls, worker routing, OpenCode agent profiles/provider asset, dedicated launcher, implementation modules, and integration tests were removed. The Budget Router and Doctor now cover xKiro + AGY only, while normal Aki write/edit tools remain the local implementation path.
 
 ## [1.15.0] - 2026-09-08

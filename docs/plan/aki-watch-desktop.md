@@ -1,52 +1,55 @@
-# Aki Watch desktop app (Phase 1)
+# Aki Watch desktop app
 
-Goal: a small Tauri v2 desktop GUI so a non-technical owner can set up and run Aki Watch (Postman pool auto-join) — a friendly front-end over the proven `scripts/postman-pool*.js|py`, shareable as a Windows app.
+Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the proven `scripts/postman-pool*.js|py` runtime and can be built natively for Windows, macOS, and Linux.
 
-## Scope-lock (MVP) and non-goals
+## Scope
 
-- MVP **wraps existing runtimes**; it does NOT bundle Node/Python/Telethon/Selenium or Google Chrome. The pool uses Chrome/CDP only and requires a dedicated non-default Chrome user-data directory. Target machine already has this repo plus those dependencies. A self-contained installer that ships runtimes is a later phase.
-- MVP reuses `~/.aki/mcpsv/postman-pool.json` (the scripts' own loader). Moving secrets into the OS keychain is a follow-up.
-- MVP produces an **unsigned** Windows build (SmartScreen warning expected). Code signing + Tauri updater are follow-ups.
-- No automation logic is reimplemented in Rust — the app shells out to the Node/Python that is already tested (131/131).
+- The app orchestrates existing Node/Python/Telethon/Selenium scripts; join/report/config logic remains in those scripts.
+- Runtime browser is LibreWolf through Selenium/geckodriver. The join worker drives a session-only copy of each selected profile so originals can remain open.
+- `~/.aki/mcpsv/postman-pool.json` remains the config SSoT. Secrets stay local; OS keychain storage remains a later hardening item.
+- Human Verify is manual: detect, report, wait, then resume. No challenge-control clicking or stealth/fingerprint logic.
+- The app bundles its own minimal Node/Python script runtime as Tauri resources, so packaged builds no longer depend on a source checkout. Node, Python, LibreWolf, Telethon, Selenium, and the browser driver remain host prerequisites; launch preflight reports them with remediation.
 
-## Toolchain (verified 2026-09-07)
+## Architecture decisions
 
-cargo 1.97.1 · rustc 1.97.1 · node v26.7.0 · npm 11.19.0. Tauri v2 is feasible on this machine.
+- Location: `apps/aki-watch/`.
+- All Tauri commands that wait for Node/Python run as `async fn` + `tauri::async_runtime::spawn_blocking`.
+- GUI readiness/config actions call `scripts/postman-pool-setup.js`; runtime Start/Stop/status/profile/manual-join actions call `scripts/postman-pool-control.js`; Telegram interactive actions call `scripts/postman-pool-telegram.py`. No duplicate business rules in Rust.
+- Windows uses `py -3`; macOS/Linux use `python3`.
+- Interactive Telegram login/observe opens a native console/terminal: Windows new console, macOS Terminal through `osascript`, Linux via `x-terminal-emulator`, `gnome-terminal`, or `konsole`.
+- Packaged GUI processes restore the user's shell PATH with `tauri-apps/fix-path-env-rs` pinned to `c4c45d503ea115a839aae718d02f79e7c7f0f673`, so Node/Python installed through normal package managers remain discoverable.
+- Bundle target is `all`; actual installers are built on their native host/CI. Windows does not produce a native macOS DMG by itself.
+- Version SSoT remains `package.json`; `tauri.conf.json` references it and `Cargo.toml` must stay in lockstep.
 
-## Decisions
+## Screens
 
-- Location: `apps/aki-watch/` inside this repo (tight coupling to `scripts/*`; additive and reversible).
-- Backend↔scripts: Rust `#[tauri::command] async fn` spawns `node`/`py` from the repo via `tauri::async_runtime::spawn_blocking` (tauri.A1 never-block-UI), scoped to the repo dir (tauri.B7 scope every spawn).
-- Single source of truth for readiness/validation: reuse the Node exports `getPostmanPoolConfigStatus`, `resolveReportCredentials`, `sendPostmanPoolReportMessage` through a tiny `node -e`/subcommand bridge — no duplicate validation in Rust.
-- Telethon interactive login (phone/OTP/2FA): MVP launches the existing interactive login/setup in a console the owner completes, then the GUI polls `getPostmanPoolConfigStatus` for readiness. Hosting the OTP fields natively (staged stdin protocol into the Python) is the main UX debt — recorded here so it is not mistaken for done.
-- Version SSOT: `package.json`; `tauri.conf.json` version = `"../package.json"`; `Cargo.toml` crate version bumped in lockstep (tauri.B5).
+1. Join Now — paste a full invite link or raw `invite_code`, scan all LibreWolf profiles, Start/Stop one manual all-profile run, show progress/account status/realtime worker log.
+2. Auto Watch — Start/Stop/Refresh the detached Telegram watcher without restarting Aki MCP; scan/verify Postman profile sessions; run Telegram login/list/observe/report-test helpers.
+3. Settings — Telegram credentials/session IDs, source/admin allowlist, report bot/chat, LibreWolf binary/profile root/profile selection, `headless`, scratch root, timeouts, and the shared environment check.
 
-## MVP screens
+## Current checklist
 
-1. Environment check — runs the `--check` path, shows the readiness table.
-2. Setup wizard — API creds form (link my.telegram.org) → launch login (console) → pick `sourceChatId` → capture `adminUserIds` → bot token + `reportChatId` → configure Chrome binary + dedicated user-data/profile directories → validate → send test → enable toggle.
-3. Status/control — enabled state, missing fields, send outbound test, open the onboarding doc.
+- [x] Tauri v2 scaffold and async subprocess boundary.
+- [x] Config/status/save bridge to the Node SSoT.
+- [x] Telegram login/list/observe controls.
+- [x] GUI migrated from stale Chrome/CDP fields to LibreWolf/geckodriver fields.
+- [x] Windows/macOS/Linux Python launcher paths implemented.
+- [x] PATH restoration added for packaged GUI apps.
+- [x] Bundle config changed from MSI-only to platform-native `all`.
+- [x] Runtime watcher ownership moved out of `scripts/start.js`; Aki Watch controls a detached watcher with loopback-authenticated graceful stop/status.
+- [x] Manual GUI join uses stdin for invite data, supports raw `invite_code`, and records only the latest local result/log instead of accumulating run files.
+- [x] Python worker emits per-account start/done events for live GUI progress; Human Verify events remain manual-only.
+- [x] GUI rebuilt around the uploaded Joiner flow: invite input, Start/Stop, progress metrics, account table, realtime log, watcher controls, profile health, and settings.
+- [x] `cargo check`, `cargo fmt --check`, focused Python/Node tests, and full repo tests are green on Windows.
+- [x] Opus HOLD P0 packaging fix: minimal runtime scripts are Tauri resources and packaged runtime resolution no longer requires the compile-time repo path.
+- [x] Opus P1 UX: machine-readable preflight, Headless/Human-Verify hard guard, cancellable Verify Login with per-profile progress, humanized common errors.
+- [x] Accessibility hardening: tabs/progress/live regions plus profile checkbox picker; restrictive local CSP enabled.
+- [x] Dedicated `.github/workflows/aki-watch.yml` native build/smoke matrix added for Windows/macOS/Linux. macOS/Linux remain unproven until the workflow runs green after commit/push.
+- [ ] Run a fresh real Postman invite E2E; static tests cannot prove the provider's current page flow.
+- [ ] Later: native in-window OTP/2FA fields, keychain secret storage, code signing/updater, optional bundled runtimes.
 
-## Security/boundary (inherited, unchanged)
+## Risks / limits
 
-Outbound `sendMessage` only; never `getUpdates`/`setWebhook`/`deleteWebhook`; secrets never printed or committed; invite URLs never logged. Chrome/CDP binds only to loopback, requires a dedicated non-default Chrome user-data directory, and never automates Human Verify.
-
-## Build checklist (staged)
-
-- [x] Stage 1 — scaffold `apps/aki-watch` (Tauri v2 + vanilla frontend); async command `env_check` runs Node `--check`; window renders it. Verified via `npm run tauri dev` (owner) after installing VS C++ Build Tools.
-- [x] Stage 2 — config read/status/save via Node JSON bridge (`--status-json`/`--get-config-json`/`--set-config-json`, secret-safe); Rust `config_status`/`get_config`/`save_config`; 3-screen UI.
-- [x] Stage 3 — `launch_login`/`launch_observe` (Windows CREATE_NEW_CONSOLE for interactive OTP), `list_dialogs` (non-interactive), `send_test` (sendMessage-only), enable/disable toggle guarded on `ready`.
-- [x] Stage 4 audit — 8 commands all async + spawn_blocking (tauri.A1 pass); version SSOT consistent (package.json 0.1.0 = Cargo.toml, tauri.conf version=../package.json); bundle target set to `["msi"]`.
-- [ ] Stage 4 package — owner runs `npm run tauri build` to produce the unsigned `.msi` (heavy release build; first bundle downloads WiX). Output: `src-tauri/target/release/bundle/msi/*.msi`. Unsigned → SmartScreen warning expected.
-- [ ] Follow-ups (not MVP) — native OTP fields, OS keychain secret storage, code signing + Tauri updater, bundled runtimes.
-
-## Risks
-
-- Auto-join across many accounts + a Telegram user session: Postman/Telegram ToS (see `docs/ref/aki-watch-onboarding.md`).
-- First `cargo build` time and network dependency.
-- Unsigned build triggers Windows SmartScreen until signing is added.
-
-## Open confirmations
-
-- Location `apps/aki-watch/` acceptable inside this repo?
-- MVP login-in-console acceptable for now (vs waiting for native OTP UX in-window)?
+- macOS and Linux terminal launchers need a supported local terminal and installed runtime dependencies.
+- Provider login/invite UI can change independently of the app; account-chooser support should be added only after live evidence confirms the selectors/flow.
+- Building distributable artifacts has platform-specific prerequisites and signing requirements.

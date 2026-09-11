@@ -68,102 +68,7 @@ class PostmanJoinVerificationTests(unittest.TestCase):
             MODULE.emit_progress = original_emit
         self.assertEqual(driver.reads, 2)
         self.assertEqual([event["type"] for event in events], ["manual_verification_required", "manual_verification_resolved"])
-
-    def test_turnstile_checkbox_point_is_offset_from_iframe_left_edge(self):
-        class By:
-            CSS_SELECTOR = "css"
-
-        class Driver:
-            def find_elements(self, _by, _selector):
-                return [object()]
-
-            def execute_script(self, _script, _element):
-                return {"x": 100, "y": 200, "width": 300, "height": 65, "visible": True}
-
-        self.assertEqual(MODULE.find_turnstile_checkbox_point(Driver(), By), (130.0, 232.5))
-
-    def test_turnstile_checkbox_point_skips_hidden_iframes(self):
-        class By:
-            CSS_SELECTOR = "css"
-
-        class Driver:
-            def find_elements(self, _by, _selector):
-                return [object()]
-
-            def execute_script(self, _script, _element):
-                return {"x": 0, "y": 0, "width": 0, "height": 0, "visible": False}
-
-        self.assertIsNone(MODULE.find_turnstile_checkbox_point(Driver(), By))
-
-    def test_click_human_verification_checkbox_cycles_offsets_across_attempts(self):
-        class By:
-            CSS_SELECTOR = "css"
-
-        class Driver:
-            def find_elements(self, _by, _selector):
-                return [object()]
-
-            def execute_script(self, _script, _element):
-                return {"x": 0, "y": 0, "width": 300, "height": 64, "visible": True}
-
-        clicks = []
-        original = MODULE.click_point
-        MODULE.click_point = lambda _driver, x, _y: clicks.append(x)
-        try:
-            for attempt in range(len(MODULE.CF_CHECKBOX_LEFT_OFFSETS)):
-                self.assertTrue(MODULE.click_human_verification_checkbox(Driver(), By, attempt))
-        finally:
-            MODULE.click_point = original
-        self.assertEqual(clicks, list(MODULE.CF_CHECKBOX_LEFT_OFFSETS))
-
-    def test_click_human_verification_checkbox_returns_false_without_challenge_iframe(self):
-        class By:
-            CSS_SELECTOR = "css"
-
-        class Driver:
-            def find_elements(self, _by, _selector):
-                return []
-
-        self.assertFalse(MODULE.click_human_verification_checkbox(Driver(), By))
-
-    def test_security_verification_wait_auto_clicks_the_human_checkbox(self):
-        class By:
-            TAG_NAME = "tag"
-            CSS_SELECTOR = "css"
-
-        class Driver:
-            current_url = "https://identity.getpostman.com/login"
-            title = "Just a moment..."
-
-            def __init__(self):
-                self.reads = 0
-
-            def find_element(self, _by, _name):
-                self.reads += 1
-                text = "Performing security verification. This website verifies you are not a bot." if self.reads == 1 else "Postman invite ready"
-                return type("Element", (), {"text": text})()
-
-            def find_elements(self, _by, _selector):
-                return [object()]
-
-            def execute_script(self, _script, _element):
-                return {"x": 10, "y": 20, "width": 300, "height": 65, "visible": True}
-
-        clicks = []
-        events = []
-        original_emit = MODULE.emit_progress
-        original_click = MODULE.click_point
-        MODULE.emit_progress = lambda event: events.append(event)
-        MODULE.click_point = lambda _driver, _x, _y: clicks.append((_x, _y))
-        try:
-            driver = Driver()
-            self.assertTrue(MODULE.wait_for_security_verification(driver, By, 1, {"profile": "Hồ sơ 1"}, poll_seconds=0))
-        finally:
-            MODULE.emit_progress = original_emit
-            MODULE.click_point = original_click
-        self.assertEqual(len(clicks), 1)
-        self.assertEqual([event["type"] for event in events], ["manual_verification_required", "manual_verification_resolved"])
-        self.assertTrue(events[0]["autoClickAttempted"])
+        self.assertNotIn("autoClickAttempted", events[0])
 
     def test_rate_limit_signal_detects_400_and_rate_limit_pages(self):
         self.assertTrue(MODULE.rate_limit_signal("Rate limit exceeded, try again later"))
@@ -367,6 +272,43 @@ class PostmanJoinVerificationTests(unittest.TestCase):
             self.assertNotIn("logins.json", inventory["files"])
             self.assertIn("default/https+++go.postman.co", inventory["postmanOrigins"])
             self.assertFalse(any("google" in origin for origin in inventory["postmanOrigins"]))
+
+    def test_run_emits_account_start_and_done_for_gui_progress(self):
+        rows = [
+            {"profile": "Hồ sơ 1", "email": "one@example.com", "path": "C:/p1"},
+            {"profile": "Hồ sơ 2", "email": "two@example.com", "path": "C:/p2"},
+        ]
+        events = []
+        original_discover = MODULE.discover_rows
+        original_accept = MODULE.accept_invite
+        original_write = MODULE.write_joined_emails
+        original_emit = MODULE.emit_progress
+        try:
+            MODULE.discover_rows = lambda *_args: rows
+            MODULE.accept_invite = lambda _url, _binary, profile, *_args: ("joined", None) if str(profile).endswith("p1") else ("failed", "boom")
+            MODULE.write_joined_emails = lambda _rows: Path("emails.txt")
+            MODULE.emit_progress = lambda event: events.append(event)
+            result = MODULE.run(
+                "https://app.getpostman.com/join-team?invite_code=abc1234567890123",
+                Path("profiles"),
+                Path("librewolf"),
+                [],
+                Path("scratch"),
+                False,
+                45,
+                300,
+            )
+        finally:
+            MODULE.discover_rows = original_discover
+            MODULE.accept_invite = original_accept
+            MODULE.write_joined_emails = original_write
+            MODULE.emit_progress = original_emit
+        self.assertEqual([event["type"] for event in events], ["account_start", "account_done", "account_start", "account_done"])
+        self.assertEqual(events[0]["index"], 1)
+        self.assertEqual(events[0]["total"], 2)
+        self.assertEqual(events[-1]["status"], "failed")
+        self.assertEqual(len(result["joined"]), 1)
+        self.assertEqual(len(result["failed"]), 1)
 
     def test_detached_child_argv_drops_detach_and_targets_this_worker(self):
         argv = ["postman-pool-join.py", "--invite", "https://x", "--detach", "--result-file", "r.json"]

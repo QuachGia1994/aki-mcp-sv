@@ -33,22 +33,6 @@ SECURITY_VERIFICATION_MARKERS = (
     "verify you are not a bot",
     "checking if the site connection is secure",
 )
-# Cloudflare Turnstile / challenge renders its "Verify you are human" checkbox inside a
-# cross-origin iframe. W3C pointer actions are dispatched at viewport coordinates and route to
-# whatever frame occupies that pixel, so we can click it without switching frames.
-CF_CHALLENGE_IFRAME_CSS = (
-    "iframe[src*='challenges.cloudflare.com'],"
-    "iframe[src*='cdn-cgi/challenge'],"
-    "iframe[id*='cf-chl-widget'],"
-    "iframe[title*='Cloudflare'],"
-    "iframe[title*='security challenge'],"
-    "iframe[title*='human'],"
-    "iframe[title*='challenge']"
-)
-CF_CHECKBOX_LEFT_OFFSET = 30.0
-# Candidate horizontal offsets (px from the widget's left edge) tried across retries so a
-# slightly different widget size/padding/scale still lands on the checkbox.
-CF_CHECKBOX_LEFT_OFFSETS = (30.0, 40.0, 24.0, 50.0, 20.0)
 # Files that mark a directory as a real LibreWolf/Firefox profile.
 PROFILE_MARKER_FILES = ("prefs.js", "times.json", "compatibility.ini")
 # When a Google/Postman "Keep these accounts separate" prompt appears, choose "Keep separate".
@@ -138,61 +122,6 @@ def emit_progress(event: dict) -> None:
     print(f"[postman-pool:event] {json.dumps(event, ensure_ascii=False)}", file=sys.stderr, flush=True)
 
 
-def click_point(driver, x: float, y: float) -> None:
-    from selenium.webdriver.common.actions import interaction
-    from selenium.webdriver.common.actions.action_builder import ActionBuilder
-    from selenium.webdriver.common.actions.pointer_input import PointerInput
-
-    pointer = PointerInput(interaction.POINTER_MOUSE, "mouse")
-    builder = ActionBuilder(driver, mouse=pointer)
-    # A short move trajectory plus a brief press-hold looks less robotic to the challenge and
-    # gives Turnstile a real pointerdown/up pair to register. move_to_location uses viewport
-    # coordinates, so it routes into the cross-origin challenge iframe.
-    builder.pointer_action.move_to_location(int(round(max(0.0, x - 8))), int(round(max(0.0, y - 6))))
-    builder.pointer_action.move_to_location(int(round(x)), int(round(y)))
-    builder.pointer_action.pointer_down()
-    builder.pointer_action.pause(0.06)
-    builder.pointer_action.pointer_up()
-    builder.perform()
-
-
-def find_turnstile_checkbox_point(driver, By, left_offset: float = CF_CHECKBOX_LEFT_OFFSET) -> tuple[float, float] | None:
-    frames = driver.find_elements(By.CSS_SELECTOR, CF_CHALLENGE_IFRAME_CSS)
-    for frame in frames:
-        try:
-            rect = driver.execute_script(
-                "const r = arguments[0].getBoundingClientRect();"
-                "return {x: r.left, y: r.top, width: r.width, height: r.height, visible: r.width > 0 && r.height > 0};",
-                frame,
-            )
-        except Exception:
-            continue
-        if not rect or not rect.get("visible"):
-            continue
-        # The checkbox sits near the left edge of the widget, vertically centered. Never aim
-        # past the widget's own width.
-        width = float(rect["width"])
-        x = float(rect["x"]) + min(float(left_offset), max(6.0, width / 2.0))
-        y = float(rect["y"]) + float(rect["height"]) / 2.0
-        return x, y
-    return None
-
-
-def click_human_verification_checkbox(driver, By, attempt: int = 0) -> bool:
-    left_offset = CF_CHECKBOX_LEFT_OFFSETS[attempt % len(CF_CHECKBOX_LEFT_OFFSETS)]
-    try:
-        point = find_turnstile_checkbox_point(driver, By, left_offset)
-    except Exception:
-        point = None
-    if not point:
-        return False
-    try:
-        click_point(driver, point[0], point[1])
-        return True
-    except Exception:
-        return False
-
-
 def wait_for_security_verification(driver, By, timeout: int, progress: dict | None = None, poll_seconds: float = 1.0) -> bool:
     def snapshot() -> tuple[str, str]:
         try:
@@ -212,19 +141,8 @@ def wait_for_security_verification(driver, By, timeout: int, progress: dict | No
         return False
     if not security_verification_signal(driver.current_url, body, title):
         return True
-    # Try to solve the Cloudflare "Verify you are human" checkbox automatically first; if it
-    # cannot be clicked (managed/interactive challenge, late render, or a human is faster) the
-    # manual fallback below still resolves the moment the challenge clears.
-    auto_clicked = False
-    attempt = 0
-    try:
-        auto_clicked = click_human_verification_checkbox(driver, By, attempt)
-    except Exception:
-        auto_clicked = False
-    attempt += 1
-    emit_progress({"type": "manual_verification_required", "autoClickAttempted": auto_clicked, **(progress or {})})
+    emit_progress({"type": "manual_verification_required", **(progress or {})})
     deadline = time.time() + timeout
-    last_click = time.time()
     while time.time() < deadline:
         time.sleep(poll_seconds)
         if reauth_wall_signal(driver.current_url):
@@ -233,15 +151,6 @@ def wait_for_security_verification(driver, By, timeout: int, progress: dict | No
         if not security_verification_signal(driver.current_url, body, title):
             emit_progress({"type": "manual_verification_resolved", **(progress or {})})
             return True
-        # The checkbox often renders a beat after the page; keep retrying, cycling the target
-        # offset each time so a slightly different widget still gets hit.
-        if time.time() - last_click >= 2:
-            try:
-                click_human_verification_checkbox(driver, By, attempt)
-            except Exception:
-                pass
-            attempt += 1
-            last_click = time.time()
     return False
 
 
@@ -763,7 +672,8 @@ def verify_login(profiles_root: Path, binary: Path, profile_directories: list[st
     if not profiles:
         raise RuntimeError("no LibreWolf profiles found")
     results = []
-    for row in profiles:
+    for index, row in enumerate(profiles, 1):
+        emit_progress({"type": "verify_start", "index": index, "total": len(profiles), "profile": row["profile"], "email": row.get("email")})
         inventory = profile_session_inventory(Path(row["path"]))
         entry = {
             "profile": row["profile"],
@@ -796,6 +706,7 @@ def verify_login(profiles_root: Path, binary: Path, profile_directories: list[st
         finally:
             close_firefox(driver)
         results.append(entry)
+        emit_progress({"type": "verify_done", "index": index, "total": len(profiles), **entry})
     return {"verifyUrl": verify_url, "results": results}
 
 
@@ -818,7 +729,8 @@ def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories:
     if not profiles:
         raise RuntimeError("no LibreWolf profiles found")
 
-    for row in profiles:
+    for index, row in enumerate(profiles, 1):
+        emit_progress({"type": "account_start", "index": index, "total": len(profiles), "profile": row["profile"], "email": row.get("email")})
         try:
             log(f"[postman-pool] {row['profile']} -> {row.get('email') or 'email unknown'}")
             status, error = accept_invite(
@@ -842,8 +754,11 @@ def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories:
                 skipped.append(result)
             else:
                 failed.append(result)
+            emit_progress({"type": "account_done", "index": index, "total": len(profiles), **result})
         except Exception as exc:
-            failed.append({"profile": row["profile"], "email": row.get("email"), "status": "failed", "error": str(exc)})
+            result = {"profile": row["profile"], "email": row.get("email"), "status": "failed", "error": str(exc)}
+            failed.append(result)
+            emit_progress({"type": "account_done", "index": index, "total": len(profiles), **result})
 
     email_file = write_joined_emails(joined)
     return {"joined": joined, "manualAccept": manual_accept, "skipped": skipped, "failed": failed, "emailFile": str(email_file)}

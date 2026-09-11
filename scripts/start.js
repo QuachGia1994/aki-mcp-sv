@@ -20,7 +20,6 @@ import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { USER_DIR, readIngressConfig } from './userdata.js';
 import { killPostmanDaemon } from './postman-mcp.js';
-import { startPostmanPoolWatcher } from './postman-pool.js';
 
 const gatePort = process.env.GATEKEEPER_PORT || '9999';
 const panelPort = process.env.PANEL_PORT || '9998';
@@ -97,7 +96,6 @@ let panel;
 let d1Bridge = null;
 let loopbackMcp = null;
 let cloudflared = null;
-let postmanPool = null;
 let shuttingDown = false;
 
 function spawnCloudflared(credPath) {
@@ -126,7 +124,6 @@ function spawnCloudflared(credPath) {
 
 // Boot-time construction of the tools server surfaces registration-time failures before a client connects.
 warmToolsServer();
-postmanPool = startPostmanPoolWatcher();
 // Qwen Desktop uses a loopback-only Streamable HTTP endpoint, avoiding OAuth and child-process launchers while reusing the exact same in-process tool policy surface.
 loopbackMcp = startLoopbackMcp();
 // Optional web bridge uses the same in-process tools session and policy surface as /mcp clients.
@@ -160,7 +157,6 @@ function shutdown() {
   d1Bridge?.close();
   loopbackMcp?.close();
   cloudflared?.kill();
-  postmanPool?.close();
   killPostmanDaemon();
   gateServer?.close();
   panel?.close();

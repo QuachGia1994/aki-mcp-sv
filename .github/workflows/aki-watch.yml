@@ -1,0 +1,103 @@
+name: Aki Watch Tauri
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/aki-watch/**'
+      - 'scripts/postman-pool*.js'
+      - 'scripts/postman-pool*.py'
+      - 'scripts/userdata.js'
+      - '.github/workflows/aki-watch.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/aki-watch/**'
+      - 'scripts/postman-pool*.js'
+      - 'scripts/postman-pool*.py'
+      - 'scripts/userdata.js'
+      - '.github/workflows/aki-watch.yml'
+
+jobs:
+  build-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundle: msi
+            artifact: windows
+          - os: macos-latest
+            bundle: app,dmg
+            artifact: macos
+          - os: ubuntu-22.04
+            bundle: deb,appimage
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux Tauri prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 xvfb
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: apps/aki-watch/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'apps/aki-watch/src-tauri -> target'
+
+      - name: Install Aki Watch frontend tooling
+        working-directory: apps/aki-watch
+        run: npm ci
+
+      - name: Build native Tauri bundle
+        working-directory: apps/aki-watch
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+
+      - name: Smoke launch Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path 'apps/aki-watch/src-tauri/target/release/aki-watch.exe'
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) { throw "Aki Watch exited during smoke launch with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Smoke launch macOS binary
+        if: runner.os == 'macOS'
+        run: |
+          apps/aki-watch/src-tauri/target/release/aki-watch &
+          pid=$!
+          sleep 5
+          kill -0 "$pid"
+          kill "$pid"
+
+      - name: Smoke launch Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a apps/aki-watch/src-tauri/target/release/aki-watch &
+          pid=$!
+          sleep 5
+          kill -0 "$pid"
+          kill "$pid"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aki-watch-${{ matrix.artifact }}
+          path: apps/aki-watch/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 7

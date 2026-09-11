@@ -1,175 +1,573 @@
 const { invoke } = window.__TAURI__.core;
-
 const $ = (selector) => document.querySelector(selector);
 
-function showScreen(name) {
-  document.querySelectorAll(".screen").forEach((el) => el.classList.toggle("active", el.id === `screen-${name}`));
-  document.querySelectorAll(".tab").forEach((el) => el.classList.toggle("active", el.dataset.screen === name));
+const state = {
+  profiles: [],
+  selectedProfiles: [],
+  preflight: null,
+  joinTimer: null,
+  watcherTimer: null,
+  verifyTimer: null,
+  joinRunning: false,
+  watcherRunning: false,
+  verifyRunning: false,
+  joinLogHidden: false,
+};
+
+function parseJson(text) {
+  const value = String(text ?? '').trim();
+  if (!value) return {};
+  return JSON.parse(value);
 }
 
-async function runCheck() {
-  const out = $("#check-out");
-  const btn = $("#check-btn");
-  btn.disabled = true;
-  out.textContent = "Running environment check\u2026";
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach((element) => element.classList.toggle('active', element.id === `screen-${name}`));
+  document.querySelectorAll('.tab').forEach((element) => {
+    const active = element.dataset.screen === name;
+    element.classList.toggle('active', active);
+    element.setAttribute('aria-selected', String(active));
+  });
+  if (name === 'settings') loadConfig();
+  if (name === 'watch') {
+    refreshWatcher();
+    refreshVerify();
+  }
+}
+
+function friendlyError(error) {
+  const text = String(error ?? 'Unknown error');
+  if (/failed to run node|node.*not found|ENOENT.*node/i.test(text)) return 'Node.js was not found. Install Node.js and reopen Aki Watch.';
+  if (/python.*not found|failed to run Python|ENOENT.*python|ENOENT.*py/i.test(text)) return 'Python 3 was not found. Install Python 3 and ensure py/python3 is on PATH.';
+  if (/selenium/i.test(text) && /missing|not installed|No module/i.test(text)) return 'Selenium is missing. Run: python -m pip install selenium';
+  if (/telethon/i.test(text) && /missing|not installed|No module/i.test(text)) return 'Telethon is missing. Run: python -m pip install telethon';
+  if (/LibreWolf/i.test(text) && /not found|missing|does not exist/i.test(text)) return 'LibreWolf was not found. Open Settings and choose the LibreWolf executable/profile root.';
+  if (/config not found|config is incomplete|missing .*sourceChatId|missing .*telegram/i.test(text)) return 'Configuration is incomplete. Open Settings and complete the required fields.';
+  if (/Headless mode is blocked/i.test(text)) return 'Turn off Headless browser in Settings. Human Verify requires a visible LibreWolf window.';
+  return text;
+}
+
+function applyActionGuards() {
+  const joinReady = state.preflight?.joinReady === true;
+  const watcherReady = state.preflight?.watcherReady === true;
+  $('#join-start-btn').disabled = state.joinRunning || !joinReady;
+  $('#join-stop-btn').disabled = !state.joinRunning;
+  $('#watch-start-btn').disabled = state.watcherRunning || !watcherReady;
+  $('#watch-stop-btn').disabled = !state.watcherRunning;
+  $('#verify-btn').disabled = state.verifyRunning || !joinReady;
+  $('#verify-stop-btn').disabled = !state.verifyRunning;
+}
+
+function renderPreflight(data) {
+  state.preflight = data;
+  const banner = $('#preflight-banner');
+  banner.classList.remove('checking', 'ready', 'blocked');
+  if (data.joinReady && data.watcherReady) {
+    banner.classList.add('ready');
+    banner.textContent = `Ready · ${data.profiles} profiles · Python ${data.dependencies?.python || 'OK'} · Selenium ${data.dependencies?.selenium || 'OK'} · geckodriver ${data.dependencies?.geckodriver || 'Selenium Manager'}`;
+  } else {
+    banner.classList.add('blocked');
+    const unique = [...new Map([...(data.joinIssues || []), ...(data.watcherIssues || [])].map((item) => [item.code, item])).values()];
+    banner.textContent = `Action required: ${unique.map((item) => item.message).join(' · ')}`;
+  }
+  applyActionGuards();
+}
+
+async function refreshPreflight() {
+  const banner = $('#preflight-banner');
+  banner.className = 'preflight-banner checking';
+  banner.textContent = 'Checking runtime readiness…';
   try {
-    out.textContent = await invoke("env_check");
+    const data = parseJson(await invoke('preflight'));
+    renderPreflight(data);
+    return data;
   } catch (error) {
-    out.textContent = `Environment check failed:\n${error}`;
+    const message = friendlyError(error);
+    const data = { joinReady: false, watcherReady: false, joinIssues: [{ code: 'preflight_failed', message }], watcherIssues: [{ code: 'preflight_failed', message }] };
+    renderPreflight(data);
+    return data;
+  }
+}
+
+function statusClass(status) {
+  if (['joined', 'already_joined', 'authenticated'].includes(status)) return 'status-success';
+  if (['failed', 'manual_verification_timeout', 'not_signed_in', 'error'].includes(status)) return 'status-failed';
+  if (['manual_accept_required', 'manual_verification_required', 'Human Verify'].includes(status)) return 'status-manual';
+  if (['running', 'processing'].includes(status)) return 'status-running';
+  return '';
+}
+
+function statusLabel(status) {
+  const labels = {
+    waiting: 'Waiting',
+    running: 'Processing…',
+    joined: 'Joined',
+    already_joined: 'Already joined',
+    failed: 'Failed',
+    manual_accept_required: 'Manual accept',
+    manual_verification_required: 'Human Verify',
+    manual_verification_timeout: 'Verify timeout',
+    authenticated: 'Signed in',
+    not_signed_in: 'Signed out',
+    cloudflare_challenge: 'Human Verify',
+    unknown: 'Unknown',
+    error: 'Error',
+  };
+  return labels[status] || status || 'Ready';
+}
+
+function profileKey(row) {
+  return row.dir || row.profile || row.email || crypto.randomUUID();
+}
+
+function baseRows() {
+  return state.profiles.map((profile, index) => ({ ...profile, index: index + 1, status: 'waiting' }));
+}
+
+function renderProfilePicker() {
+  const picker = $('#profile-picker');
+  if (!state.profiles.length) {
+    picker.textContent = 'No profiles scanned yet.';
+    return;
+  }
+  const selected = new Set(state.selectedProfiles);
+  picker.innerHTML = state.profiles.map((profile) => {
+    const value = profile.dir || profile.profile;
+    const checked = selected.has(value) || selected.has(profile.profile) ? ' checked' : '';
+    return `<label class="profile-choice"><input type="checkbox" name="profilePick" value="${escapeHtml(value)}"${checked}><span><strong>${escapeHtml(profile.email || 'email unknown')}</strong><small>${escapeHtml(profile.profile || value)}</small></span></label>`;
+  }).join('');
+}
+
+function renderRows(rows) {
+  const body = $('#accounts-body');
+  if (!rows.length) {
+    body.innerHTML = '<tr class="empty-row"><td colspan="4">No profiles found.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map((row, index) => {
+    const label = statusLabel(row.status);
+    const title = row.error ? ` title="${escapeHtml(row.error)}"` : '';
+    return `<tr data-key="${escapeHtml(profileKey(row))}"><td>${row.index || index + 1}</td><td>${escapeHtml(row.email || '—')}</td><td>${escapeHtml(row.profile || row.dir || '—')}</td><td class="status-cell ${statusClass(row.status)}"${title}>${escapeHtml(label)}</td></tr>`;
+  }).join('');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+}
+
+function rowsFromJoin(data) {
+  const rows = baseRows();
+  const byProfile = new Map(rows.map((row) => [row.profile, row]));
+  const ensure = (event) => {
+    const name = event.profile || event.email || 'unknown';
+    if (!byProfile.has(name)) {
+      const row = { profile: event.profile || name, email: event.email || null, index: event.index || rows.length + 1, status: 'waiting' };
+      rows.push(row);
+      byProfile.set(name, row);
+    }
+    return byProfile.get(name);
+  };
+  for (const event of data.events || []) {
+    if (!event?.profile && !event?.email) continue;
+    const row = ensure(event);
+    if (event.email) row.email = event.email;
+    if (event.index) row.index = event.index;
+    if (event.type === 'account_start') row.status = 'running';
+    if (event.type === 'manual_verification_required') row.status = 'manual_verification_required';
+    if (event.type === 'manual_verification_resolved') row.status = 'running';
+    if (event.type === 'manual_accept_required') row.status = 'manual_accept_required';
+    if (event.type === 'account_done') {
+      row.status = event.status || 'failed';
+      row.error = event.error || null;
+    }
+  }
+  const resultGroups = [data.result?.joined, data.result?.manualAccept, data.result?.skipped, data.result?.failed];
+  for (const group of resultGroups) {
+    for (const result of group || []) {
+      const row = ensure(result);
+      row.status = result.status || row.status;
+      row.error = result.error || row.error;
+    }
+  }
+  return rows.sort((a, b) => (a.index || 999) - (b.index || 999));
+}
+
+function renderJoin(data) {
+  const rows = rowsFromJoin(data);
+  renderRows(rows);
+  const totalFromEvents = Math.max(0, ...(data.events || []).map((event) => Number(event.total) || 0));
+  const total = totalFromEvents || rows.length;
+  const done = (data.events || []).filter((event) => event.type === 'account_done').length || (data.result ? rows.filter((row) => row.status !== 'waiting' && row.status !== 'running').length : 0);
+  const joined = data.result?.joined?.length ?? rows.filter((row) => ['joined', 'already_joined'].includes(row.status)).length;
+  const failed = data.result?.failed?.length ?? rows.filter((row) => ['failed', 'manual_verification_timeout'].includes(row.status)).length;
+  $('#metric-profiles').textContent = state.profiles.length || total || '—';
+  $('#metric-progress').textContent = `${Math.min(done, total)} / ${total}`;
+  $('#metric-joined').textContent = joined;
+  $('#metric-failed').textContent = failed;
+  const percent = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  $('#join-progress').style.width = `${percent}%`;
+  $('#join-progress-track').setAttribute('aria-valuenow', String(percent));
+  state.joinRunning = data.running === true;
+  applyActionGuards();
+  if (data.running) {
+    const current = [...(data.events || [])].reverse().find((event) => event.type === 'account_start' || event.type === 'manual_verification_required');
+    $('#join-status').textContent = current?.type === 'manual_verification_required'
+      ? `Human Verify required for ${current.email || current.profile}. Complete it in the open LibreWolf window.`
+      : `Join running${current?.profile ? ` — ${current.profile}` : ''}.`;
+  } else if (data.cancelled) {
+    $('#join-status').textContent = 'Join cancelled by user.';
+  } else if (data.result) {
+    const manual = data.result.manualAccept?.length || 0;
+    $('#join-status').textContent = `Completed: ${joined} joined/already joined · ${manual} manual accept · ${failed} failed.`;
+  } else if (data.error) {
+    $('#join-status').textContent = friendlyError(data.error);
+  }
+  if (data.log && !state.joinLogHidden) $('#join-log').textContent = data.log;
+}
+
+async function scanProfiles() {
+  const buttons = [$('#scan-btn'), $('#watch-scan-btn')];
+  buttons.forEach((button) => { button.disabled = true; });
+  $('#join-status').textContent = 'Scanning LibreWolf profiles…';
+  try {
+    const result = parseJson(await invoke('profiles_scan'));
+    state.profiles = result.profiles || [];
+    $('#metric-profiles').textContent = state.profiles.length;
+    renderRows(baseRows());
+    renderProfilePicker();
+    $('#join-status').textContent = `Found ${state.profiles.length} LibreWolf profiles.`;
+    $('#profile-health').textContent = state.profiles.map((row, index) => `${index + 1}. ${row.email || 'email unknown'}  —  ${row.profile}`).join('\n') || 'No profiles found.';
+    return result;
+  } catch (error) {
+    const message = friendlyError(error);
+    $('#join-status').textContent = `Profile scan failed: ${message}`;
+    $('#profile-health').textContent = `Profile scan failed:\n${message}`;
+    return null;
   } finally {
-    btn.disabled = false;
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+function renderVerify(data) {
+  state.verifyRunning = data.running === true;
+  const doneEvents = (data.events || []).filter((event) => event.type === 'verify_done');
+  const total = Math.max(0, ...(data.events || []).map((event) => Number(event.total) || 0));
+  const current = [...(data.events || [])].reverse().find((event) => event.type === 'verify_start');
+  const rows = data.result?.results || doneEvents.map((event) => event);
+  if (rows.length) {
+    $('#profile-health').textContent = rows.map((row) => `${statusLabel(row.authState).padEnd(12)} ${row.email || 'email unknown'}  —  ${row.profile}${row.error ? ` · ${friendlyError(row.error)}` : ''}`).join('\n');
+  } else if (data.log) {
+    $('#profile-health').textContent = data.log;
+  }
+  if (data.running) {
+    $('#verify-status').textContent = `Verifying ${Math.min(doneEvents.length + 1, total || 1)} / ${total || '?'}${current?.profile ? ` — ${current.profile}` : ''}`;
+  } else if (data.cancelled) {
+    $('#verify-status').textContent = `Verification cancelled · ${doneEvents.length} profiles completed.`;
+  } else if (data.result) {
+    $('#verify-status').textContent = `Verification complete · ${rows.length} profiles checked.`;
+  } else if (data.error) {
+    $('#verify-status').textContent = `Verification failed: ${friendlyError(data.error)}`;
+  } else {
+    $('#verify-status').textContent = 'No verification running.';
+  }
+  applyActionGuards();
+}
+
+async function refreshVerify() {
+  try {
+    const result = parseJson(await invoke('verify_status'));
+    renderVerify(result);
+    if (!result.running && state.verifyTimer) {
+      clearInterval(state.verifyTimer);
+      state.verifyTimer = null;
+    }
+    return result;
+  } catch (error) {
+    $('#verify-status').textContent = `Verification status failed: ${friendlyError(error)}`;
+    return null;
+  }
+}
+
+function ensureVerifyPolling() {
+  if (state.verifyTimer) return;
+  state.verifyTimer = setInterval(refreshVerify, 750);
+}
+
+async function startVerify() {
+  const readiness = await refreshPreflight();
+  if (!readiness.joinReady) {
+    $('#verify-status').textContent = readiness.joinIssues?.[0]?.message || 'Browser prerequisites are not ready.';
+    return;
+  }
+  $('#profile-health').textContent = 'Starting profile verification…';
+  try {
+    const result = parseJson(await invoke('verify_start'));
+    renderVerify(result);
+    ensureVerifyPolling();
+  } catch (error) {
+    $('#verify-status').textContent = `Verify failed: ${friendlyError(error)}`;
+  }
+}
+
+async function stopVerify() {
+  try {
+    const result = parseJson(await invoke('verify_stop'));
+    renderVerify(result);
+  } catch (error) {
+    $('#verify-status').textContent = `Stop verify failed: ${friendlyError(error)}`;
+  }
+}
+
+async function refreshJoin() {
+  try {
+    const result = parseJson(await invoke('join_status'));
+    renderJoin(result);
+    if (!result.running && state.joinTimer) {
+      clearInterval(state.joinTimer);
+      state.joinTimer = null;
+    }
+    return result;
+  } catch (error) {
+    $('#join-status').textContent = `Join status failed: ${friendlyError(error)}`;
+    return null;
+  }
+}
+
+function ensureJoinPolling() {
+  if (state.joinTimer) return;
+  state.joinTimer = setInterval(refreshJoin, 750);
+}
+
+async function startJoin() {
+  const readiness = await refreshPreflight();
+  if (!readiness.joinReady) {
+    $('#join-status').textContent = readiness.joinIssues?.[0]?.message || 'Join prerequisites are not ready.';
+    return;
+  }
+  const inviteUrl = $('#invite-url').value.trim();
+  if (!inviteUrl) {
+    $('#join-status').textContent = 'Paste a Postman invite first.';
+    $('#invite-url').focus();
+    return;
+  }
+  $('#join-start-btn').disabled = true;
+  $('#join-log').textContent = 'Starting join worker…';
+  try {
+    if (!state.profiles.length) await scanProfiles();
+    const result = parseJson(await invoke('join_start', { inviteUrl }));
+    renderJoin(result);
+    ensureJoinPolling();
+  } catch (error) {
+    $('#join-start-btn').disabled = false;
+    $('#join-status').textContent = `Could not start: ${friendlyError(error)}`;
+  }
+}
+
+async function stopJoin() {
+  $('#join-stop-btn').disabled = true;
+  try {
+    const result = parseJson(await invoke('join_stop'));
+    renderJoin(result);
+  } catch (error) {
+    $('#join-status').textContent = `Stop failed: ${friendlyError(error)}`;
+  }
+}
+
+function renderWatcher(data) {
+  const running = data.running === true;
+  const degraded = running && data.unresponsive === true;
+  state.watcherRunning = running;
+  const pill = $('#watcher-pill');
+  pill.classList.toggle('running', running && !degraded);
+  pill.classList.toggle('degraded', degraded);
+  pill.classList.toggle('idle', !running);
+  pill.querySelector('strong').textContent = degraded ? 'Watcher unresponsive' : running ? 'Watcher running' : 'Watcher stopped';
+  const badge = $('#watch-state');
+  badge.classList.toggle('running', running && !degraded);
+  badge.classList.toggle('degraded', degraded);
+  badge.classList.toggle('idle', !running);
+  badge.textContent = degraded ? `Unresponsive · PID ${data.pid}` : running ? `Running · PID ${data.pid}` : 'Stopped';
+  applyActionGuards();
+  if (degraded) $('#watch-log').textContent = `Watcher process is alive but its local control channel is not responding.\n${data.log || ''}`;
+  else if (data.log) $('#watch-log').textContent = data.log;
+  else if (!running) $('#watch-log').textContent = 'Watcher is stopped. Start it here — no Aki restart is required.';
+}
+
+async function refreshWatcher() {
+  try {
+    const data = parseJson(await invoke('watcher_status'));
+    renderWatcher(data);
+    return data;
+  } catch (error) {
+    $('#watch-log').textContent = `Watcher status failed:\n${friendlyError(error)}`;
+    return null;
+  }
+}
+
+async function startWatcher() {
+  const readiness = await refreshPreflight();
+  if (!readiness.watcherReady) {
+    $('#watch-log').textContent = readiness.watcherIssues?.map((item) => item.message).join('\n') || 'Watcher prerequisites are not ready.';
+    return;
+  }
+  $('#watch-start-btn').disabled = true;
+  $('#watch-log').textContent = 'Starting Telegram watcher…';
+  try {
+    const data = parseJson(await invoke('watcher_start'));
+    renderWatcher(data);
+  } catch (error) {
+    $('#watch-log').textContent = `Watcher start failed:\n${friendlyError(error)}`;
+    await refreshWatcher();
+  }
+}
+
+async function stopWatcher() {
+  $('#watch-stop-btn').disabled = true;
+  try {
+    const data = parseJson(await invoke('watcher_stop'));
+    renderWatcher(data);
+  } catch (error) {
+    $('#watch-log').textContent = `Watcher stop failed:\n${friendlyError(error)}`;
+    await refreshWatcher();
   }
 }
 
 async function loadConfig() {
-  const out = $("#setup-out");
+  const out = $('#settings-out');
   try {
-    const cfg = JSON.parse(await invoke("get_config"));
-    const form = $("#setup-form");
-    form.telegramApiId.value = cfg.telegramApiId || "";
-    form.sourceChatId.value = cfg.sourceChatId || "";
-    form.adminUserIds.value = (cfg.adminUserIds || []).join(", ");
-    form.reportChatId.value = cfg.reportChatId || "";
-    form.telegramSessionPath.value = cfg.telegramSessionPath || "";
-    form.chromeBinary.value = cfg.chromeBinary || "";
-    form.chromeUserDataRoot.value = cfg.chromeUserDataRoot || "";
-    form.chromeProfileDirectories.value = (cfg.chromeProfileDirectories || []).join(", ");
-    form.scratchRoot.value = cfg.scratchRoot || "";
+    const cfg = parseJson(await invoke('get_config'));
+    const form = $('#setup-form');
+    form.telegramApiId.value = cfg.telegramApiId || '';
+    form.sourceChatId.value = cfg.sourceChatId || '';
+    form.adminUserIds.value = (cfg.adminUserIds || []).join(', ');
+    form.reportChatId.value = cfg.reportChatId || '';
+    form.telegramSessionPath.value = cfg.telegramSessionPath || '';
+    form.librewolfBinary.value = cfg.librewolfBinary || '';
+    form.profilesRoot.value = cfg.profilesRoot || '';
+    state.selectedProfiles = cfg.profileDirectories || [];
+    renderProfilePicker();
+    form.headless.checked = cfg.headless === true;
+    $('#headless-warning').hidden = cfg.headless !== true;
+    form.scratchRoot.value = cfg.scratchRoot || '';
     form.timeoutSeconds.value = cfg.timeoutSeconds || 45;
     form.manualVerificationSeconds.value = cfg.manualVerificationSeconds || 300;
-    form.telegramApiHash.value = "";
-    form.reportBotToken.value = "";
-    $("#tag-apihash").textContent = cfg.hasApiHash ? "set" : "not set";
-    $("#tag-token").textContent = cfg.hasReportBotToken ? `set (${cfg.tokenSource})` : "not set";
-    out.textContent = `Loaded config from ${cfg.configPath}`;
+    form.telegramApiHash.value = '';
+    form.reportBotToken.value = '';
+    $('#tag-apihash').textContent = cfg.hasApiHash ? 'set' : 'not set';
+    $('#tag-token').textContent = cfg.hasReportBotToken ? `set · ${cfg.tokenSource}` : 'not set';
+    out.textContent = `Loaded ${cfg.configPath}`;
   } catch (error) {
-    out.textContent = `Load failed:\n${error}`;
+    out.textContent = `Load failed:\n${friendlyError(error)}`;
   }
 }
 
 async function saveConfig(event) {
   event.preventDefault();
-  const form = $("#setup-form");
-  const out = $("#setup-out");
+  const form = $('#setup-form');
+  const out = $('#settings-out');
   const patch = {
     telegramApiId: Number(form.telegramApiId.value) || 0,
     sourceChatId: form.sourceChatId.value.trim(),
-    adminUserIds: form.adminUserIds.value.split(",").map((s) => Number(s.trim())).filter((n) => Number.isSafeInteger(n) && n > 0),
+    adminUserIds: form.adminUserIds.value.split(',').map((value) => Number(value.trim())).filter((value) => Number.isSafeInteger(value) && value > 0),
     reportChatId: form.reportChatId.value.trim(),
     telegramSessionPath: form.telegramSessionPath.value.trim(),
-    chromeBinary: form.chromeBinary.value.trim(),
-    chromeUserDataRoot: form.chromeUserDataRoot.value.trim(),
-    chromeProfileDirectories: form.chromeProfileDirectories.value.split(",").map((s) => s.trim()).filter(Boolean),
+    librewolfBinary: form.librewolfBinary.value.trim(),
+    profilesRoot: form.profilesRoot.value.trim(),
+    profileDirectories: [...document.querySelectorAll('input[name="profilePick"]:checked')].map((input) => input.value),
+    headless: form.headless.checked,
     scratchRoot: form.scratchRoot.value.trim(),
     timeoutSeconds: Number(form.timeoutSeconds.value) || 45,
     manualVerificationSeconds: Number(form.manualVerificationSeconds.value) || 300,
   };
   if (form.telegramApiHash.value.trim()) patch.telegramApiHash = form.telegramApiHash.value.trim();
   if (form.reportBotToken.value.trim()) patch.reportBotToken = form.reportBotToken.value.trim();
-  out.textContent = "Saving\u2026";
+  out.textContent = 'Saving…';
   try {
-    await invoke("save_config", { patch: JSON.stringify(patch) });
-    const status = JSON.parse(await invoke("config_status"));
-    out.textContent = `Saved. Ready: ${status.ready ? "YES" : "NO"}. Missing: ${status.missing.length ? status.missing.join(", ") : "none"}`;
+    await invoke('save_config', { patch: JSON.stringify(patch) });
+    const status = parseJson(await invoke('config_status'));
+    out.textContent = `Saved. Required config: ${status.ready ? 'READY' : `missing ${status.missing.join(', ')}`}. No Aki restart is needed for the GUI watcher.`;
     await loadConfig();
+    await scanProfiles();
+    await refreshPreflight();
   } catch (error) {
-    out.textContent = `Save failed:\n${error}`;
+    out.textContent = `Save failed:\n${friendlyError(error)}`;
   }
 }
 
 async function launchConsole(command, label) {
-  const out = $("#dialogs-out");
-  out.textContent = `${label}\u2026`;
-  try {
-    out.textContent = await invoke(command);
-  } catch (error) {
-    out.textContent = `${label} failed:\n${error}`;
-  }
+  const out = $('#telegram-out');
+  out.textContent = `${label}…`;
+  try { out.textContent = await invoke(command); } catch (error) { out.textContent = `${label} failed:\n${friendlyError(error)}`; }
 }
 
 async function listDialogs() {
-  const out = $("#dialogs-out");
-  const btn = $("#dialogs-btn");
-  btn.disabled = true;
-  out.textContent = "Listing groups (needs an authorized login first)\u2026";
-  try {
-    out.textContent = await invoke("list_dialogs");
-  } catch (error) {
-    out.textContent = `List failed:\n${error}`;
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function refreshStatus() {
-  const out = $("#status-out");
-  out.textContent = "Loading\u2026";
-  try {
-    const s = JSON.parse(await invoke("config_status"));
-    out.textContent = [
-      `enabled:       ${s.enabled}`,
-      `browser:       Chrome / CDP`,
-      `ready:         ${s.ready ? "YES" : "NO"}`,
-      `missing:       ${s.missing.length ? s.missing.join(", ") : "none"}`,
-      `sourceChatId:  ${s.sourceChatId || "(none)"}`,
-      `adminUserIds:  ${(s.adminUserIds || []).join(", ") || "(none)"}`,
-      `reportChatId:  ${s.reportChatId || "(none)"}`,
-      `token source:  ${s.tokenSource}`,
-    ].join("\n");
-  } catch (error) {
-    out.textContent = `Status failed:\n${error}`;
-  }
+  const out = $('#telegram-out');
+  out.textContent = 'Listing Telegram groups…';
+  try { out.textContent = await invoke('list_dialogs'); } catch (error) { out.textContent = `List failed:\n${friendlyError(error)}`; }
 }
 
 async function sendTest() {
-  const out = $("#status-out");
-  const btn = $("#test-btn");
-  btn.disabled = true;
-  out.textContent = "Sending outbound test\u2026";
+  const out = $('#telegram-out');
+  out.textContent = 'Sending outbound report test…';
   try {
-    const result = JSON.parse(await invoke("send_test"));
-    out.textContent = result.ok
-      ? `Test sent to chat ${result.chatId} (token: ${result.tokenSource}); message_id=${result.messageId ?? "n/a"}`
-      : `Test failed: ${result.error}`;
+    const result = parseJson(await invoke('send_test'));
+    out.textContent = result.ok ? `Test sent to chat ${result.chatId}; message_id=${result.messageId ?? 'n/a'}` : `Test failed: ${result.error}`;
   } catch (error) {
-    out.textContent = `Test failed:\n${error}`;
-  } finally {
-    btn.disabled = false;
+    out.textContent = `Test failed:\n${friendlyError(error)}`;
   }
 }
 
-async function setEnabled(enabled) {
-  const out = $("#status-out");
+async function environmentCheck() {
+  const out = $('#settings-out');
+  out.textContent = 'Running environment check…';
+  try { out.textContent = await invoke('env_check'); } catch (error) { out.textContent = `Environment check failed:\n${friendlyError(error)}`; }
+}
+
+async function pasteInvite() {
   try {
-    const status = JSON.parse(await invoke("config_status"));
-    if (enabled && !status.ready) {
-      out.textContent = `Cannot enable \u2014 missing: ${status.missing.join(", ")}`;
-      return;
-    }
-    await invoke("save_config", { patch: JSON.stringify({ enabled }) });
-    await refreshStatus();
-    $("#status-out").textContent += `\n\n${enabled ? "Enabled" : "Disabled"}. Restart Aki so the watcher picks up the change.`;
-  } catch (error) {
-    out.textContent = `Toggle failed:\n${error}`;
+    const text = await navigator.clipboard.readText();
+    if (text) $('#invite-url').value = text.trim();
+  } catch {
+    $('#join-status').textContent = 'Clipboard access was blocked; use Ctrl+V in the invite field.';
+    $('#invite-url').focus();
   }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      showScreen(tab.dataset.screen);
-      if (tab.dataset.screen === "setup") loadConfig();
-      if (tab.dataset.screen === "status") refreshStatus();
-    });
+window.addEventListener('DOMContentLoaded', async () => {
+  document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => showScreen(tab.dataset.screen)));
+  $('#paste-btn').addEventListener('click', pasteInvite);
+  $('#scan-btn').addEventListener('click', scanProfiles);
+  $('#watch-scan-btn').addEventListener('click', scanProfiles);
+  $('#verify-btn').addEventListener('click', startVerify);
+  $('#verify-stop-btn').addEventListener('click', stopVerify);
+  $('#join-start-btn').addEventListener('click', startJoin);
+  $('#join-stop-btn').addEventListener('click', stopJoin);
+  $('#clear-log-btn').addEventListener('click', async () => {
+    state.joinLogHidden = !state.joinLogHidden;
+    $('#clear-log-btn').textContent = state.joinLogHidden ? 'Show log' : 'Hide log';
+    if (state.joinLogHidden) $('#join-log').textContent = 'Log hidden in the UI.';
+    else await refreshJoin();
   });
-  $("#check-btn").addEventListener("click", runCheck);
-  $("#reload-btn").addEventListener("click", loadConfig);
-  $("#setup-form").addEventListener("submit", saveConfig);
-  $("#login-btn").addEventListener("click", () => launchConsole("launch_login", "Opening login console"));
-  $("#observe-btn").addEventListener("click", () => launchConsole("launch_observe", "Opening observe console"));
-  $("#dialogs-btn").addEventListener("click", listDialogs);
-  $("#status-btn").addEventListener("click", refreshStatus);
-  $("#test-btn").addEventListener("click", sendTest);
-  $("#enable-btn").addEventListener("click", () => setEnabled(true));
-  $("#disable-btn").addEventListener("click", () => setEnabled(false));
+  $('#watch-start-btn').addEventListener('click', startWatcher);
+  $('#watch-stop-btn').addEventListener('click', stopWatcher);
+  $('#watch-refresh-btn').addEventListener('click', refreshWatcher);
+  $('#login-btn').addEventListener('click', () => launchConsole('launch_login', 'Opening Telegram login'));
+  $('#observe-btn').addEventListener('click', () => launchConsole('launch_observe', 'Opening sender observer'));
+  $('#dialogs-btn').addEventListener('click', listDialogs);
+  $('#test-btn').addEventListener('click', sendTest);
+  $('#reload-btn').addEventListener('click', loadConfig);
+  $('#env-btn').addEventListener('click', environmentCheck);
+  $('#setup-form').addEventListener('submit', saveConfig);
+  $('#setup-form').elements.headless.addEventListener('change', (event) => {
+    $('#headless-warning').hidden = !event.target.checked;
+  });
+  $('#invite-url').addEventListener('keydown', (event) => { if (event.key === 'Enter') startJoin(); });
+
+  await Promise.all([loadConfig(), refreshWatcher(), refreshJoin(), refreshVerify()]);
+  const readiness = await refreshPreflight();
+  if (readiness.dependencies?.python && readiness.dependencies?.selenium) await scanProfiles();
+  state.watcherTimer = setInterval(refreshWatcher, 3000);
+  const currentJoin = await refreshJoin();
+  if (currentJoin?.running) ensureJoinPolling();
+  const currentVerify = await refreshVerify();
+  if (currentVerify?.running) ensureVerifyPolling();
 });

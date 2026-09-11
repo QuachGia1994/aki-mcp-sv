@@ -1,66 +1,72 @@
 # Aki Watch — onboarding & setup
 
-Aki Watch is the Windows-only Postman pool auto-join: it listens to one Telegram group through your own Telegram user session, and when an allowlisted admin posts a Postman team invite it opens that invite in each configured dedicated Chrome profile through CDP, accepts it, and reports the joined accounts back through a Telegram bot DM. This guide is the human walkthrough; the architecture and runtime flow live in `docs/ref/postman-pool-autojoin.md` (how the pieces fit and why).
+Aki Watch is the desktop front-end for Postman pool auto-join. The same codebase targets Windows, macOS, and Linux; it listens to one Telegram group through the owner's Telethon user session, processes allowlisted Postman team invites through existing LibreWolf profiles, and reports results through an outbound Telegram bot. Runtime architecture: `docs/ref/postman-pool-autojoin.md`.
 
-## What only a human can do (no tool skips these)
+## Human checkpoints
 
-The guided setup automates config assembly, validation, and the outbound test — but four steps are gated by Telegram/Postman themselves and must be done by you:
+The setup UI assembles and validates config, but these provider-owned steps remain interactive:
 
-| Step | Why it cannot be automated |
+| Step | Reason |
 |---|---|
-| Get `telegramApiId` / `telegramApiHash` at my.telegram.org | Telegram issues app credentials only through its web login; there is no API to mint them. |
-| Telethon login (phone + one-time code + 2FA) | Interactive by design, and the code/2FA are secrets you type once. |
-| Create the report bot with @BotFather (or reuse one) | Telegram has no API to create a bot; you chat with @BotFather to get the token. |
-| Sign each selected Chrome profile into Postman | Automating a Postman login (credentials/SSO/2FA) is a security and terms risk; the automation only accepts invites in dedicated Chrome profiles already signed in. |
-
-So the realistic target is "guided, validated, one place" — not "zero human steps".
+| Get `telegramApiId` / `telegramApiHash` at my.telegram.org | Telegram issues user-client credentials through its authenticated site. |
+| Telethon login (phone/code/2FA) | Credentials and one-time codes stay with the owner. |
+| Create/reuse the report bot | Bot creation is handled through @BotFather. |
+| Sign the selected LibreWolf profiles into Postman | Aki does not enter Postman credentials/SSO/2FA. |
+| Clear Human Verify when Postman/Cloudflare presents it | Aki detects and waits; it does not interact with challenge controls. |
 
 ## Prerequisites
 
-- Windows, Node (the version in `package.json` `engines`), and the Windows Python launcher `py -3`.
-- Python packages: `py -3 -m pip install telethon selenium`.
-- Google Chrome installed plus a dedicated non-default `chromeUserDataRoot` whose selected profiles are already signed into Postman. Do not use Chrome's normal `%LOCALAPPDATA%\Google\Chrome\User Data` root.
-- A roomy non-system drive for `scratchRoot` (identity-history copies are temporary).
+- Node matching the repository requirement.
+- Python 3 (`py -3` on Windows, `python3` on macOS/Linux).
+- `selenium` and `telethon` installed in that Python.
+- LibreWolf installed and the selected profiles already signed into Postman.
+- On macOS/Linux, the packaged Tauri app restores the shell PATH before launching Node/Python so Homebrew/package-manager installs remain discoverable.
 
-## Step 1 — Telegram API credentials (my.telegram.org)
+Default LibreWolf profile roots are `%APPDATA%\librewolf\Profiles` on Windows, `~/.librewolf` or `~/.mozilla/librewolf` on Linux, and `~/Library/Application Support/librewolf/Profiles` on macOS. Explicit `librewolfBinary` and `profilesRoot` override auto-discovery.
 
-Open `https://my.telegram.org`, log in with your phone number, go to **API development tools**, create an app (any title/short-name), and copy **App api_id** and **App api_hash**. These identify your Telegram user client — keep them local, never commit them.
+## Setup
 
-## Step 2 — Report bot (@BotFather) or reuse an existing outbound bot
+Check prerequisites and current config:
 
-In Telegram, open **@BotFather**, send `/newbot`, choose a name and a username ending in `bot`, and copy the **HTTP API token** it returns. To send reports to your own DM, open your new bot and press **Start** once (a bot cannot message a user who never started it).
-
-You may instead reuse an existing outbound bot: this feature only ever calls Bot API `sendMessage`. If that bot already uses a webhook elsewhere, that is fine — Aki never calls `getUpdates`, `setWebhook`, or `deleteWebhook`, so the webhook owner keeps exclusive inbound control.
-
-## Step 3 — Postman profiles
-
-Ensure each dedicated Chrome profile you want in the pool is already logged into Postman. The automation operates only the normal `Accept Invite` / `Join Team` path; if a profile is signed out it is reported as failed, never fed credentials. Initialize the dedicated user-data directory manually and close its Chrome windows before Aki starts a join run. Human Verify is always manual; Aki waits in the same browser context and resumes after you clear it.
-
-## Step 4 — Run the guided setup
-
-```powershell
+```text
 node scripts/postman-pool-setup.js --check
 ```
 
-`--check` is non-interactive: it prints Node/Python/Telethon/Selenium/Chrome readiness and the current config state (which required fields are still missing), without printing any secret value. Run it any time to see whether the watcher can be enabled.
+Run the guided CLI setup when preferred:
 
-```powershell
+```text
 node scripts/postman-pool-setup.js
 ```
 
-The interactive wizard walks through Telegram credentials/session, source/admin IDs, report bot/chat, Chrome binary, dedicated user-data root, and optional profile-directory allowlist; it then validates the config, offers a single outbound `sendMessage` test, and only then offers to set `enabled=true`. Secrets are written to `~/.aki/mcpsv/postman-pool.json` (outside git) and never echoed. After enabling, restart Aki so the watcher process reads the new config.
+Or use `apps/aki-watch`: a launch preflight checks Node/Python/Telethon/Selenium/LibreWolf/profile readiness and shows actionable blockers. **Join Now** scans profiles and runs a pasted invite with Start/Stop, progress, account table, and realtime logs; **Auto Watch** starts/stops the Telegram watcher without restarting Aki MCP and exposes cancellable per-profile login verification plus Telegram helper actions; **Settings** edits the same `~/.aki/mcpsv/postman-pool.json`, uses a scanned profile picker, and runs the environment check.
 
-`reportChatId` for a private DM is your own Telegram user ID (shown on the `SELF` line during login); for a group, add the bot to that group and use its chat ID from the dialog list.
+The setup fields are Telegram API/session IDs, authorized source/admin IDs, report bot/chat, LibreWolf binary/profile root/profile allowlist, scratch root, and timeouts. Headless auto-join is blocked because Human Verify is manual-only and requires a visible LibreWolf window. `npm start` no longer owns the Postman-pool watcher lifecycle; Aki Watch's background controller does, so normal Start/Stop changes need no MCP restart.
+
+## Telegram setup
+
+Use the existing scripts for the first interactive login and immutable IDs:
+
+```text
+py -3 scripts/postman-pool-telegram.py --login --config C:\Users\YOU\.aki\mcpsv\postman-pool.json
+py -3 scripts/postman-pool-telegram.py --observe-senders --config C:\Users\YOU\.aki\mcpsv\postman-pool.json
+```
+
+On macOS/Linux replace `py -3` with `python3`. The Aki Watch Login/Observe buttons open a native terminal for these interactive flows.
+
+## Profile checks
+
+```text
+py -3 scripts/postman-pool-join.py --dry-run
+py -3 scripts/postman-pool-join.py --smoke-browser
+py -3 scripts/postman-pool-join.py --verify-login
+```
+
+`--dry-run` only inventories profiles. `--smoke-browser` opens a session copy against `about:blank`. `--verify-login` loads Postman and reports each copied profile's auth state. Replace `py -3` with `python3` on macOS/Linux.
 
 ## Safety & limits
 
-- The token and api hash stay only in `~/.aki/mcpsv/` (or the `AKI_POSTMAN_POOL_REPORT_BOT_TOKEN` env var). Never commit or paste them.
-- Outbound only: the report path is `sendMessage`; the source listener is your Telethon user session. Do not point the bot at `getUpdates` or move its webhook.
-- Human Verify is not automated. Chrome/CDP does not add stealth, fingerprint spoofing, challenge-control injection, or random-mouse behavior; it pauses on the challenge and resumes only after you clear it manually.
-- Terms-of-service caution: auto-joining Postman team invites across many accounts, and driving a Telegram user session for automation, can violate Postman's and Telegram's terms. Use it only with accounts and groups you own, at small scale, and stop if a provider flags the activity.
+Secrets remain under `~/.aki/mcpsv/` or the documented environment variable; invite URLs are not logged. The report path uses Bot API `sendMessage` only, so an existing webhook can keep inbound ownership. Aki drives only normal Postman UI; Human Verify is manual. Use only accounts/groups you control and comply with provider terms.
 
-## Reference
+## Packaging
 
-- `docs/ref/postman-pool-autojoin.md` — architecture, boundary, and runtime flow.
-- `scripts/postman-pool-setup.js` — the wizard (`--check` and interactive).
-- `scripts/postman-pool-report-test.js` — standalone outbound `sendMessage` test.
+Tauri bundle targets are platform-native (`all`). The minimal Aki Watch runtime scripts are bundled as Tauri resources under `aki-watch-runtime`, so the target machine no longer needs the source repository. External prerequisites (Node, Python + Telethon/Selenium, LibreWolf/browser driver) are still host dependencies and are checked by preflight. `.github/workflows/aki-watch.yml` builds and smoke-launches native Windows/macOS/Linux artifacts; macOS/Linux should not be called verified until that workflow actually runs green on committed code. Tauri signing/notarization requirements still apply per platform.

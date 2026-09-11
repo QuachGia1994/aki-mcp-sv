@@ -2,71 +2,176 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Aki Watch</title>
+    <title>Aki Watch — Postman Team Auto-Joiner</title>
+    <link rel="stylesheet" href="styles.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
   <body>
-    <main class="container">
-      <h1>Aki Watch</h1>
-      <p class="sub">Postman pool auto-join &mdash; setup &amp; status</p>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">AKI WATCH</p>
+          <h1>Postman Team Auto-Joiner</h1>
+          <p class="subtitle">Paste an invite or let Telegram Watch process authorized invites automatically.</p>
+        </div>
+        <div id="watcher-pill" class="status-pill idle"><span></span><strong>Watcher stopped</strong></div>
+      </header>
 
-      <nav class="tabs">
-        <button type="button" class="tab active" data-screen="check">Environment</button>
-        <button type="button" class="tab" data-screen="setup">Setup</button>
-        <button type="button" class="tab" data-screen="status">Status</button>
+      <nav class="tabs" aria-label="Aki Watch sections" role="tablist">
+        <button class="tab active" data-screen="join" type="button" role="tab" aria-selected="true" aria-controls="screen-join">Join Now</button>
+        <button class="tab" data-screen="watch" type="button" role="tab" aria-selected="false" aria-controls="screen-watch">Auto Watch</button>
+        <button class="tab" data-screen="settings" type="button" role="tab" aria-selected="false" aria-controls="screen-settings">Settings</button>
       </nav>
 
-      <section id="screen-check" class="screen active">
-        <button id="check-btn" type="button">Run environment check</button>
-        <pre id="check-out" class="out">Click "Run environment check" to inspect prerequisites and config readiness.</pre>
+      <div id="preflight-banner" class="preflight-banner checking" role="status" aria-live="polite">Checking runtime readiness…</div>
+
+      <section id="screen-join" class="screen active" role="tabpanel">
+        <article class="card control-card">
+          <div class="card-heading">
+            <div>
+              <p class="section-kicker">Manual run</p>
+              <h2>Join all Postman accounts</h2>
+            </div>
+            <button id="scan-btn" class="button secondary" type="button">Scan profiles</button>
+          </div>
+          <label class="field-label" for="invite-url">Postman invite link or raw invite_code</label>
+          <div class="invite-row">
+            <input id="invite-url" type="text" autocomplete="off" spellcheck="false" placeholder="https://…postman…?invite_code=…" />
+            <button id="paste-btn" class="button secondary" type="button">Paste</button>
+            <button id="join-start-btn" class="button primary" type="button">Start all</button>
+            <button id="join-stop-btn" class="button danger" type="button" disabled>Stop</button>
+          </div>
+
+          <div class="metrics">
+            <div><span>Profiles</span><strong id="metric-profiles">—</strong></div>
+            <div><span>Processed</span><strong id="metric-progress">0 / 0</strong></div>
+            <div><span>Joined</span><strong id="metric-joined">0</strong></div>
+            <div><span>Failed</span><strong id="metric-failed">0</strong></div>
+          </div>
+
+          <div id="join-progress-track" class="progress-track" role="progressbar" aria-label="Join progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="join-progress" class="progress-fill"></div></div>
+          <p id="join-status" class="status-copy" role="status" aria-live="polite">Ready. Scan profiles or paste an invite to begin.</p>
+        </article>
+
+        <article class="card table-card">
+          <div class="card-heading compact">
+            <div>
+              <p class="section-kicker">Accounts</p>
+              <h2>Live progress</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Email</th><th>Profile</th><th>Status</th></tr></thead>
+              <tbody id="accounts-body"><tr class="empty-row"><td colspan="4">No profiles scanned yet.</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card log-card">
+          <div class="card-heading compact">
+            <div>
+              <p class="section-kicker">Runtime</p>
+              <h2>Realtime log</h2>
+            </div>
+            <button id="clear-log-btn" class="button ghost" type="button">Hide log</button>
+          </div>
+          <pre id="join-log" class="console" role="log" aria-live="polite">No join activity yet.</pre>
+        </article>
       </section>
 
-      <section id="screen-setup" class="screen">
-        <p class="hint">Secrets are written to the local config file only, never shown here. Leave a secret field blank to keep the existing value. Get API credentials at my.telegram.org and a bot token from &#64;BotFather (see docs/ref/aki-watch-onboarding.md).</p>
+      <section id="screen-watch" class="screen" role="tabpanel">
+        <div class="two-col">
+          <article class="card">
+            <div class="card-heading">
+              <div>
+                <p class="section-kicker">Telegram listener</p>
+                <h2>Auto Watch</h2>
+              </div>
+              <span id="watch-state" class="mini-badge idle">Stopped</span>
+            </div>
+            <p class="body-copy">Runs as its own local background process. Starting or stopping it does not restart Aki MCP.</p>
+            <div class="action-row">
+              <button id="watch-start-btn" class="button primary" type="button">Start watcher</button>
+              <button id="watch-stop-btn" class="button danger" type="button">Stop watcher</button>
+              <button id="watch-refresh-btn" class="button secondary" type="button">Refresh</button>
+            </div>
+            <pre id="watch-log" class="console small" role="log" aria-live="polite">Watcher log will appear here.</pre>
+          </article>
 
-        <div class="group">
-          <strong>Telegram</strong>
-          <div class="row">
-            <button type="button" id="login-btn">Login (opens console)</button>
-            <button type="button" id="dialogs-btn">List my groups</button>
-            <button type="button" id="observe-btn">Observe admin ID (console)</button>
-          </div>
-          <pre id="dialogs-out" class="out">Login once (console), then "List my groups" to copy a source chat ID. "Observe" prints the admin's sender ID while they post; copy it into Admin user IDs.</pre>
+          <article class="card">
+            <div class="card-heading">
+              <div>
+                <p class="section-kicker">Postman sessions</p>
+                <h2>Profile health</h2>
+              </div>
+            </div>
+            <p class="body-copy">Scan is fast. Verify Login opens session copies and checks whether each account is still authenticated.</p>
+            <div class="action-row">
+              <button id="watch-scan-btn" class="button secondary" type="button">Scan profiles</button>
+              <button id="verify-btn" class="button secondary" type="button">Verify login</button>
+              <button id="verify-stop-btn" class="button danger" type="button" disabled>Stop verify</button>
+            </div>
+            <p id="verify-status" class="status-copy" role="status" aria-live="polite">No verification running.</p>
+            <pre id="profile-health" class="console small" role="log" aria-live="polite">No profile health check yet.</pre>
+          </article>
         </div>
 
-        <form id="setup-form">
-          <label>Telegram API ID<input name="telegramApiId" type="number" inputmode="numeric" /></label>
-          <label>Telegram API hash <span class="tag" id="tag-apihash"></span><input name="telegramApiHash" type="password" placeholder="leave blank to keep" autocomplete="off" /></label>
-          <label>Source chat ID<input name="sourceChatId" /></label>
-          <label>Admin user IDs (comma-separated)<input name="adminUserIds" /></label>
-          <label>Report bot token <span class="tag" id="tag-token"></span><input name="reportBotToken" type="password" placeholder="leave blank to keep / use env" autocomplete="off" /></label>
-          <label>Report chat ID<input name="reportChatId" /></label>
-          <label>Telegram session path<input name="telegramSessionPath" /></label>
-          <label>Chrome binary<input name="chromeBinary" /></label>
-          <label>Chrome user-data root (dedicated)<input name="chromeUserDataRoot" placeholder="Never use Chrome's normal User Data root" /></label>
-          <label>Chrome profile directories (comma-separated)<input name="chromeProfileDirectories" placeholder="blank = discover Default and Profile N" /></label>
-          <label>Scratch root<input name="scratchRoot" /></label>
-          <label>Timeout (seconds)<input name="timeoutSeconds" type="number" inputmode="numeric" /></label>
-          <label>Manual verification wait (seconds)<input name="manualVerificationSeconds" type="number" inputmode="numeric" min="60" max="900" /></label>
-          <div class="row">
-            <button type="button" id="reload-btn">Reload</button>
-            <button type="submit">Save</button>
+        <article class="card">
+          <div class="card-heading compact">
+            <div>
+              <p class="section-kicker">Telegram setup</p>
+              <h2>Account and group helpers</h2>
+            </div>
           </div>
-        </form>
-        <pre id="setup-out" class="out"></pre>
+          <div class="action-row wrap">
+            <button id="login-btn" class="button secondary" type="button">Login Telegram</button>
+            <button id="dialogs-btn" class="button secondary" type="button">List groups</button>
+            <button id="observe-btn" class="button secondary" type="button">Observe admin ID</button>
+            <button id="test-btn" class="button secondary" type="button">Send report test</button>
+          </div>
+          <pre id="telegram-out" class="console small" role="status" aria-live="polite">Use these only for first-time setup or when the Telegram account changes.</pre>
+        </article>
       </section>
 
-      <section id="screen-status" class="screen">
-        <div class="row">
-          <button id="status-btn" type="button">Refresh status</button>
-          <button id="test-btn" type="button">Send outbound test</button>
-          <button id="enable-btn" type="button">Enable</button>
-          <button id="disable-btn" type="button">Disable</button>
-        </div>
-        <pre id="status-out" class="out">Click "Refresh status".</pre>
-        <p class="hint">Enabling only writes the config flag &mdash; restart Aki so the watcher process (in the MCP server) picks it up. The outbound test uses sendMessage only.</p>
+      <section id="screen-settings" class="screen" role="tabpanel">
+        <article class="card">
+          <div class="card-heading">
+            <div>
+              <p class="section-kicker">Configuration</p>
+              <h2>Local settings</h2>
+            </div>
+            <button id="reload-btn" class="button secondary" type="button">Reload</button>
+          </div>
+          <p class="body-copy">Secrets stay in the local Aki config. Leaving a secret field blank preserves its existing value.</p>
+          <form id="setup-form" class="settings-grid">
+            <label>Telegram API ID<input name="telegramApiId" type="number" inputmode="numeric" /></label>
+            <label>Telegram API hash <span id="tag-apihash" class="field-tag"></span><input name="telegramApiHash" type="password" placeholder="leave blank to keep" autocomplete="off" /></label>
+            <label>Source chat ID<input name="sourceChatId" /></label>
+            <label>Admin user IDs<input name="adminUserIds" placeholder="comma-separated" /></label>
+            <label>Report bot token <span id="tag-token" class="field-tag"></span><input name="reportBotToken" type="password" placeholder="leave blank to keep" autocomplete="off" /></label>
+            <label>Report chat ID<input name="reportChatId" /></label>
+            <label class="wide">Telegram session path<input name="telegramSessionPath" /></label>
+            <label>LibreWolf binary<input name="librewolfBinary" placeholder="blank = auto-discover" /></label>
+            <label>LibreWolf profiles root<input name="profilesRoot" placeholder="blank = auto-detect" /></label>
+            <fieldset class="profile-picker-field wide">
+              <legend>Selected profiles</legend>
+              <div id="profile-picker" class="profile-picker" aria-describedby="profile-picker-help">Scan profiles to choose specific accounts.</div>
+              <p id="profile-picker-help" class="field-help">No checked profile = use all discovered profiles.</p>
+            </fieldset>
+            <label>Scratch root<input name="scratchRoot" /></label>
+            <label>Join timeout<input name="timeoutSeconds" type="number" inputmode="numeric" min="10" max="120" /></label>
+            <label>Human Verify wait<input name="manualVerificationSeconds" type="number" inputmode="numeric" min="60" max="900" /></label>
+            <label class="checkbox-field"><input name="headless" type="checkbox" aria-describedby="headless-warning" /><span>Headless browser</span></label>
+            <p id="headless-warning" class="inline-warning wide" hidden>Headless auto-join is blocked because Human Verify requires a visible LibreWolf window.</p>
+            <div class="form-actions wide">
+              <button class="button primary" type="submit">Save settings</button>
+              <button id="env-btn" class="button secondary" type="button">Environment check</button>
+            </div>
+          </form>
+          <pre id="settings-out" class="console small" role="status" aria-live="polite">Settings not loaded yet.</pre>
+        </article>
       </section>
     </main>
   </body>
