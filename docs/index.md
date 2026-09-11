@@ -37,7 +37,7 @@
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
 - [ref/postman-desktop-remote.md](ref/postman-desktop-remote.md) — desktop-only Postman AI Chat remotely controlled from iPhone through Cloudflare One private RDP + Access/MFA while Aki/repo/shell/build/test remain on Windows
 - [ref/postman-image-inbox.md](ref/postman-image-inbox.md) — local screenshot/photo drop folder exposed to Postman Agent Mode as MCP-native image content through one read-only `image_inbox` tool
-- [ref/postman-pool-autojoin.md](ref/postman-pool-autojoin.md) — Aki Watch Postman Team Auto-Joiner: LibreWolf/geckodriver profile joins, optional Telegram user-session watcher, readiness/preflight controls, manual Human Verify boundary, and outbound result reporting without reading browser secrets
+- [ref/postman-pool-autojoin.md](ref/postman-pool-autojoin.md) — Aki Watch Postman Team Auto-Joiner: LibreWolf/geckodriver Account Chooser session switching, optional Telegram user-session watcher, readiness/preflight controls, bounded automatic challenge failure/retry, and outbound result reporting without reading browser secrets
 - [ref/KIMI-WEB-LIVE-TEST.md](ref/KIMI-WEB-LIVE-TEST.md) — portable Kimi K3 browser bootstrap for the custom-domain Worker -> D1 -> local Aki route; placeholders only, no runtime credentials
 - [ref/QWEN-WEB-LIVE-TEST.md](ref/QWEN-WEB-LIVE-TEST.md) — portable Qwen browser bootstrap using the custom domain, idempotent task creation, polling, and real Windows project access
 - [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)

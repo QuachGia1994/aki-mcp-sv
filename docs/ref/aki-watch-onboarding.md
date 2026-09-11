@@ -12,7 +12,6 @@ The setup UI assembles and validates config, but these provider-owned steps rema
 | Telethon login (phone/code/2FA) | Credentials and one-time codes stay with the owner. |
 | Create/reuse the report bot | Bot creation is handled through @BotFather. |
 | Sign the selected LibreWolf profiles into Postman | Aki does not enter Postman credentials/SSO/2FA. |
-| Clear Human Verify when Postman/Cloudflare presents it | Aki detects and waits; it does not interact with challenge controls. |
 
 ## Prerequisites
 
@@ -40,7 +39,7 @@ node scripts/postman-pool-setup.js
 
 Or use `apps/aki-watch`: a launch preflight checks Node/Python/Telethon/Selenium/LibreWolf/profile readiness and shows actionable blockers. **Join Now** scans profiles and runs a pasted invite with Start/Stop, progress, account table, and realtime logs; **Auto Watch** starts/stops the Telegram watcher without restarting Aki MCP and exposes cancellable per-profile login verification plus Telegram helper actions; **Settings** edits the same `~/.aki/mcpsv/postman-pool.json`, uses a scanned profile picker, and runs the environment check.
 
-The setup fields are Telegram API/session IDs, authorized source/admin IDs, report bot/chat, LibreWolf binary/profile root/profile allowlist, scratch root, and timeouts. Headless auto-join is blocked because Human Verify is manual-only and requires a visible LibreWolf window. `npm start` no longer owns the Postman-pool watcher lifecycle; Aki Watch's background controller does, so normal Start/Stop changes need no MCP restart.
+The setup fields are Telegram API/session IDs, authorized source/admin IDs, report bot/chat, LibreWolf binary/profile root/profile allowlist, scratch root, and timeout. Headless auto-join is allowed: the runtime follows Postman's Account Chooser, switches each saved account, and auto-confirms the normal invite flow without a manual verification checkpoint. `npm start` no longer owns the Postman-pool watcher lifecycle; Aki Watch's background controller does, so normal Start/Stop changes need no MCP restart.
 
 ## Telegram setup
 
@@ -65,7 +64,7 @@ py -3 scripts/postman-pool-join.py --verify-login
 
 ## Safety & limits
 
-Secrets remain under `~/.aki/mcpsv/` or the documented environment variable; invite URLs are not logged. The report path uses Bot API `sendMessage` only, so an existing webhook can keep inbound ownership. Aki drives only normal Postman UI; Human Verify is manual. Use only accounts/groups you control and comply with provider terms.
+Secrets remain under `~/.aki/mcpsv/` or the documented environment variable; invite URLs and account-switch URLs are not logged. The report path uses Bot API `sendMessage` only, so an existing webhook can keep inbound ownership. Aki drives normal Postman Account Chooser/invite UI and does not implement a CAPTCHA/challenge solver or bypass; a persistent challenge causes that automatic run to fail/retry instead of requesting operator input. Use only accounts/groups you control and comply with provider terms.
 
 ## Packaging
 

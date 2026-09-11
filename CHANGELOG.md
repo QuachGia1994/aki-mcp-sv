@@ -5,10 +5,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ## [Unreleased]
 
 ### Added
-- **Aki Watch Postman Team Auto-Joiner GUI.** A Tauri desktop controller now supports manual invite runs with per-account progress, background Telegram watcher Start/Stop, profile scan/login verification, readiness preflight, profile selection, and a native Windows/macOS/Linux CI build matrix while keeping Human Verify manual.
+- **Aki Watch Postman Team Auto-Joiner GUI.** A Tauri desktop controller now supports manual invite runs with per-account progress, background Telegram watcher Start/Stop, profile scan/login verification, readiness preflight, profile selection, and a native Windows/macOS/Linux CI build matrix. The join path now follows the supplied author's automatic Account Chooser flow: discover saved accounts, switch each session through its chooser card, auto-confirm normal invite controls/checkboxes, and verify the final team destination.
 
 ### Fixed
-- **Aki Watch packaging and runtime readiness.** Packaged builds carry the minimal controller/worker scripts instead of relying on the build machine's source path, preflight blocks missing dependencies/config, headless auto-join is rejected when Human Verify may be required, Verify Login is cancellable with per-profile progress, and watcher health distinguishes unresponsive from healthy running state.
+- **Aki Watch packaging and runtime readiness.** Packaged builds carry the minimal controller/worker scripts instead of relying on the build machine's source path, preflight blocks missing dependencies/config, Verify Login is cancellable with per-profile progress, and watcher health distinguishes unresponsive from healthy running state. The earlier manual Human Verify/headless guard was removed after porting the supplied author's fully automatic Account Chooser/session-switch flow; persistent provider challenges now fail/retry instead of pausing for operator input.
 - File moves refuse existing destinations; concurrent file moves cannot overwrite the same destination.
 - Partial text reads preserve UTF-8 characters across chunk boundaries, normalize CRLF consistently, count trailing line endings correctly, and validate non-negative line limits including zero.
 - Recursive directory creation accepts missing parent chains while retaining root and symlink/junction containment checks.

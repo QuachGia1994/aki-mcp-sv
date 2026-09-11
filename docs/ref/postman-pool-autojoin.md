@@ -10,8 +10,8 @@ Local automation for the owner's existing Postman accounts in LibreWolf profiles
 - The report bot is outbound-only for this feature. Aki never calls `getUpdates`, `setWebhook`, or `deleteWebhook` on that bot.
 - The invite URL is treated like a bearer link: it is passed to the Python worker through stdin, never logged, and never echoed in the Telegram result.
 - The worker copies only the session material it needs into a scratch profile, drives that copy, then deletes it. Original LibreWolf profiles may remain open and are not modified by the join worker.
-- Aki does not attempt to solve or click Cloudflare/Human Verify. When a security-verification page appears, it emits a manual checkpoint and waits in the same visible browser context for the owner to clear it.
-- If Postman redirects invite acceptance into a forced interactive re-auth wall, Aki reports `manual_accept_required` instead of looping until timeout.
+- Join follows the supplied author's normal Postman Account Chooser flow: build the chooser URL from `invite_code`, discover signed-in account cards, switch each account through its chooser `href`, auto-confirm normal invite controls/checkboxes, and require an actual Postman team/application destination before success.
+- There is no manual Human Verify/manual-accept checkpoint in the normal runtime. Aki does not implement a CAPTCHA/challenge solver or bypass; if a security challenge persists through the bounded automatic loop, that account fails and remains retryable instead of pausing for operator input.
 
 ## Requirements
 
@@ -50,12 +50,11 @@ Create or edit `~/.aki/mcpsv/postman-pool.json`:
   "profileDirectories": [],
   "headless": false,
   "scratchRoot": "D:\\LacViet\\.aki-tmp\\postman-pool",
-  "timeoutSeconds": 45,
-  "manualVerificationSeconds": 300
+  "timeoutSeconds": 45
 }
 ```
 
-Aki Watch blocks auto-join/verify while `headless=true` because Human Verify is manual-only and requires a visible LibreWolf window. `profileDirectories=[]` means discover all valid LibreWolf/Firefox-style profile directories under `profilesRoot`; otherwise choose specific profiles in the GUI picker or provide exact directory/display names. The legacy `enabled` field remains in local config compatibility, but `npm start` no longer owns the watcher lifecycle; the Aki Watch GUI starts/stops the background watcher directly.
+`headless=true` is allowed because the join path has no manual verification checkpoint. A persistent provider security challenge is treated as an automatic-run failure/retry condition rather than a prompt for manual intervention. `profileDirectories=[]` means discover all valid LibreWolf/Firefox-style profile directories under `profilesRoot`; otherwise choose specific profiles in the GUI picker or provide exact directory/display names. The legacy `enabled` field remains in local config compatibility, but `npm start` no longer owns the watcher lifecycle; the Aki Watch GUI starts/stops the background watcher directly.
 
 ## Telegram setup
 
@@ -123,16 +122,16 @@ For the ROBOT SLTP setup, the cloud control may retain webhook ownership while t
 
 ## Runtime flow
 
-1. The configured admin posts a Postman team invite link in the configured Telegram group.
+1. The configured admin posts a Postman team invite link in the configured Telegram group, or the owner pastes the same invite into **Join Now**.
 2. The Aki Watch background watcher receives the Telethon message. `scripts/postman-pool.js` validates sender ID, chat ID, HTTPS Postman host, and invite-shaped URL, deduplicates the link, and queues one join run at a time.
-3. `scripts/postman-pool-join.py` discovers selected LibreWolf profiles. Email labels are inferred from Postman identity URLs in each profile's `places.sqlite` when available.
-4. For each profile, the worker creates a lightweight session-only copy containing the signed-in session files and Postman web storage, starts LibreWolf through Selenium/geckodriver, then opens the invite.
-5. Normal Postman controls such as `Accept Invite` / `Join Team` may be clicked automatically. `Keep these accounts separate` and bounded Postman rate-limit refresh handling are normal interstitial handling.
-6. If Cloudflare/Human Verify appears, Aki reports `manual_verification_required` and only waits. After the owner clears the challenge in the same window, Aki emits `manual_verification_resolved` and resumes. It does not interact with challenge controls.
-7. If invite acceptance forces a Postman re-auth wall, Aki reports `manual_accept_required` for that account and continues the remaining profiles.
-8. Success requires an explicit joined/already-member signal or a redirect to a recognized Postman application/team host. One failed account does not stop the remaining profiles.
-9. Joined account emails are written to `~/.aki/mcpsv/postman-emails.txt`; the report bot sends joined/already-joined, manual-accept, skipped, and failed counts plus account/profile labels.
+3. `scripts/postman-pool-join.py` extracts `invite_code`, builds Postman's normal Account Chooser URL (`identity.getpostman.com/accounts?...continue=...web-invite-accept...`), and discovers selected LibreWolf profiles. Email labels inferred from `places.sqlite` are display metadata only.
+4. For each profile, the worker creates a lightweight session-only copy containing signed-in session files and Postman web storage, starts LibreWolf through Selenium/geckodriver, and opens the Account Chooser.
+5. The chooser is scanned for `a.pm-card-account` / account-chooser cards. Accounts are deduplicated by email across profiles; a later profile containing only already-processed accounts is skipped rather than counted as failed.
+6. For each discovered account, the worker returns to the chooser, finds the card containing that email, navigates to its `href` to switch the Postman session, then runs the author's bounded automatic loop: click normal `Join Team` / `Accept Invite` / `Confirm` / `Continue` / `Switch Team` controls, tick unchecked confirmation boxes, handle `Keep these accounts separate`, and retry bounded Postman rate-limit pages.
+7. Success requires an explicit joined/already-member signal or navigation to a real `*.postman.co` application/team destination rather than the identity/account-switch or `web-invite-accept` transition URL. The worker waits briefly for Postman synchronization, then proceeds to the next account.
+8. There is no manual Human Verify/manual-accept state. Aki does not solve or bypass a provider security challenge; if one persists until the bounded automatic loop expires, that account is failed/retryable and processing continues.
+9. Joined account emails are written to `~/.aki/mcpsv/postman-emails.txt`; the report bot sends joined/already-joined, skipped, and failed counts plus account/profile labels.
 
 ## Current architecture note
 
-The production path is LibreWolf/geckodriver. Lightpanda is not a runtime dependency, and undocumented Postman Root APIs are not used for authentication or invite acceptance. Future account-chooser optimization should preserve the existing profile path until it has live Postman evidence.
+The production path is LibreWolf/geckodriver plus the supplied author's Account Chooser/session-switch pattern. Lightpanda is not a runtime dependency. The browser navigates Postman's public identity/account-chooser pages normally; undocumented Root API cookies/tokens are not a production dependency.

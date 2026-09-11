@@ -7,7 +7,7 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 - The app orchestrates existing Node/Python/Telethon/Selenium scripts; join/report/config logic remains in those scripts.
 - Runtime browser is LibreWolf through Selenium/geckodriver. The join worker drives a session-only copy of each selected profile so originals can remain open.
 - `~/.aki/mcpsv/postman-pool.json` remains the config SSoT. Secrets stay local; OS keychain storage remains a later hardening item.
-- Human Verify is manual: detect, report, wait, then resume. No challenge-control clicking or stealth/fingerprint logic.
+- Join follows the supplied author's fully automatic normal flow: Account Chooser discovery → per-account session switch via chooser card `href` → automatic invite controls/checkboxes → success only on joined signal or real `*.postman.co` destination. There is no manual verification checkpoint; no CAPTCHA/challenge solver or bypass is implemented.
 - The app bundles its own minimal Node/Python script runtime as Tauri resources, so packaged builds no longer depend on a source checkout. Node, Python, LibreWolf, Telethon, Selenium, and the browser driver remain host prerequisites; launch preflight reports them with remediation.
 
 ## Architecture decisions
@@ -38,11 +38,11 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 - [x] Bundle config changed from MSI-only to platform-native `all`.
 - [x] Runtime watcher ownership moved out of `scripts/start.js`; Aki Watch controls a detached watcher with loopback-authenticated graceful stop/status.
 - [x] Manual GUI join uses stdin for invite data, supports raw `invite_code`, and records only the latest local result/log instead of accumulating run files.
-- [x] Python worker emits per-account start/done events for live GUI progress; Human Verify events remain manual-only.
+- [x] Python worker emits chooser discovery + per-account start/status/done events for live GUI progress; manual Human Verify/manual-accept states were removed from the normal flow.
 - [x] GUI rebuilt around the uploaded Joiner flow: invite input, Start/Stop, progress metrics, account table, realtime log, watcher controls, profile health, and settings.
 - [x] `cargo check`, `cargo fmt --check`, focused Python/Node tests, and full repo tests are green on Windows.
 - [x] Opus HOLD P0 packaging fix: minimal runtime scripts are Tauri resources and packaged runtime resolution no longer requires the compile-time repo path.
-- [x] Opus P1 UX: machine-readable preflight, Headless/Human-Verify hard guard, cancellable Verify Login with per-profile progress, humanized common errors.
+- [x] Opus P1 UX: machine-readable preflight, cancellable Verify Login with per-profile progress, humanized common errors. The earlier Headless/Human-Verify hard guard was superseded after direct comparison with the supplied author's source: headless is now allowed because the join path has no manual checkpoint.
 - [x] Accessibility hardening: tabs/progress/live regions plus profile checkbox picker; restrictive local CSP enabled.
 - [x] Dedicated `.github/workflows/aki-watch.yml` native build/smoke matrix added for Windows/macOS/Linux. macOS/Linux remain unproven until the workflow runs green after commit/push.
 - [ ] Run a fresh real Postman invite E2E; static tests cannot prove the provider's current page flow.
@@ -51,5 +51,5 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 ## Risks / limits
 
 - macOS and Linux terminal launchers need a supported local terminal and installed runtime dependencies.
-- Provider login/invite UI can change independently of the app; account-chooser support should be added only after live evidence confirms the selectors/flow.
+- Provider login/invite UI can change independently of the app; the production Account Chooser selectors/flow are source-faithful to the supplied joiner but still require a fresh live-invite E2E against Postman's current UI.
 - Building distributable artifacts has platform-specific prerequisites and signing requirements.

@@ -29,17 +29,18 @@ test('GUI accepts a full invite URL or raw invite code without changing the work
   assert.equal(normalizeManualInvite('not a code'), null);
 });
 
-test('GUI progress parser recovers account and verification events from mixed worker log', () => {
+test('GUI progress parser recovers account chooser and verification events from mixed worker log', () => {
   const log = [
     '[postman-pool] plain log',
-    '[postman-pool:event] {"type":"account_start","profile":"Hồ sơ 1","index":1,"total":2}',
+    '[postman-pool:event] {"type":"accounts_discovered","profile":"Hồ sơ 1","count":1,"total":2}',
+    '[postman-pool:event] {"type":"account_start","profile":"Hồ sơ 1","email":"one@example.com","index":1,"total":2}',
     'noise',
-    '[postman-pool:event] {"type":"manual_verification_required","profile":"Hồ sơ 1"}',
-    '[postman-pool:event] {"type":"account_done","profile":"Hồ sơ 1","status":"joined","index":1,"total":2}',
+    '[postman-pool:event] {"type":"account_status","profile":"Hồ sơ 1","email":"one@example.com","status":"auto_clicked"}',
+    '[postman-pool:event] {"type":"account_done","profile":"Hồ sơ 1","email":"one@example.com","status":"joined","index":1,"total":2}',
     '[postman-pool:event] {"type":"verify_start","profile":"Hồ sơ 2","index":2,"total":2}',
     '[postman-pool:event] {"type":"verify_done","profile":"Hồ sơ 2","authState":"authenticated","index":2,"total":2}',
   ].join('\n');
-  assert.deepEqual(parseWorkerEvents(log).map((event) => event.type), ['account_start', 'manual_verification_required', 'account_done', 'verify_start', 'verify_done']);
+  assert.deepEqual(parseWorkerEvents(log).map((event) => event.type), ['accounts_discovered', 'account_start', 'account_status', 'account_done', 'verify_start', 'verify_done']);
 });
 
 test('Aki main process no longer owns the Postman pool watcher lifecycle', () => {
@@ -63,9 +64,8 @@ test('Aki Watch bundle ships its complete runtime dependency set and enables CSP
   assert.match(config.app.security.csp['connect-src'], /ipc:/);
 });
 
-test('profile verification blocks headless mode on every control path', () => {
+test('automatic account chooser flow allows headless mode and keeps duplicate verify protection', () => {
   const controlSource = readFileSync(new URL('../scripts/postman-pool-control.js', import.meta.url), 'utf8');
-  const guards = controlSource.match(/Headless mode is blocked because profile verification may require a visible LibreWolf window/g) || [];
-  assert.equal(guards.length, 2);
+  assert.doesNotMatch(controlSource, /Headless mode is blocked/);
   assert.match(controlSource, /A profile verification is already running/);
 });

@@ -83,12 +83,10 @@ function shortError(value) {
 
 export function formatPostmanPoolReport(result) {
   const joined = Array.isArray(result?.joined) ? result.joined : [];
-  const manualAccept = Array.isArray(result?.manualAccept) ? result.manualAccept : [];
   const skipped = Array.isArray(result?.skipped) ? result.skipped : [];
   const failed = Array.isArray(result?.failed) ? result.failed : [];
-  const lines = [`Postman pool: ${joined.length} joined/already joined · ${manualAccept.length} manual accept · ${skipped.length} skipped · ${failed.length} failed`];
+  const lines = [`Postman pool: ${joined.length} joined/already joined · ${skipped.length} skipped · ${failed.length} failed`];
   for (const row of joined) lines.push(`✓ ${row.email || row.profile || 'unknown account'}${row.profile && row.email ? ` (${row.profile})` : ''}`);
-  for (const row of manualAccept) lines.push(`⚠ ${row.email || row.profile || 'unknown account'}${row.profile && row.email ? ` (${row.profile})` : ''}: manual accept required (Postman re-auth)`);
   for (const row of skipped) lines.push(`- ${row.email || row.profile || 'unknown account'}: ${shortError(row.status || row.error || 'skipped')}`);
   for (const row of failed) lines.push(`✗ ${row.email || row.profile || 'unknown account'}: ${shortError(row.error || row.status || 'failed')}`);
   return lines.join('\n');
@@ -105,21 +103,9 @@ export function parsePostmanPoolWorkerEvent(line) {
   }
 }
 
-export function formatManualVerificationReport(event) {
-  const account = event?.email || event?.profile || 'unknown account';
-  const profile = event?.email && event?.profile ? ` (${event.profile})` : '';
-  return `Postman pool: Cloudflare verification required for ${account}${profile}. Complete it in the open LibreWolf window; Aki will resume automatically.`;
-}
-
-export function formatManualAcceptReport(event) {
-  const account = event?.email || event?.profile || 'unknown account';
-  const profile = event?.email && event?.profile ? ` (${event.profile})` : '';
-  return `Postman pool: manual accept required for ${account}${profile}. Postman forces a re-auth (Cloudflare) to accept team invites, so open the invite in a normal browser and accept it there.`;
-}
-
 export function postmanPoolResultIsRetryable(result) {
   const failed = Array.isArray(result?.failed) ? result.failed : [];
-  return failed.some((row) => row?.status === 'manual_verification_timeout');
+  return failed.some((row) => /rate limit|challenge|timeout|transition/i.test(String(row?.error || '')));
 }
 
 function readJson(pathName, fallback) {
@@ -161,7 +147,6 @@ export function loadPostmanPoolConfig(configPath = POSTMAN_POOL_CONFIG_PATH, { a
     headless: raw.headless === true,
     scratchRoot: raw.scratchRoot || null,
     timeoutSeconds: Number.isFinite(Number(raw.timeoutSeconds)) ? Math.max(10, Math.min(120, Number(raw.timeoutSeconds))) : 45,
-    manualVerificationSeconds: Number.isFinite(Number(raw.manualVerificationSeconds)) ? Math.max(60, Math.min(900, Number(raw.manualVerificationSeconds))) : 300,
   };
 }
 
@@ -183,7 +168,6 @@ function runJoinWorker(inviteUrl, config, spawnImpl = cp.spawn, onProgress = nul
     if (config.scratchRoot) args.push('--scratch-root', config.scratchRoot);
     if (config.headless) args.push('--headless');
     args.push('--timeout', String(config.timeoutSeconds));
-    args.push('--manual-verification-timeout', String(config.manualVerificationSeconds));
     const child = spawnImpl(command.file, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
     let stderr = '';
@@ -321,24 +305,15 @@ export function startPostmanPoolWatcher({ configPath = POSTMAN_POOL_CONFIG_PATH,
     if (!inviteUrl) return;
     const hash = fingerprint(inviteUrl);
     if (seen.has(hash)) return;
-    let manualVerificationSeen = false;
     try {
       const result = await runJoinWorker(inviteUrl, config, spawnImpl, async (event) => {
-        if (event?.type === 'manual_verification_required') {
-          manualVerificationSeen = true;
-          console.warn(`[postman-pool] ${event.email || event.profile || 'account'} waiting for manual Cloudflare verification`);
-          await report(formatManualVerificationReport(event));
-        } else if (event?.type === 'manual_verification_resolved') {
-          console.log(`[postman-pool] ${event.email || event.profile || 'account'} Cloudflare verification resolved; resuming`);
-        } else if (event?.type === 'manual_accept_required') {
-          console.warn(`[postman-pool] ${event.email || event.profile || 'account'} needs manual invite acceptance (Postman re-auth)`);
-          await report(formatManualAcceptReport(event));
+        if (event?.type === 'account_status') {
+          console.log(`[postman-pool] ${event.email || event.profile || 'account'} · ${event.status || 'processing'}`);
         }
       });
       if (!postmanPoolResultIsRetryable(result)) remember(hash);
       await report(formatPostmanPoolReport(result));
     } catch (error) {
-      if (!manualVerificationSeen) remember(hash);
       await report(`Postman pool: automation failed · ${shortError(error.message)}`);
     }
   };

@@ -74,7 +74,6 @@ function readBrowserConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
     scratchRoot: raw.scratchRoot || '',
     headless: raw.headless === true,
     timeoutSeconds: Number.isFinite(Number(raw.timeoutSeconds)) ? Math.max(10, Math.min(120, Number(raw.timeoutSeconds))) : 45,
-    manualVerificationSeconds: Number.isFinite(Number(raw.manualVerificationSeconds)) ? Math.max(60, Math.min(900, Number(raw.manualVerificationSeconds))) : 300,
   };
 }
 
@@ -91,7 +90,6 @@ export function browserArgs(config) {
   if (config.scratchRoot) args.push('--scratch-root', config.scratchRoot);
   if (config.headless) args.push('--headless');
   args.push('--timeout', String(config.timeoutSeconds));
-  args.push('--manual-verification-timeout', String(config.manualVerificationSeconds));
   return args;
 }
 
@@ -120,7 +118,6 @@ export function scanProfiles(configPath = POSTMAN_POOL_CONFIG_PATH) {
 
 export function verifyProfiles(configPath = POSTMAN_POOL_CONFIG_PATH) {
   const config = readBrowserConfig(configPath);
-  if (config.headless) throw new Error('Headless mode is blocked because profile verification may require a visible LibreWolf window');
   return runPythonJson([...browserArgs(config), '--verify-login']);
 }
 
@@ -151,8 +148,7 @@ export async function watcherStatus() {
 export async function startWatcher() {
   const current = await watcherStatus();
   if (current.running) return current;
-  const browserConfig = readBrowserConfig();
-  if (browserConfig.headless) throw new Error('Headless mode is blocked because Human Verify requires a visible LibreWolf window');
+  readBrowserConfig();
   const logFd = openSync(WATCHER_LOG_PATH, 'w');
   const child = spawn(process.execPath, [SELF_PATH, '--run-watcher'], {
     detached: true,
@@ -293,7 +289,6 @@ export function startJoin(inviteUrl, configPath = POSTMAN_POOL_CONFIG_PATH) {
   const current = joinStatus();
   if (current.running) throw new Error(`A join is already running (pid ${current.pid})`);
   const config = readBrowserConfig(configPath);
-  if (config.headless) throw new Error('Headless mode is blocked because Human Verify requires a visible LibreWolf window');
   const { resultFile, logFile } = joinPaths();
   removeFile(resultFile);
   removeFile(logFile);
@@ -336,7 +331,6 @@ export function startVerify(configPath = POSTMAN_POOL_CONFIG_PATH) {
   const current = verifyStatus();
   if (current.running) throw new Error(`A profile verification is already running (pid ${current.pid})`);
   const config = readBrowserConfig(configPath);
-  if (config.headless) throw new Error('Headless mode is blocked because profile verification may require a visible LibreWolf window');
   const { resultFile, logFile } = verifyPaths();
   removeFile(resultFile);
   removeFile(logFile);

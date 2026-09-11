@@ -162,9 +162,8 @@
             </fieldset>
             <label>Scratch root<input name="scratchRoot" /></label>
             <label>Join timeout<input name="timeoutSeconds" type="number" inputmode="numeric" min="10" max="120" /></label>
-            <label>Human Verify wait<input name="manualVerificationSeconds" type="number" inputmode="numeric" min="60" max="900" /></label>
-            <label class="checkbox-field"><input name="headless" type="checkbox" aria-describedby="headless-warning" /><span>Headless browser</span></label>
-            <p id="headless-warning" class="inline-warning wide" hidden>Headless auto-join is blocked because Human Verify requires a visible LibreWolf window.</p>
+            <label class="checkbox-field"><input name="headless" type="checkbox" /><span>Headless browser</span></label>
+            <p class="field-help wide">Join uses Postman Account Chooser, switches each saved account, auto-confirms the invite, and verifies the final team URL. No manual verification checkpoint is part of the normal flow.</p>
             <div class="form-actions wide">
               <button class="button primary" type="submit">Save settings</button>
               <button id="env-btn" class="button secondary" type="button">Environment check</button>

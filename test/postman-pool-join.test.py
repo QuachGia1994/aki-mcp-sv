@@ -42,33 +42,73 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertFalse(MODULE.security_verification_signal("https://identity.getpostman.com/login", "Sign in to Postman", "Postman"))
         self.assertFalse(MODULE.security_verification_signal("https://example.com/", body, "Just a moment..."))
 
-    def test_security_verification_wait_keeps_same_driver_and_resumes_after_human_clears_it(self):
+    def test_account_chooser_url_matches_author_identity_chain(self):
+        invite = "https://app.getpostman.com/join-team?invite_code=abcdefghijklmnop"
+        chooser = MODULE.account_chooser_url(invite)
+        self.assertTrue(chooser.startswith("https://identity.getpostman.com/accounts?cta=join-team"))
+        self.assertIn("invite_code=abcdefghijklmnop", chooser)
+        self.assertIn("continue=https%3A%2F%2Fapp.getpostman.com%2Fweb-invite-accept%3Finvite_code%3Dabcdefghijklmnop", chooser)
+        self.assertEqual(MODULE.invite_code_from_url(invite), "abcdefghijklmnop")
+
+    def test_team_destination_requires_postman_team_domain_not_identity_transition(self):
+        self.assertTrue(MODULE.team_destination_signal("https://forever30d.postman.co/workspace/abc"))
+        self.assertTrue(MODULE.team_destination_signal("https://forever30d.postman.co/"))
+        self.assertTrue(MODULE.team_destination_signal("https://go.postman.co/home"))
+        self.assertTrue(MODULE.team_destination_signal("https://web.postman.co/onboarding/team"))
+        self.assertFalse(MODULE.team_destination_signal("https://go.postman.co/error"))
+        self.assertFalse(MODULE.team_destination_signal("https://postman.co/pricing"))
+        self.assertFalse(MODULE.team_destination_signal("https://identity.getpostman.com/accounts/auth/test"))
+        self.assertFalse(MODULE.team_destination_signal("https://app.getpostman.com/web-invite-accept?invite_code=x"))
+        self.assertTrue(MODULE.transition_signal("https://identity.getpostman.com/accounts/auth/test"))
+        self.assertTrue(MODULE.transition_signal("https://app.getpostman.com/web-invite-accept?invite_code=x"))
+        self.assertFalse(MODULE.transition_signal("https://example.com/web-invite-accept"))
+
+    def test_join_confirmation_text_without_team_destination_is_not_success(self):
         class By:
             TAG_NAME = "tag"
 
         class Driver:
-            current_url = "https://identity.getpostman.com/login"
-            title = "Just a moment..."
+            current_url = "about:blank"
+            title = "Postman"
 
-            def __init__(self):
-                self.reads = 0
+            def get(self, url):
+                self.current_url = url
 
             def find_element(self, _by, _name):
-                self.reads += 1
-                text = "Performing security verification. This website verifies you are not a bot." if self.reads == 1 else "Postman invite ready"
-                return type("Element", (), {"text": text})()
+                return type("Element", (), {"text": "You joined the team"})()
 
-        events = []
-        original_emit = MODULE.emit_progress
-        MODULE.emit_progress = lambda event: events.append(event)
+        original_modules = MODULE.selenium_modules
+        original_wait_ready = MODULE.wait_document_ready
+        original_find_href = MODULE.find_account_card_href
+        original_accept_step = MODULE.automatic_accept_step
+        original_dismiss = MODULE.dismiss_keep_separate
+        original_attempts = MODULE.ACCOUNT_JOIN_ATTEMPTS
+        original_sleep = MODULE.time.sleep
         try:
-            driver = Driver()
-            self.assertTrue(MODULE.wait_for_security_verification(driver, By, 1, {"profile": "Hồ sơ 1"}, poll_seconds=0))
+            MODULE.selenium_modules = lambda: (None, By, None, None, None)
+            MODULE.wait_document_ready = lambda *_args: None
+            MODULE.find_account_card_href = lambda *_args: "https://identity.getpostman.com/accounts/auth/account-1"
+            MODULE.automatic_accept_step = lambda driver: {"url": driver.current_url, "clicked": None, "checked": 0}
+            MODULE.dismiss_keep_separate = lambda *_args: False
+            MODULE.ACCOUNT_JOIN_ATTEMPTS = 1
+            MODULE.time.sleep = lambda *_args: None
+            status, error, _ = MODULE.process_chooser_account(
+                Driver(),
+                "https://identity.getpostman.com/accounts?cta=join-team&invite_code=secret123",
+                {"email": "one@example.com"},
+                45,
+                {"profile": "Hồ sơ 1"},
+            )
         finally:
-            MODULE.emit_progress = original_emit
-        self.assertEqual(driver.reads, 2)
-        self.assertEqual([event["type"] for event in events], ["manual_verification_required", "manual_verification_resolved"])
-        self.assertNotIn("autoClickAttempted", events[0])
+            MODULE.selenium_modules = original_modules
+            MODULE.wait_document_ready = original_wait_ready
+            MODULE.find_account_card_href = original_find_href
+            MODULE.automatic_accept_step = original_accept_step
+            MODULE.dismiss_keep_separate = original_dismiss
+            MODULE.ACCOUNT_JOIN_ATTEMPTS = original_attempts
+            MODULE.time.sleep = original_sleep
+        self.assertEqual(status, "failed")
+        self.assertIn("transition", error)
 
     def test_rate_limit_signal_detects_400_and_rate_limit_pages(self):
         self.assertTrue(MODULE.rate_limit_signal("Rate limit exceeded, try again later"))
@@ -110,33 +150,20 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertFalse(MODULE.dismiss_keep_separate(Driver(hidden), By))
         self.assertFalse(hidden.clicked)
 
-    def test_reauth_wall_signal_matches_forced_reauth_login(self):
-        self.assertTrue(MODULE.reauth_wall_signal("https://identity.getpostman.com/login?reAuthenticate=1&cta=join-team&invite_code=x&continue=y"))
-        self.assertTrue(MODULE.reauth_wall_signal("https://identity.getpostman.com/login?cta=join-team"))
-        self.assertTrue(MODULE.reauth_wall_signal("https://identity.getpostman.com/login?invite_code=abc"))
-        self.assertFalse(MODULE.reauth_wall_signal("https://identity.getpostman.com/login"))
-        self.assertFalse(MODULE.reauth_wall_signal("https://go.postman.co/workspaces"))
-        self.assertFalse(MODULE.reauth_wall_signal("https://app.getpostman.com/join-team?invite_code=x"))
-
-    def test_wait_for_security_verification_bails_on_reauth_wall_without_event(self):
-        class By:
-            TAG_NAME = "tag"
-
+    def test_automatic_accept_step_uses_author_auto_confirm_result(self):
         class Driver:
-            current_url = "https://identity.getpostman.com/login?reAuthenticate=1&cta=join-team&invite_code=x"
-            title = "Just a moment..."
+            current_url = "https://app.getpostman.com/web-invite-accept?invite_code=x"
 
-            def find_element(self, _by, _name):
-                return type("Element", (), {"text": "Performing security verification. This website verifies you are not a bot."})()
+            def execute_script(self, script, *_args):
+                self.script = script
+                return {"url": self.current_url, "clicked": "Accept Invite", "checked": 1}
 
-        events = []
-        original_emit = MODULE.emit_progress
-        MODULE.emit_progress = lambda event: events.append(event)
-        try:
-            self.assertFalse(MODULE.wait_for_security_verification(Driver(), By, 1, poll_seconds=0))
-        finally:
-            MODULE.emit_progress = original_emit
-        self.assertEqual(events, [])
+        driver = Driver()
+        result = MODULE.automatic_accept_step(driver)
+        self.assertEqual(result["clicked"], "Accept Invite")
+        self.assertEqual(result["checked"], 1)
+        self.assertIn("sign in with a different account", driver.script)
+        self.assertIn("input[type='checkbox']", driver.script)
 
     def test_firefox_profile_directories_discovers_marked_dirs_and_natural_sorts(self):
         with tempfile.TemporaryDirectory() as temp_name:
@@ -273,19 +300,39 @@ class PostmanJoinVerificationTests(unittest.TestCase):
             self.assertIn("default/https+++go.postman.co", inventory["postmanOrigins"])
             self.assertFalse(any("google" in origin for origin in inventory["postmanOrigins"]))
 
-    def test_run_emits_account_start_and_done_for_gui_progress(self):
+    def test_run_ports_account_chooser_per_profile_and_emits_automatic_progress(self):
         rows = [
             {"profile": "Hồ sơ 1", "email": "one@example.com", "path": "C:/p1"},
             {"profile": "Hồ sơ 2", "email": "two@example.com", "path": "C:/p2"},
         ]
         events = []
-        original_discover = MODULE.discover_rows
-        original_accept = MODULE.accept_invite
+
+        class Driver:
+            def __init__(self, path):
+                self.path = str(path)
+                self.current_url = "about:blank"
+
+            def get(self, url):
+                self.current_url = url
+
+        original_discover_rows = MODULE.discover_rows
+        original_firefox_driver = MODULE.firefox_driver
+        original_wait_ready = MODULE.wait_document_ready
+        original_discover_cards = MODULE.discover_account_cards
+        original_process = MODULE.process_chooser_account
+        original_close = MODULE.close_firefox
         original_write = MODULE.write_joined_emails
         original_emit = MODULE.emit_progress
         try:
             MODULE.discover_rows = lambda *_args: rows
-            MODULE.accept_invite = lambda _url, _binary, profile, *_args: ("joined", None) if str(profile).endswith("p1") else ("failed", "boom")
+            MODULE.firefox_driver = lambda _binary, profile, *_args: Driver(profile)
+            MODULE.wait_document_ready = lambda *_args: None
+            MODULE.discover_account_cards = lambda driver: {
+                "accounts": [{"email": "one@example.com" if driver.path.endswith("p1") else "two@example.com", "name": "Account", "href": "https://identity.getpostman.com/accounts/auth/test"}],
+                "teamName": "Pool Team",
+            }
+            MODULE.process_chooser_account = lambda _driver, _chooser, account, *_args: (("joined", None, "https://team.postman.co/home") if account["email"].startswith("one") else ("failed", "boom", "https://identity.getpostman.com/login"))
+            MODULE.close_firefox = lambda _driver: None
             MODULE.write_joined_emails = lambda _rows: Path("emails.txt")
             MODULE.emit_progress = lambda event: events.append(event)
             result = MODULE.run(
@@ -296,19 +343,82 @@ class PostmanJoinVerificationTests(unittest.TestCase):
                 Path("scratch"),
                 False,
                 45,
-                300,
             )
         finally:
-            MODULE.discover_rows = original_discover
-            MODULE.accept_invite = original_accept
+            MODULE.discover_rows = original_discover_rows
+            MODULE.firefox_driver = original_firefox_driver
+            MODULE.wait_document_ready = original_wait_ready
+            MODULE.discover_account_cards = original_discover_cards
+            MODULE.process_chooser_account = original_process
+            MODULE.close_firefox = original_close
             MODULE.write_joined_emails = original_write
             MODULE.emit_progress = original_emit
-        self.assertEqual([event["type"] for event in events], ["account_start", "account_done", "account_start", "account_done"])
-        self.assertEqual(events[0]["index"], 1)
-        self.assertEqual(events[0]["total"], 2)
+        self.assertEqual([event["type"] for event in events], ["accounts_discovered", "account_start", "account_done", "accounts_discovered", "account_start", "account_done"])
+        self.assertEqual(events[1]["email"], "one@example.com")
+        self.assertEqual(events[2]["status"], "joined")
         self.assertEqual(events[-1]["status"], "failed")
         self.assertEqual(len(result["joined"]), 1)
         self.assertEqual(len(result["failed"]), 1)
+        self.assertNotIn("manualAccept", result)
+        self.assertFalse(any("url" in event for event in events))
+        self.assertFalse(any("url" in item for group in ("joined", "failed", "skipped") for item in result[group]))
+        self.assertNotIn("abc1234567890123", repr(events))
+        self.assertNotIn("abc1234567890123", repr(result))
+
+    def test_run_skips_profiles_when_account_chooser_only_contains_already_processed_accounts(self):
+        rows = [
+            {"profile": "Hồ sơ 1", "email": "one@example.com", "path": "C:/p1"},
+            {"profile": "Hồ sơ 2", "email": "one@example.com", "path": "C:/p2"},
+        ]
+        events = []
+
+        class Driver:
+            current_url = "about:blank"
+
+            def get(self, url):
+                self.current_url = url
+
+        original_discover_rows = MODULE.discover_rows
+        original_firefox_driver = MODULE.firefox_driver
+        original_wait_ready = MODULE.wait_document_ready
+        original_discover_cards = MODULE.discover_account_cards
+        original_process = MODULE.process_chooser_account
+        original_close = MODULE.close_firefox
+        original_write = MODULE.write_joined_emails
+        original_emit = MODULE.emit_progress
+        try:
+            MODULE.discover_rows = lambda *_args: rows
+            MODULE.firefox_driver = lambda *_args: Driver()
+            MODULE.wait_document_ready = lambda *_args: None
+            MODULE.discover_account_cards = lambda _driver: {
+                "accounts": [{"email": "one@example.com", "name": "Account", "href": "https://identity.getpostman.com/accounts/auth/test"}],
+                "teamName": "Pool Team",
+            }
+            MODULE.process_chooser_account = lambda *_args: ("joined", None, "https://team.postman.co/home")
+            MODULE.close_firefox = lambda _driver: None
+            MODULE.write_joined_emails = lambda _rows: Path("emails.txt")
+            MODULE.emit_progress = lambda event: events.append(event)
+            result = MODULE.run(
+                "https://app.getpostman.com/join-team?invite_code=abc1234567890123",
+                Path("profiles"),
+                Path("librewolf"),
+                [],
+                Path("scratch"),
+                False,
+                45,
+            )
+        finally:
+            MODULE.discover_rows = original_discover_rows
+            MODULE.firefox_driver = original_firefox_driver
+            MODULE.wait_document_ready = original_wait_ready
+            MODULE.discover_account_cards = original_discover_cards
+            MODULE.process_chooser_account = original_process
+            MODULE.close_firefox = original_close
+            MODULE.write_joined_emails = original_write
+            MODULE.emit_progress = original_emit
+        self.assertEqual(len(result["joined"]), 1)
+        self.assertEqual(result["failed"], [])
+        self.assertIn("profile_skipped", [event["type"] for event in events])
 
     def test_detached_child_argv_drops_detach_and_targets_this_worker(self):
         argv = ["postman-pool-join.py", "--invite", "https://x", "--detach", "--result-file", "r.json"]

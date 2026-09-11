@@ -42,7 +42,6 @@ function friendlyError(error) {
   if (/telethon/i.test(text) && /missing|not installed|No module/i.test(text)) return 'Telethon is missing. Run: python -m pip install telethon';
   if (/LibreWolf/i.test(text) && /not found|missing|does not exist/i.test(text)) return 'LibreWolf was not found. Open Settings and choose the LibreWolf executable/profile root.';
   if (/config not found|config is incomplete|missing .*sourceChatId|missing .*telegram/i.test(text)) return 'Configuration is incomplete. Open Settings and complete the required fields.';
-  if (/Headless mode is blocked/i.test(text)) return 'Turn off Headless browser in Settings. Human Verify requires a visible LibreWolf window.';
   return text;
 }
 
@@ -90,9 +89,8 @@ async function refreshPreflight() {
 
 function statusClass(status) {
   if (['joined', 'already_joined', 'authenticated'].includes(status)) return 'status-success';
-  if (['failed', 'manual_verification_timeout', 'not_signed_in', 'error'].includes(status)) return 'status-failed';
-  if (['manual_accept_required', 'manual_verification_required', 'Human Verify'].includes(status)) return 'status-manual';
-  if (['running', 'processing'].includes(status)) return 'status-running';
+  if (['failed', 'not_signed_in', 'error', 'challenge_page'].includes(status)) return 'status-failed';
+  if (['running', 'processing', 'switching_session', 'auto_clicked', 'waiting_transition', 'joined_syncing'].includes(status)) return 'status-running';
   return '';
 }
 
@@ -100,15 +98,17 @@ function statusLabel(status) {
   const labels = {
     waiting: 'Waiting',
     running: 'Processing…',
+    switching_session: 'Switching account…',
+    auto_clicked: 'Auto-confirming…',
+    waiting_transition: 'Loading team…',
+    joined_syncing: 'Joined · syncing…',
     joined: 'Joined',
     already_joined: 'Already joined',
     failed: 'Failed',
-    manual_accept_required: 'Manual accept',
-    manual_verification_required: 'Human Verify',
-    manual_verification_timeout: 'Verify timeout',
     authenticated: 'Signed in',
     not_signed_in: 'Signed out',
-    cloudflare_challenge: 'Human Verify',
+    cloudflare_challenge: 'Challenge page',
+    challenge_page: 'Challenge page',
     unknown: 'Unknown',
     error: 'Error',
   };
@@ -116,7 +116,7 @@ function statusLabel(status) {
 }
 
 function profileKey(row) {
-  return row.dir || row.profile || row.email || crypto.randomUUID();
+  return row.email || row.dir || row.profile || crypto.randomUUID();
 }
 
 function baseRows() {
@@ -156,31 +156,48 @@ function escapeHtml(value) {
 
 function rowsFromJoin(data) {
   const rows = baseRows();
-  const byProfile = new Map(rows.map((row) => [row.profile, row]));
+  const byEmail = new Map();
+  const byProfile = new Map();
+  for (const row of rows) {
+    if (row.email) byEmail.set(String(row.email).toLowerCase(), row);
+    if (row.profile) byProfile.set(row.profile, row);
+  }
   const ensure = (event) => {
-    const name = event.profile || event.email || 'unknown';
-    if (!byProfile.has(name)) {
-      const row = { profile: event.profile || name, email: event.email || null, index: event.index || rows.length + 1, status: 'waiting' };
-      rows.push(row);
-      byProfile.set(name, row);
+    const emailKey = event.email ? String(event.email).toLowerCase() : null;
+    if (emailKey && byEmail.has(emailKey)) return byEmail.get(emailKey);
+    if (event.profile && byProfile.has(event.profile)) {
+      const existing = byProfile.get(event.profile);
+      if (!existing.email || !event.email || String(existing.email).toLowerCase() === emailKey) {
+        if (event.email) {
+          existing.email = event.email;
+          byEmail.set(emailKey, existing);
+        }
+        return existing;
+      }
     }
-    return byProfile.get(name);
+    const row = { profile: event.profile || 'unknown', email: event.email || null, index: event.index || rows.length + 1, status: 'waiting' };
+    rows.push(row);
+    if (emailKey) byEmail.set(emailKey, row);
+    if (event.profile && !byProfile.has(event.profile)) byProfile.set(event.profile, row);
+    return row;
   };
   for (const event of data.events || []) {
+    if (event?.type === 'accounts_discovered') {
+      for (const account of event.accounts || []) ensure({ ...account, profile: event.profile });
+      continue;
+    }
     if (!event?.profile && !event?.email) continue;
     const row = ensure(event);
     if (event.email) row.email = event.email;
     if (event.index) row.index = event.index;
     if (event.type === 'account_start') row.status = 'running';
-    if (event.type === 'manual_verification_required') row.status = 'manual_verification_required';
-    if (event.type === 'manual_verification_resolved') row.status = 'running';
-    if (event.type === 'manual_accept_required') row.status = 'manual_accept_required';
+    if (event.type === 'account_status') row.status = event.status || 'running';
     if (event.type === 'account_done') {
       row.status = event.status || 'failed';
       row.error = event.error || null;
     }
   }
-  const resultGroups = [data.result?.joined, data.result?.manualAccept, data.result?.skipped, data.result?.failed];
+  const resultGroups = [data.result?.joined, data.result?.skipped, data.result?.failed];
   for (const group of resultGroups) {
     for (const result of group || []) {
       const row = ensure(result);
@@ -198,7 +215,7 @@ function renderJoin(data) {
   const total = totalFromEvents || rows.length;
   const done = (data.events || []).filter((event) => event.type === 'account_done').length || (data.result ? rows.filter((row) => row.status !== 'waiting' && row.status !== 'running').length : 0);
   const joined = data.result?.joined?.length ?? rows.filter((row) => ['joined', 'already_joined'].includes(row.status)).length;
-  const failed = data.result?.failed?.length ?? rows.filter((row) => ['failed', 'manual_verification_timeout'].includes(row.status)).length;
+  const failed = data.result?.failed?.length ?? rows.filter((row) => row.status === 'failed').length;
   $('#metric-profiles').textContent = state.profiles.length || total || '—';
   $('#metric-progress').textContent = `${Math.min(done, total)} / ${total}`;
   $('#metric-joined').textContent = joined;
@@ -209,15 +226,13 @@ function renderJoin(data) {
   state.joinRunning = data.running === true;
   applyActionGuards();
   if (data.running) {
-    const current = [...(data.events || [])].reverse().find((event) => event.type === 'account_start' || event.type === 'manual_verification_required');
-    $('#join-status').textContent = current?.type === 'manual_verification_required'
-      ? `Human Verify required for ${current.email || current.profile}. Complete it in the open LibreWolf window.`
-      : `Join running${current?.profile ? ` — ${current.profile}` : ''}.`;
+    const current = [...(data.events || [])].reverse().find((event) => event.type === 'account_status' || event.type === 'account_start');
+    const detail = current?.status ? ` · ${statusLabel(current.status)}` : '';
+    $('#join-status').textContent = `Join running${current?.email ? ` — ${current.email}` : current?.profile ? ` — ${current.profile}` : ''}${detail}.`;
   } else if (data.cancelled) {
     $('#join-status').textContent = 'Join cancelled by user.';
   } else if (data.result) {
-    const manual = data.result.manualAccept?.length || 0;
-    $('#join-status').textContent = `Completed: ${joined} joined/already joined · ${manual} manual accept · ${failed} failed.`;
+    $('#join-status').textContent = `Completed: ${joined} joined/already joined · ${failed} failed.`;
   } else if (data.error) {
     $('#join-status').textContent = friendlyError(data.error);
   }
@@ -446,10 +461,8 @@ async function loadConfig() {
     state.selectedProfiles = cfg.profileDirectories || [];
     renderProfilePicker();
     form.headless.checked = cfg.headless === true;
-    $('#headless-warning').hidden = cfg.headless !== true;
     form.scratchRoot.value = cfg.scratchRoot || '';
     form.timeoutSeconds.value = cfg.timeoutSeconds || 45;
-    form.manualVerificationSeconds.value = cfg.manualVerificationSeconds || 300;
     form.telegramApiHash.value = '';
     form.reportBotToken.value = '';
     $('#tag-apihash').textContent = cfg.hasApiHash ? 'set' : 'not set';
@@ -476,7 +489,6 @@ async function saveConfig(event) {
     headless: form.headless.checked,
     scratchRoot: form.scratchRoot.value.trim(),
     timeoutSeconds: Number(form.timeoutSeconds.value) || 45,
-    manualVerificationSeconds: Number(form.manualVerificationSeconds.value) || 300,
   };
   if (form.telegramApiHash.value.trim()) patch.telegramApiHash = form.telegramApiHash.value.trim();
   if (form.reportBotToken.value.trim()) patch.reportBotToken = form.reportBotToken.value.trim();
@@ -557,9 +569,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('#reload-btn').addEventListener('click', loadConfig);
   $('#env-btn').addEventListener('click', environmentCheck);
   $('#setup-form').addEventListener('submit', saveConfig);
-  $('#setup-form').elements.headless.addEventListener('change', (event) => {
-    $('#headless-warning').hidden = !event.target.checked;
-  });
   $('#invite-url').addEventListener('keydown', (event) => { if (event.key === 'Enter') startJoin(); });
 
   await Promise.all([loadConfig(), refreshWatcher(), refreshJoin(), refreshVerify()]);

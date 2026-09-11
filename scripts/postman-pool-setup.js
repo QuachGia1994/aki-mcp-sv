@@ -2,7 +2,7 @@
 // Guided setup for Aki Watch (Postman pool auto-join). Orchestrates the proven
 // scripts and reuses their config loader; it never reimplements the automation
 // and never prints secret values (Telegram api hash / bot token) to the terminal.
-// The human-only steps it cannot skip live in docs/ref/aki-watch-onboarding.md.
+// The one-time account/Telegram login steps live in docs/ref/aki-watch-onboarding.md.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -57,7 +57,7 @@ function writeConfig(configPath, config) {
 
 function withDefaults(config) {
   const dir = path.dirname(POSTMAN_POOL_CONFIG_PATH);
-  const { chromeBinary: _chromeBinary, chromeUserDataRoot: _chromeUserDataRoot, chromeProfileDirectories: _chromeProfileDirectories, browserBackend: _browserBackend, profileRoot: _profileRoot, ...current } = config || {};
+  const { chromeBinary: _chromeBinary, chromeUserDataRoot: _chromeUserDataRoot, chromeProfileDirectories: _chromeProfileDirectories, browserBackend: _browserBackend, profileRoot: _profileRoot, manualVerificationSeconds: _manualVerificationSeconds, ...current } = config || {};
   return {
     enabled: false,
     telegramApiId: 0,
@@ -73,7 +73,6 @@ function withDefaults(config) {
     headless: false,
     scratchRoot: '',
     timeoutSeconds: 45,
-    manualVerificationSeconds: 300,
     ...current,
   };
 }
@@ -111,7 +110,6 @@ function configView(configPath) {
     headless: raw.headless === true,
     scratchRoot: raw.scratchRoot || '',
     timeoutSeconds: Number(raw.timeoutSeconds) || 45,
-    manualVerificationSeconds: Number(raw.manualVerificationSeconds) || 300,
   };
 }
 
@@ -175,8 +173,6 @@ function preflightView(configPath) {
   if (!selenium) joinIssues.push({ code: 'selenium_missing', message: 'Selenium is missing. Install with: python -m pip install selenium' });
   if (!scan.ok) joinIssues.push({ code: 'browser_scan_failed', message: scan.text || 'LibreWolf/profile discovery failed.' });
   else if (!(scanData?.profiles?.length > 0)) joinIssues.push({ code: 'profiles_missing', message: 'No valid LibreWolf profiles were found.' });
-  if (raw.headless) joinIssues.push({ code: 'headless_manual_verify', message: 'Headless is blocked because Human Verify requires a visible LibreWolf window.' });
-
   const watcherIssues = [...joinIssues];
   if (!telethon) watcherIssues.push({ code: 'telethon_missing', message: 'Telethon is missing. Install with: python -m pip install telethon' });
   if (!status.ready) watcherIssues.push({ code: 'config_incomplete', message: `Complete Settings: ${status.missing.join(', ')}` });

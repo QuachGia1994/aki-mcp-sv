@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 if sys.platform == "win32":
     try:
@@ -33,6 +33,12 @@ SECURITY_VERIFICATION_MARKERS = (
     "verify you are not a bot",
     "checking if the site connection is secure",
 )
+ACCOUNT_CARD_SELECTOR = "#account_select_container a.pm-card-account, a.pm-card-account, a[data-testid*='account-chooser']"
+ACCOUNT_DISCOVERY_ATTEMPTS = 25
+ACCOUNT_CARD_LOOKUP_ATTEMPTS = 15
+ACCOUNT_JOIN_ATTEMPTS = 18
+ACCOUNT_POLL_SECONDS = 2.0
+ACCOUNT_SYNC_SECONDS = 4.0
 # Files that mark a directory as a real LibreWolf/Firefox profile.
 PROFILE_MARKER_FILES = ("prefs.js", "times.json", "compatibility.ini")
 # When a Google/Postman "Keep these accounts separate" prompt appears, choose "Keep separate".
@@ -99,59 +105,59 @@ def security_verification_signal(url: str, body: str, title: str = "") -> bool:
     return any(marker in lowered for marker in SECURITY_VERIFICATION_MARKERS)
 
 
-# Accepting a team invite forces a fresh re-auth through identity.getpostman.com/login
-# (reAuthenticate=1 / cta=join-team), which is Cloudflare-Turnstile gated and cannot be passed
-# by automation - it needs a human in a normal browser.
-MANUAL_ACCEPT_REASON = "Postman forces interactive re-authentication (Cloudflare) to accept the invite; accept it in a normal browser"
-
-
-def reauth_wall_signal(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return False
-    if (parsed.hostname or "").lower() != "identity.getpostman.com":
-        return False
-    if "/login" not in parsed.path.lower():
-        return False
-    query = parsed.query.lower()
-    return "reauthenticate" in query or "cta=join-team" in query or "invite_code" in query
-
-
 def emit_progress(event: dict) -> None:
     print(f"[postman-pool:event] {json.dumps(event, ensure_ascii=False)}", file=sys.stderr, flush=True)
 
 
-def wait_for_security_verification(driver, By, timeout: int, progress: dict | None = None, poll_seconds: float = 1.0) -> bool:
-    def snapshot() -> tuple[str, str]:
-        try:
-            body = driver.find_element(By.TAG_NAME, "body").text
-        except Exception:
-            body = ""
-        try:
-            title = driver.title or ""
-        except Exception:
-            title = ""
-        return body, title
+def invite_code_from_url(invite_url: str) -> str | None:
+    try:
+        query = parse_qs(urlparse(invite_url).query)
+    except ValueError:
+        return None
+    for key in ("invite_code", "inviteCode"):
+        for value in query.get(key, []):
+            code = str(value).strip()
+            if re.fullmatch(r"[A-Za-z0-9_-]{8,256}", code):
+                return code
+    return None
 
-    body, title = snapshot()
-    # The forced re-auth login wall (invite accept) is Turnstile-gated and unpassable by a bot;
-    # bail immediately so the caller can flag it as manual_accept_required instead of waiting.
-    if reauth_wall_signal(driver.current_url):
+
+def account_chooser_url(invite_url: str) -> str:
+    invite_code = invite_code_from_url(invite_url)
+    if not invite_code:
+        raise RuntimeError("Postman invite must contain invite_code for automatic account-chooser flow")
+    continue_url = f"https://app.getpostman.com/web-invite-accept?invite_code={invite_code}"
+    return (
+        "https://identity.getpostman.com/accounts?cta=join-team"
+        f"&invite_code={quote(invite_code, safe='')}"
+        f"&continue={quote(continue_url, safe='')}"
+    )
+
+
+def team_destination_signal(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
         return False
-    if not security_verification_signal(driver.current_url, body, title):
+    if parsed.scheme != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    if not (host == "postman.co" or host.endswith(".postman.co")):
+        return False
+    if host not in {"postman.co", "go.postman.co", "web.postman.co"}:
         return True
-    emit_progress({"type": "manual_verification_required", **(progress or {})})
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        time.sleep(poll_seconds)
-        if reauth_wall_signal(driver.current_url):
-            return False
-        body, title = snapshot()
-        if not security_verification_signal(driver.current_url, body, title):
-            emit_progress({"type": "manual_verification_resolved", **(progress or {})})
-            return True
-    return False
+    path = parsed.path.lower().rstrip("/")
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in ("/home", "/workspace", "/onboarding"))
+
+
+def transition_signal(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.lower()
+    return host == "identity.getpostman.com" or (host == "app.getpostman.com" and "/web-invite-accept" in path)
 
 
 def profile_display_name(dir_name: str) -> str:
@@ -484,141 +490,177 @@ def profile_session_inventory(profile_dir: Path) -> dict:
     return {"files": files, "postmanOrigins": origins}
 
 
-def accept_invite(invite_url: str, binary: Path, profile_dir: Path, headless: bool, timeout: int, manual_verification_timeout: int, scratch_root: Path, progress: dict | None = None) -> tuple[str, str | None]:
-    _, By, _, EC, WebDriverWait = selenium_modules()
-    driver = None
+def wait_document_ready(driver, timeout: int) -> None:
+    try:
+        _, _, _, _, WebDriverWait = selenium_modules()
+        WebDriverWait(driver, timeout).until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
+    except Exception:
+        pass
+
+
+def discover_account_cards(driver, attempts: int = ACCOUNT_DISCOVERY_ATTEMPTS, poll_seconds: float = ACCOUNT_POLL_SECONDS) -> dict | None:
+    script = f"""
+const cards = Array.from(document.querySelectorAll({json.dumps(ACCOUNT_CARD_SELECTOR)}));
+const list = [];
+for (const c of cards) {{
+  const emailEl = c.querySelector('.email') || c.querySelector('[title*="@"]');
+  let email = emailEl ? (emailEl.innerText || emailEl.title || '').trim() : '';
+  if (!email) {{
+    const match = (c.innerText || '').match(/[\\w.\\-+]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{{2,}}/);
+    if (match) email = match[0];
+  }}
+  const nameEl = c.querySelector('.name') || c.querySelector('h3');
+  const name = nameEl ? (nameEl.innerText || '').trim() : '';
+  if (email && !list.some(x => x.email.toLowerCase() === email.toLowerCase())) {{
+    list.push({{ email, name, href: c.href }});
+  }}
+}}
+const teamTitleEl = document.querySelector('h1, h2, .team-name, [data-testid*="team"]');
+return {{ count: list.length, accounts: list, teamName: teamTitleEl ? teamTitleEl.innerText.trim() : '', url: window.location.href }};
+"""
+    for retry in range(attempts):
+        if retry:
+            time.sleep(poll_seconds)
+        try:
+            result = driver.execute_script(script)
+        except Exception:
+            result = None
+        if isinstance(result, dict) and result.get("accounts"):
+            return result
+        emit_progress({"type": "account_discovery_wait", "attempt": retry + 1, "totalAttempts": attempts})
+    return None
+
+
+def find_account_card_href(driver, email: str, attempts: int = ACCOUNT_CARD_LOOKUP_ATTEMPTS, poll_seconds: float = ACCOUNT_POLL_SECONDS) -> str | None:
+    script = f"""
+const targetEmail = String(arguments[0] || '').toLowerCase();
+const cards = Array.from(document.querySelectorAll({json.dumps(ACCOUNT_CARD_SELECTOR)}));
+for (const c of cards) {{
+  if ((c.innerText || '').toLowerCase().includes(targetEmail)) return c.href || null;
+}}
+return null;
+"""
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(poll_seconds)
+        try:
+            href = driver.execute_script(script, email)
+        except Exception:
+            href = None
+        if isinstance(href, str) and href.startswith("https://"):
+            return href
+    return None
+
+
+def automatic_accept_step(driver) -> dict:
+    script = r"""
+const url = window.location.href;
+const buttons = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit']"));
+let clicked = null;
+for (const b of buttons) {
+  const text = (b.innerText || b.value || '').trim();
+  if (/sign in with a different account/i.test(text)) continue;
+  if (/join team|accept invite|tham gia|confirm|continue|switch team|đồng ý|chấp nhận/i.test(text)) {
+    b.click();
+    clicked = text;
+    break;
+  }
+}
+let checked = 0;
+for (const cb of Array.from(document.querySelectorAll("input[type='checkbox']"))) {
+  if (!cb.checked) {
+    cb.click();
+    checked += 1;
+  }
+}
+return { url, clicked, checked };
+"""
+    try:
+        result = driver.execute_script(script)
+        return result if isinstance(result, dict) else {"url": driver.current_url, "clicked": None, "checked": 0}
+    except Exception:
+        try:
+            return {"url": driver.current_url, "clicked": None, "checked": 0}
+        except Exception:
+            return {"url": "", "clicked": None, "checked": 0}
+
+
+def process_chooser_account(driver, chooser_url: str, account: dict, timeout: int, progress: dict) -> tuple[str, str | None, str | None]:
+    _, By, _, _, _ = selenium_modules()
+    email = str(account.get("email") or "").strip()
+    if not email:
+        return "failed", "Postman account card has no email", None
+
+    try:
+        driver.get(chooser_url)
+    except Exception:
+        pass
+    wait_document_ready(driver, timeout)
+    card_href = find_account_card_href(driver, email)
+    if not card_href:
+        return "failed", "Postman account card was not found after returning to the account chooser", None
+
+    emit_progress({"type": "account_status", "status": "switching_session", "email": email, **progress})
+    try:
+        driver.get(card_href)
+    except Exception:
+        pass
+
+    final_url = None
+    challenge_seen = False
+    join_confirmation_seen = False
     rate_limit_refreshes = 0
-
-    def body_text() -> str:
+    for attempt in range(ACCOUNT_JOIN_ATTEMPTS):
+        time.sleep(ACCOUNT_POLL_SECONDS)
+        dismiss_keep_separate(driver, By)
+        step = automatic_accept_step(driver)
         try:
-            return driver.find_element(By.TAG_NAME, "body").text
+            final_url = driver.current_url
         except Exception:
-            return ""
-
-    def title_text() -> str:
+            final_url = step.get("url") or final_url
+        body = ""
+        title = ""
         try:
-            return driver.title or ""
+            body = driver.find_element(By.TAG_NAME, "body").text
         except Exception:
-            return ""
-
-    def verification_cleared() -> bool:
-        return wait_for_security_verification(driver, By, manual_verification_timeout, progress)
-
-    def wait_ready() -> None:
+            pass
         try:
-            WebDriverWait(driver, timeout).until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
+            title = driver.title or ""
         except Exception:
             pass
 
-    def maybe_handle_rate_limit() -> bool:
-        # On a 400 / rate-limit page: pause briefly, then refresh (bounded retries).
-        nonlocal rate_limit_refreshes
-        if rate_limit_signal(body_text(), title_text()) and rate_limit_refreshes < MAX_RATE_LIMIT_REFRESHES:
+        if security_verification_signal(final_url or "", body, title):
+            challenge_seen = True
+        if rate_limit_signal(body, title) and rate_limit_refreshes < MAX_RATE_LIMIT_REFRESHES:
             rate_limit_refreshes += 1
-            emit_progress({"type": "rate_limited", "refresh": rate_limit_refreshes, **(progress or {})})
+            emit_progress({"type": "rate_limited", "refresh": rate_limit_refreshes, "email": email, **progress})
             time.sleep(RATE_LIMIT_WAIT_SECONDS)
             try:
                 driver.refresh()
             except Exception:
                 pass
-            wait_ready()
-            return True
-        return False
+            continue
+        if step.get("clicked"):
+            emit_progress({"type": "account_status", "status": "auto_clicked", "clicked": step.get("clicked"), "email": email, **progress})
+        elif transition_signal(final_url or ""):
+            emit_progress({"type": "account_status", "status": "waiting_transition", "attempt": attempt + 1, "totalAttempts": ACCOUNT_JOIN_ATTEMPTS, "email": email, **progress})
 
-    def maintain() -> None:
-        # Best-effort interstitial handling done on every polling pass.
-        dismiss_keep_separate(driver, By)
+        if team_destination_signal(final_url or ""):
+            emit_progress({"type": "account_status", "status": "joined_syncing", "email": email, **progress})
+            time.sleep(ACCOUNT_SYNC_SECONDS)
+            return "joined", None, final_url
+        if joined_signal(body):
+            join_confirmation_seen = True
+        if invite_failure_signal(body) and not transition_signal(final_url or ""):
+            if any(marker in body.lower() for marker in ("sign in", "log in", "sign up")):
+                return "failed", "Postman account session is not signed in", final_url
+            return "failed", "Postman rejected or expired the invite", final_url
 
-    def manual_accept() -> tuple[str, str]:
-        emit_progress({"type": "manual_accept_required", **(progress or {})})
-        return "manual_accept_required", MANUAL_ACCEPT_REASON
-
-    def settle_state() -> str:
-        # "manual" = forced re-auth wall, "ok" = usable page, "timeout" = challenge never cleared.
-        if reauth_wall_signal(driver.current_url):
-            return "manual"
-        cleared = verification_cleared()
-        if reauth_wall_signal(driver.current_url):
-            return "manual"
-        return "ok" if cleared else "timeout"
-
-    try:
-        driver = firefox_driver(binary, profile_dir, headless, timeout, scratch_root)
-        try:
-            driver.get(invite_url)
-        except Exception:
-            # A slow challenge/page-load timeout still lets us inspect and wait below.
-            pass
-        wait_ready()
-        state = settle_state()
-        if state == "manual":
-            return manual_accept()
-        if state == "timeout":
-            return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
-        maintain()
-        maybe_handle_rate_limit()
-
-        initial_url = driver.current_url
-        lower_body = lambda: body_text().lower()
-        button_xpaths = [
-            "//button[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
-            "//a[translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='accept invite']",
-            "//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'join team')]",
-            "//a[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'join team')]",
-        ]
-        clickable = None
-        for xpath in button_xpaths:
-            try:
-                clickable = WebDriverWait(driver, 3).until(EC.element_to_be_clickable((By.XPATH, xpath)))
-                break
-            except Exception:
-                state = settle_state()
-                if state == "manual":
-                    return manual_accept()
-                if state == "timeout":
-                    return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
-                maintain()
-                maybe_handle_rate_limit()
-                continue
-        if clickable is None:
-            body = lower_body()
-            if joined_signal(body):
-                return "already_joined", None
-            if rate_limit_signal(body, title_text()):
-                return "failed", "Postman returned a rate limit (400); refresh retries did not recover"
-            if invite_failure_signal(body):
-                if any(marker in body for marker in ("sign in", "log in", "sign up")):
-                    return "failed", "Postman session is not signed in"
-                return "failed", "Postman rejected or expired the invite"
-            if postman_app_destination(driver.current_url):
-                return "already_joined", None
-            return "failed", "Accept Invite button not found"
-
-        click_element(driver, clickable)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            time.sleep(0.5)
-            state = settle_state()
-            if state == "manual":
-                return manual_accept()
-            if state == "timeout":
-                return "manual_verification_timeout", "Cloudflare security verification was not completed in time"
-            maintain()
-            if maybe_handle_rate_limit():
-                continue
-            current_url = driver.current_url
-            body = lower_body()
-            if invite_failure_signal(body):
-                if any(marker in body for marker in ("sign in", "log in", "sign up")):
-                    return "failed", "Postman session is not signed in"
-                return "failed", "Postman rejected or expired the invite"
-            if joined_signal(body):
-                return "joined", None
-            if current_url != initial_url and postman_app_destination(current_url):
-                return "joined", None
-        return "failed", "invite click did not reach a confirmed Postman team page"
-    finally:
-        close_firefox(driver)
+    if challenge_seen:
+        return "failed", "Postman security challenge did not clear automatically before the join timeout", final_url
+    if join_confirmation_seen:
+        return "failed", "Postman showed join confirmation but did not complete the team transition", final_url
+    return "failed", "Postman did not reach a confirmed team page after automatic account switch/accept", final_url
 
 
 def discover_rows(profiles_root: Path, profile_directories: list[str], scratch_root: Path) -> list[dict]:
@@ -718,50 +760,105 @@ def write_joined_emails(rows: list[dict]) -> Path:
     return target
 
 
-def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories: list[str], scratch_root: Path, headless: bool, timeout: int, manual_verification_timeout: int) -> dict:
+def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories: list[str], scratch_root: Path, headless: bool, timeout: int) -> dict:
     if not valid_invite_url(invite_url):
         raise RuntimeError("not a recognized Postman invite URL")
+    chooser_url = account_chooser_url(invite_url)
     joined: list[dict] = []
-    manual_accept: list[dict] = []
     skipped: list[dict] = []
     failed: list[dict] = []
     profiles = discover_rows(profiles_root, profile_directories, scratch_root)
     if not profiles:
         raise RuntimeError("no LibreWolf profiles found")
 
-    for index, row in enumerate(profiles, 1):
-        emit_progress({"type": "account_start", "index": index, "total": len(profiles), "profile": row["profile"], "email": row.get("email")})
+    seen_emails: set[str] = set()
+    processed = 0
+    discovered_total = 0
+    baseline_total = len(profiles)
+
+    for row in profiles:
+        profile_name = row["profile"]
+        driver = None
         try:
-            log(f"[postman-pool] {row['profile']} -> {row.get('email') or 'email unknown'}")
-            status, error = accept_invite(
-                invite_url,
-                binary,
-                Path(row["path"]),
-                headless,
-                timeout,
-                manual_verification_timeout,
-                scratch_root,
-                {"profile": row["profile"], "email": row.get("email")},
-            )
-            result = {"profile": row["profile"], "email": row.get("email"), "status": status}
-            if error:
-                result["error"] = error
-            if status in ("joined", "already_joined"):
-                joined.append(result)
-            elif status == "manual_accept_required":
-                manual_accept.append(result)
-            elif status == "skipped":
-                skipped.append(result)
-            else:
+            log(f"[postman-pool] chooser scan {profile_name} -> {row.get('email') or 'email unknown'}")
+            driver = firefox_driver(binary, Path(row["path"]), headless, timeout, scratch_root)
+            try:
+                driver.get(chooser_url)
+            except Exception:
+                pass
+            wait_document_ready(driver, timeout)
+            discovery = discover_account_cards(driver)
+            accounts = list(discovery.get("accounts") or []) if discovery else []
+            unique_accounts = []
+            for account in accounts:
+                email = str(account.get("email") or "").strip().lower()
+                if not email or email in seen_emails:
+                    continue
+                seen_emails.add(email)
+                unique_accounts.append({**account, "email": email})
+
+            if accounts and not unique_accounts:
+                emit_progress({"type": "profile_skipped", "profile": profile_name, "reason": "duplicate_accounts"})
+                continue
+            if not unique_accounts:
+                processed += 1
+                total = max(baseline_total, discovered_total, processed)
+                result = {
+                    "profile": profile_name,
+                    "email": row.get("email"),
+                    "status": "failed",
+                    "error": "No signed-in Postman account cards were found in the account chooser for this LibreWolf profile",
+                }
+                emit_progress({"type": "account_start", "index": processed, "total": total, "profile": profile_name, "email": row.get("email")})
+                emit_progress({"type": "account_done", "index": processed, "total": total, **result})
                 failed.append(result)
-            emit_progress({"type": "account_done", "index": index, "total": len(profiles), **result})
+                continue
+
+            discovered_total += len(unique_accounts)
+            total = max(baseline_total, discovered_total)
+            emit_progress({
+                "type": "accounts_discovered",
+                "profile": profile_name,
+                "teamName": (discovery or {}).get("teamName") or "",
+                "count": len(unique_accounts),
+                "total": total,
+                "accounts": [{"email": account.get("email"), "name": account.get("name") or ""} for account in unique_accounts],
+            })
+
+            for account in unique_accounts:
+                processed += 1
+                total = max(baseline_total, discovered_total, processed)
+                email = account.get("email")
+                base = {"profile": profile_name, "email": email, "name": account.get("name") or ""}
+                emit_progress({"type": "account_start", "index": processed, "total": total, **base})
+                status, error, _ = process_chooser_account(
+                    driver,
+                    chooser_url,
+                    account,
+                    timeout,
+                    {"profile": profile_name},
+                )
+                result = {**base, "status": status}
+                if error:
+                    result["error"] = error
+                if status in ("joined", "already_joined"):
+                    joined.append(result)
+                elif status == "skipped":
+                    skipped.append(result)
+                else:
+                    failed.append(result)
+                emit_progress({"type": "account_done", "index": processed, "total": total, **result})
         except Exception as exc:
-            result = {"profile": row["profile"], "email": row.get("email"), "status": "failed", "error": str(exc)}
+            processed += 1
+            total = max(baseline_total, discovered_total, processed)
+            result = {"profile": profile_name, "email": row.get("email"), "status": "failed", "error": str(exc)}
             failed.append(result)
-            emit_progress({"type": "account_done", "index": index, "total": len(profiles), **result})
+            emit_progress({"type": "account_done", "index": processed, "total": total, **result})
+        finally:
+            close_firefox(driver)
 
     email_file = write_joined_emails(joined)
-    return {"joined": joined, "manualAccept": manual_accept, "skipped": skipped, "failed": failed, "emailFile": str(email_file)}
+    return {"joined": joined, "skipped": skipped, "failed": failed, "emailFile": str(email_file)}
 
 
 def write_result_file(result_file: str | None, payload: str) -> None:
@@ -804,7 +901,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scratch-root")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--timeout", type=int, default=45)
-    parser.add_argument("--manual-verification-timeout", type=int, default=300)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--smoke-browser", action="store_true")
     parser.add_argument("--verify-login", action="store_true", help="open each profile copy and report whether its Postman session is still authenticated")
@@ -857,7 +953,6 @@ def main() -> int:
             scratch_root,
             args.headless,
             max(10, min(120, args.timeout)),
-            max(60, min(900, args.manual_verification_timeout)),
         )
         payload = json.dumps(result, ensure_ascii=False)
         write_result_file(args.result_file, payload)
