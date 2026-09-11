@@ -36,6 +36,7 @@ function showScreen(name) {
 
 function friendlyError(error) {
   const text = String(error ?? 'Unknown error');
+  if (/Aki Watch runtime is missing|runtime script is unavailable|EISDIR.*lstat/i.test(text)) return 'Portable runtime path could not be resolved. Keep aki-watch.exe beside aki-watch-runtime and use the latest portable build.';
   if (/failed to run node|node.*not found|ENOENT.*node/i.test(text)) return 'Node.js was not found. Install Node.js and reopen Aki Watch.';
   if (/python.*not found|failed to run Python|ENOENT.*python|ENOENT.*py/i.test(text)) return 'Python 3 was not found. Install Python 3 and ensure py/python3 is on PATH.';
   if (/selenium/i.test(text) && /missing|not installed|No module/i.test(text)) return 'Selenium is missing. Run: python -m pip install selenium';

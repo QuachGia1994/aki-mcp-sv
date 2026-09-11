@@ -49,7 +49,8 @@ writeFileSync(
   [
     `Aki Watch Portable ${pkg.version}`,
     '',
-    'No installation is required. Keep aki-watch.exe and aki-watch-runtime together in this folder.',
+    'No installation is required. Extract the ZIP to a normal folder before launching; do not run aki-watch.exe from inside the archive.',
+    'Keep aki-watch.exe and aki-watch-runtime together in the same folder.',
     'Host prerequisites are still required: Node.js, Python 3 with telethon + selenium, and LibreWolf with signed-in Postman profiles.',
     'User configuration remains outside this folder under ~/.aki/mcpsv/postman-pool.json.',
     '',

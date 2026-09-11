@@ -83,6 +83,14 @@ jobs:
           if (!(Test-Path (Join-Path $portableRoot 'aki-watch-runtime/scripts/postman-pool-control.js'))) { throw 'portable runtime resources missing' }
           if (!(Test-Path $portableZip)) { throw 'portable ZIP missing' }
 
+      - name: Smoke Windows portable backend
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path 'apps/aki-watch/src-tauri/target/release/portable/Aki-Watch-portable/aki-watch.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--backend-smoke' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Aki Watch portable backend smoke failed with code $($p.ExitCode)" }
+
       - name: Smoke launch Windows portable binary
         if: runner.os == 'Windows'
         shell: pwsh

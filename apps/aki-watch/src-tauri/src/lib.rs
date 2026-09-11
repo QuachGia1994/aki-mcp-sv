@@ -26,16 +26,54 @@ fn has_runtime_scripts(root: &Path) -> bool {
         && root.join("scripts").join("userdata.js").is_file()
 }
 
+#[cfg(windows)]
+fn child_process_path(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{}", rest));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    path
+}
+
+#[cfg(not(windows))]
+fn child_process_path(path: PathBuf) -> PathBuf {
+    path
+}
+
+fn canonical_child_path(path: PathBuf) -> Option<PathBuf> {
+    path.canonicalize().ok().map(child_process_path)
+}
+
+fn canonical_runtime_dir(root: PathBuf) -> Option<PathBuf> {
+    let root = canonical_child_path(root)?;
+    has_runtime_scripts(&root).then_some(root)
+}
+
 fn repo_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("AKI_WATCH_REPO_DIR") {
-        let root = PathBuf::from(dir);
-        if has_runtime_scripts(&root) {
+        if let Some(root) = canonical_runtime_dir(PathBuf::from(dir)) {
             return root;
         }
     }
     if let Some(root) = BUNDLED_RUNTIME_DIR.get() {
-        if has_runtime_scripts(root) {
-            return root.clone();
+        if let Some(root) = canonical_runtime_dir(root.clone()) {
+            return root;
+        }
+    }
+    // A no-install Windows build keeps aki-watch-runtime directly beside aki-watch.exe.
+    // Resolve this independently of Tauri's resource_dir so portable launches do not depend
+    // on installer-style resource path semantics or a drive-relative current directory.
+    #[cfg(windows)]
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            if let Some(root) = canonical_runtime_dir(parent.join("aki-watch-runtime")) {
+                return root;
+            }
         }
     }
     #[cfg(debug_assertions)]
@@ -54,6 +92,16 @@ fn repo_dir() -> PathBuf {
         PathBuf::from("__aki_watch_bundled_runtime_missing__")
     }
 }
+
+#[cfg(windows)]
+fn hide_background_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_background_window(_command: &mut Command) {}
 
 fn config_path() -> PathBuf {
     // Mirror scripts/userdata.js: ~/.aki/mcpsv/postman-pool.json.
@@ -83,7 +131,21 @@ fn run_node_script(
     args: &[&str],
     stdin_data: Option<&str>,
 ) -> Result<String, String> {
-    let repo = repo_dir();
+    let repo = canonical_runtime_dir(repo_dir()).ok_or_else(|| {
+        "Aki Watch runtime is missing or incomplete. Extract the portable ZIP first and keep aki-watch.exe beside aki-watch-runtime.".to_string()
+    })?;
+    let script = canonical_child_path(script.clone()).ok_or_else(|| {
+        format!(
+            "Aki Watch runtime script is unavailable: {}",
+            script.display()
+        )
+    })?;
+    if !script.is_file() {
+        return Err(format!(
+            "Aki Watch runtime script is not a file: {}",
+            script.display()
+        ));
+    }
     let mut command = Command::new("node");
     command
         .arg(&script)
@@ -91,6 +153,7 @@ fn run_node_script(
         .current_dir(&repo)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    hide_background_window(&mut command);
     if stdin_data.is_some() {
         command.stdin(Stdio::piped());
     }
@@ -137,18 +200,28 @@ fn python_command() -> Command {
 }
 
 fn run_py_capture(args: &[&str]) -> Result<String, String> {
-    let repo = repo_dir();
-    let script = telegram_script();
+    let repo = canonical_runtime_dir(repo_dir()).ok_or_else(|| {
+        "Aki Watch runtime is missing or incomplete. Extract the portable ZIP first and keep aki-watch.exe beside aki-watch-runtime.".to_string()
+    })?;
+    let telegram = telegram_script();
+    let script = canonical_child_path(telegram.clone()).ok_or_else(|| {
+        format!(
+            "Aki Watch Telegram runtime is unavailable: {}",
+            telegram.display()
+        )
+    })?;
     let cfg = config_path();
     let mut command = python_command();
-    let output = command
+    command
         .arg("-X")
         .arg("utf8")
         .arg(&script)
         .args(args)
         .arg("--config")
         .arg(&cfg)
-        .current_dir(&repo)
+        .current_dir(&repo);
+    hide_background_window(&mut command);
+    let output = command
         .output()
         .map_err(|e| format!("failed to run Python ({}): {}", script.display(), e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -406,14 +479,36 @@ async fn join_stop() -> Result<String, String> {
     control_command(vec!["--join-stop-json".into()], None).await
 }
 
+#[cfg(windows)]
+pub fn backend_smoke() -> Result<(), String> {
+    run_node_script(control_script(), &["--join-status-json"], None).map(|_| ())
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_process_paths_strip_windows_verbatim_prefixes() {
+        assert_eq!(
+            child_process_path(PathBuf::from(r"\\?\D:\Aki\script.js")),
+            PathBuf::from(r"D:\Aki\script.js")
+        );
+        assert_eq!(
+            child_process_path(PathBuf::from(r"\\?\UNC\server\share\script.js")),
+            PathBuf::from(r"\\server\share\script.js")
+        );
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if let Ok(resource_dir) = app.path().resource_dir() {
-                let runtime = resource_dir.join("aki-watch-runtime");
-                if has_runtime_scripts(&runtime) {
+                if let Some(runtime) = canonical_runtime_dir(resource_dir.join("aki-watch-runtime"))
+                {
                     let _ = BUNDLED_RUNTIME_DIR.set(runtime);
                 }
             }

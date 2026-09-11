@@ -3,5 +3,14 @@
 
 fn main() {
     let _ = fix_path_env::fix();
+    #[cfg(windows)]
+    if std::env::args_os().any(|arg| arg == "--backend-smoke") {
+        let code = if aki_watch_lib::backend_smoke().is_ok() {
+            0
+        } else {
+            1
+        };
+        std::process::exit(code);
+    }
     aki_watch_lib::run()
 }
