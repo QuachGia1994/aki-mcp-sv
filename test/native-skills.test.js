@@ -45,6 +45,8 @@ test('anti-vibecoding skill requires evidence, deterministic verification, and c
   assert.match(antiVibe, /After two failed implementations of the same hypothesis, stop stacking patches/);
   assert.match(antiVibe, /Never report a task as fixed\/complete merely because/);
   assert.match(antiVibe, /Does the implementation satisfy the stated goal\?/);
+  assert.match(antiVibe, /enforce.*limit.*execution boundary.*UTF-8 bytes/is);
+  assert.match(antiVibe, /contract names.*runtime semantics/is);
   assert.match(antiVibe, /Use `\.\.\/ponytail\/SKILL\.md` to keep the eventual fix minimal/);
 });
 
@@ -53,6 +55,8 @@ test('mobile-native skill keeps real system navigation across iOS 27+, Expo, and
   assert.match(mobileNative, /Use `TabView` \+ `Tab`/);
   assert.match(mobileNative, /`expo-router\/unstable-native-tabs`/);
   assert.match(mobileNative, /Tauri with React renders the frontend in a system webview; it is not React Native/);
+  assert.match(mobileNative, /guard.*false.*remove.*navigation history.*Back/is);
+  assert.match(mobileNative, /package-manager.*frontend root.*src-tauri/is);
   assert.match(mobileNative, /Preserve that stack unless the user explicitly asks for a migration/);
   assert.match(mobileNative, /square-white-corner bugs, load `\.\.\/icon-silhouette\/SKILL\.md`/);
 });

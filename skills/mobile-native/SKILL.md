@@ -33,6 +33,7 @@ When the repo uses Expo Router, prefer platform-native tabs through `expo-router
 
 - Keep routes in Expo Router layouts; use NativeTabs for true system tabs when system behavior is desired.
 - On modern Expo SDKs, use Expo Router's supported navigation integration rather than importing internal React Navigation packages directly unless the installed version requires it.
+- When a protected/guarded route's guard becomes false, remove that route from navigation history; Back must not resurrect an inaccessible screen. Regression-test the guard transition and subsequent Back behavior, not only the current render.
 - On iOS 27+, allow the native tab host to pick up system Liquid Glass behavior instead of styling a JS imitation.
 - On Android, verify safe-area and IME behavior on-device. Use the current NativeTabs keyboard/inset options only when supported by the repo SDK.
 - Do not confuse React Native with a web React implementation. A custom React Native tab bar is still app-rendered UI; choose it only when product requirements genuinely cannot be expressed through system tabs.
@@ -44,6 +45,7 @@ Known upstream NativeTabs issues can be release-specific, so a bug report is evi
 Tauri with React renders the frontend in a system webview; it is not React Native and a React bottom bar is not a native `UITabBarController`/Android system navigation component.
 
 - Use Tauri v2's normal React/Vite SPA architecture for the webview UI and `tauri android dev/build` or `tauri ios dev/build` for mobile targets.
+- Package-manager commands that add/remove frontend dependencies must run from the frontend root, never from `src-tauri`; keep Rust/Cargo, Tauri config/capabilities, and native plugin implementation under the Tauri/native boundary instead of letting JS package state leak into it.
 - Use Tauri mobile plugins for capabilities that need native APIs. Android plugin code belongs in Kotlin/Java; iOS plugin code belongs in Swift, bridged through the Tauri plugin boundary.
 - Keep permissions/capabilities least-privileged and platform-scoped. Do not expose a broad Rust command merely because a frontend button needs one native operation.
 - If the user requires genuinely native iOS system tabs/navigation, say plainly that a webview-rendered Tauri React tab bar does not satisfy that requirement. Do not silently migrate the project; recommend the existing native/Expo path only when the product requirement justifies it.

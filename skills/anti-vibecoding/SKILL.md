@@ -33,6 +33,12 @@ For Aki multi-step work, keep this contract in the one shared plan/checkpoint al
 
 A screenshot, error string, or model explanation is a lead, not proof of root cause.
 
+## Execution-boundary fidelity
+
+When a spec-driven workflow hands data to a hook, subprocess, plugin, worker, or generated command, enforce each input limit at the execution boundary that actually consumes the data; validating only an earlier CLI/wrapper path leaves direct callers unprotected. For text payload limits, measure encoded UTF-8 bytes rather than language-level character/string length, and set explicit UTF-8 encoding when piping text through stdin or another byte-oriented boundary.
+
+Contract names must match runtime semantics. If the runtime distinguishes a feature identifier, feature directory, selected spec path, or another neighboring concept, keep those names distinct in plans/docs/code instead of reusing one convenient variable name for several meanings; a spec is not converged when its vocabulary lies about what the runtime actually passes.
+
 ## Implementation loop
 
 Use a hypothesis-driven loop, not random patching:
