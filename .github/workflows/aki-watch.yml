@@ -67,14 +67,30 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
         run: npx --no-install tauri build --bundles "${{ matrix.bundle }}"
 
-      - name: Smoke launch Windows binary
+      - name: Stage Windows portable package
+        if: runner.os == 'Windows'
+        working-directory: apps/aki-watch
+        shell: pwsh
+        run: |
+          npm run portable:stage
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $portableRoot = Resolve-Path 'src-tauri/target/release/portable/Aki-Watch-portable'
+          $portableDist = 'src-tauri/target/release/portable-dist'
+          New-Item -ItemType Directory -Force $portableDist | Out-Null
+          $portableZip = Join-Path $portableDist "Aki-Watch_${version}_windows-x64_portable.zip"
+          Compress-Archive -Path "$portableRoot\*" -DestinationPath $portableZip -Force
+          if (!(Test-Path (Join-Path $portableRoot 'aki-watch.exe'))) { throw 'portable executable missing' }
+          if (!(Test-Path (Join-Path $portableRoot 'aki-watch-runtime/scripts/postman-pool-control.js'))) { throw 'portable runtime resources missing' }
+          if (!(Test-Path $portableZip)) { throw 'portable ZIP missing' }
+
+      - name: Smoke launch Windows portable binary
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $exe = Resolve-Path 'apps/aki-watch/src-tauri/target/release/aki-watch.exe'
+          $exe = Resolve-Path 'apps/aki-watch/src-tauri/target/release/portable/Aki-Watch-portable/aki-watch.exe'
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 5
-          if ($p.HasExited) { throw "Aki Watch exited during smoke launch with code $($p.ExitCode)" }
+          if ($p.HasExited) { throw "Aki Watch portable exited during smoke launch with code $($p.ExitCode)" }
           Stop-Process -Id $p.Id -Force
 
       - name: Smoke launch macOS binary
@@ -99,5 +115,14 @@ jobs:
         with:
           name: aki-watch-${{ matrix.artifact }}
           path: apps/aki-watch/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows portable ZIP
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aki-watch-windows-portable
+          path: apps/aki-watch/src-tauri/target/release/portable-dist/*.zip
           if-no-files-found: error
           retention-days: 7

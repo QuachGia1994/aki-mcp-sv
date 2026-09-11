@@ -18,7 +18,7 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 - Windows uses `py -3`; macOS/Linux use `python3`.
 - Interactive Telegram login/observe opens a native console/terminal: Windows new console, macOS Terminal through `osascript`, Linux via `x-terminal-emulator`, `gnome-terminal`, or `konsole`.
 - Packaged GUI processes restore the user's shell PATH with `tauri-apps/fix-path-env-rs` pinned to `c4c45d503ea115a839aae718d02f79e7c7f0f673`, so Node/Python installed through normal package managers remain discoverable.
-- Bundle target is `all`; actual installers are built on their native host/CI. Windows does not produce a native macOS DMG by itself.
+- Bundle target is `all`; actual installers are built on their native host/CI. Windows does not produce a native macOS DMG by itself. Windows additionally stages a no-install portable folder by copying the release executable plus the exact `bundle.resources` map from `tauri.conf.json`, then archives it as a ZIP.
 - Version SSoT remains `package.json`; `tauri.conf.json` references it and `Cargo.toml` must stay in lockstep.
 
 ## Screens
@@ -44,7 +44,8 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 - [x] Opus HOLD P0 packaging fix: minimal runtime scripts are Tauri resources and packaged runtime resolution no longer requires the compile-time repo path.
 - [x] Opus P1 UX: machine-readable preflight, cancellable Verify Login with per-profile progress, humanized common errors. The earlier Headless/Human-Verify hard guard was superseded after direct comparison with the supplied author's source: headless is now allowed because the join path has no manual checkpoint.
 - [x] Accessibility hardening: tabs/progress/live regions plus profile checkbox picker; restrictive local CSP enabled.
-- [x] Dedicated `.github/workflows/aki-watch.yml` native build/smoke matrix added for Windows/macOS/Linux. macOS/Linux remain unproven until the workflow runs green after commit/push.
+- [x] Dedicated `.github/workflows/aki-watch.yml` native build/smoke matrix added and proven green on Windows/macOS/Linux.
+- [x] Windows no-install portable ZIP stages the executable beside the same Tauri runtime resources, is smoke-launched in CI, and publishes as `aki-watch-windows-portable`.
 - [ ] Run a fresh real Postman invite E2E; static tests cannot prove the provider's current page flow.
 - [ ] Later: native in-window OTP/2FA fields, keychain secret storage, code signing/updater, optional bundled runtimes.
 

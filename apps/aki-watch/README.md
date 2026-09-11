@@ -29,4 +29,6 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 ## Packaging
 
-`tauri.conf.json` uses `bundle.targets = "all"` and maps the runtime scripts into Tauri resources. `.github/workflows/aki-watch.yml` builds and smoke-launches the native Tauri app on Windows, macOS, and Ubuntu. Windows can be verified locally; macOS/Linux remain unproven until that workflow actually runs green on committed code.
+`tauri.conf.json` uses `bundle.targets = "all"` and maps the runtime scripts into Tauri resources. `.github/workflows/aki-watch.yml` builds and smoke-launches the native Tauri app on Windows, macOS, and Ubuntu.
+
+Windows also ships a no-install portable ZIP. `npm run portable:stage` copies the release `aki-watch.exe` and the exact `bundle.resources` map from `tauri.conf.json` into `src-tauri/target/release/portable/Aki-Watch-portable/`; CI archives that folder and smoke-launches the portable executable before publishing `aki-watch-windows-portable`. The portable app still requires the same host prerequisites listed above.
