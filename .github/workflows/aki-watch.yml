@@ -65,7 +65,7 @@ jobs:
         working-directory: apps/aki-watch
         env:
           APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
-        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+        run: npx --no-install tauri build --bundles "${{ matrix.bundle }}"
 
       - name: Smoke launch Windows binary
         if: runner.os == 'Windows'

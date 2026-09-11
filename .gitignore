@@ -21,6 +21,14 @@ cloudflare/qwen-bridge-worker/.dev.vars
 
 # macOS custom folder icon resource
 Icon?
+# Tauri package icons are release inputs; on case-insensitive Windows the Icon? rule also matches this directory.
+!apps/aki-watch/src-tauri/icons/
+apps/aki-watch/src-tauri/icons/*
+!apps/aki-watch/src-tauri/icons/32x32.png
+!apps/aki-watch/src-tauri/icons/128x128.png
+!apps/aki-watch/src-tauri/icons/128x128@2x.png
+!apps/aki-watch/src-tauri/icons/icon.icns
+!apps/aki-watch/src-tauri/icons/icon.ico
 
 # disposable visual export from /akihtmlreport, regenerated wholesale
 REPORT.html
