@@ -47,6 +47,10 @@ test('anti-vibecoding skill requires evidence, deterministic verification, and c
   assert.match(antiVibe, /Does the implementation satisfy the stated goal\?/);
   assert.match(antiVibe, /enforce.*limit.*execution boundary.*UTF-8 bytes/is);
   assert.match(antiVibe, /contract names.*runtime semantics/is);
+  assert.match(antiVibe, /inspect.*resolved artifact.*before.*mutat/is);
+  assert.match(antiVibe, /stable IDs.*active.*shadowed.*hook/is);
+  assert.match(antiVibe, /explicit refresh.*version.*source.*strategy.*removal/is);
+  assert.match(antiVibe, /advance.*provenance.*only after.*success/is);
   assert.match(antiVibe, /Use `\.\.\/ponytail\/SKILL\.md` to keep the eventual fix minimal/);
 });
 

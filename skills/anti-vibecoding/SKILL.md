@@ -39,6 +39,12 @@ When a spec-driven workflow hands data to a hook, subprocess, plugin, worker, or
 
 Contract names must match runtime semantics. If the runtime distinguishes a feature identifier, feature directory, selected spec path, or another neighboring concept, keep those names distinct in plans/docs/code instead of reusing one convenient variable name for several meanings; a spec is not converged when its vocabulary lies about what the runtime actually passes.
 
+## Resolved artifacts and refresh provenance
+
+Inspect the resolved artifact that the runtime would actually consume before mutating generated, composed, installed, or layered workflow state. Prefer structured introspection over guessing from source files: expose stable IDs, portable source/manifest references, and the resolution stack with `active` versus `shadowed` contributors. Give hooks and other contributions their own provenance instead of attributing everything only to the top-level artifact; stable IDs plus `active`/`shadowed` state for each hook make overrides and composition auditable.
+
+An idempotent identity match does not prove installed content is current. Require an explicit refresh when version, source, installation strategy, or removal set changes rather than silently treating the existing artifact as converged. Apply refresh transactionally: resolve/validate/write the new state first, then advance accepted provenance only after success; if refresh fails, keep the previously accepted artifact/provenance unchanged.
+
 ## Implementation loop
 
 Use a hypothesis-driven loop, not random patching:
