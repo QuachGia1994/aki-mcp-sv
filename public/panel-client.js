@@ -90,7 +90,7 @@ function buildPrompt() {
   lines.push('Context: AGENTS/HANDOFF 30-100 lines; no routed/global duplication; detail=plan/checkpoint');
   lines.push('Repo: Aki MCP path; keep dirty; no sandbox/temp unless asked; read back writes/diffs');
   lines.push('Astra6(any):review/plan->native gpt-5.6-luna@high ~90% implementation/tests->review; code override; unavailable=>report+fallback.');
-  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: unknown=find_path;text=search_content;multi=context_packet;code=edit_file/write_file;tests=run_cmd cwd=repo;risk=review;2fail/high=>escalate;no cd/-C.');
+  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: find_path/search_content;agent_read auto-compress (taskKey);context_packet (taskKey);edit_file/write_file;run_cmd;2fail/high=>escalate;no cd/-C.');
   else lines.push('Tools: unknown=find_path;text=search_content;deep=agent_read;code=edit_file/write_file;tests=run_cmd cwd=repo;risk=review;2fail/high=>escalate;no cd/-C.');
   lines.push('Skills ' + REPO_ROOT + '/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.');
   lines.push('First: intro.json absent=>read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; mismatch=>tell user update+re-paste.');
@@ -352,19 +352,48 @@ async function checkXKiroQuota(refresh = false) {
   return 'ready · ' + model + fallback + ' · ' + s.freeModels.length + ' free models';
 }
 
+function ageText(value) {
+  const at = Number(value);
+  if (!Number.isFinite(at) || at <= 0) return 'never';
+  const delta = Date.now() - at;
+  if (delta < 0) return 'in the future';
+  if (delta < 60_000) return 'just now';
+  if (delta < 3_600_000) return Math.floor(delta / 60_000) + 'm ago';
+  if (delta < 86_400_000) return Math.floor(delta / 3_600_000) + 'h ago';
+  return Math.floor(delta / 86_400_000) + 'd ago';
+}
+
 function renderContextOptimizerState(state) {
   const enabled = state?.enabled !== false;
+  const activity = state?.activity || {};
+  const lastFailure = activity.lastFailureAt;
+  const lastSuccess = activity.lastSuccessAt;
+  const hasSuccess = Number(activity.successes || 0) > 0 && Number(lastSuccess || 0) >= Number(lastFailure || 0);
+  const hasFailure = Number(activity.failures || 0) > 0 && Number(lastFailure || 0) > Number(lastSuccess || 0);
   const dot = document.getElementById('contextOptimizerDot');
-  dot.textContent = enabled ? '✓' : '✕';
-  dot.className = 'dot ' + (enabled ? 'ok' : 'err');
+  dot.textContent = !enabled ? '✕' : hasSuccess ? '✓' : hasFailure ? '✕' : '…';
+  dot.className = !enabled ? 'dot err' : hasSuccess ? 'dot ok' : hasFailure ? 'dot err' : 'dot';
+  dot.title = !enabled ? 'disabled setting; no automatic optimizer attempts' : hasSuccess ? 'enabled setting; latest recorded optimizer outcome succeeded' : hasFailure ? 'enabled setting; latest recorded optimizer attempt failed' : 'enabled setting; no successful optimizer activity recorded yet';
   document.getElementById('contextOptimizerEnabled').checked = enabled;
   document.getElementById('contextBudgetTokens').value = state?.budgetTokens || 12000;
   document.getElementById('contextHotWindow').value = state?.hotWindowMinutes || 30;
+  const attempts = Number(activity.attempts || 0);
+  const successes = Number(activity.successes || 0);
+  const failures = Number(activity.failures || 0);
+  const skips = Number(activity.skipped || 0);
+  const reused = Number(activity.reused || 0);
+  const lastAttempt = activity.lastAttemptAt;
+  const lastError = activity.lastError || '';
+  const task = activity.lastTaskKey || '';
+  const outcome = activity.lastOutcome || '';
+  const entries = Number(state?.entries || 0);
   const last = state?.last;
+  const packetText = last ? ' Latest cached packet: ' + ageText(last.lastTouched) + (last.taskKey ? ' · task ' + last.taskKey : '') + '.' : '';
+  const activityText = 'Cached tasks: ' + entries.toLocaleString() + ' · attempts ' + attempts.toLocaleString() + ' · successes ' + successes.toLocaleString() + ' · failures ' + failures.toLocaleString() + ' · skipped ' + skips.toLocaleString() + ' · reused ' + reused.toLocaleString() + '. Last attempt: ' + ageText(lastAttempt) + (task ? ' · task ' + task : '') + '. Last success: ' + ageText(lastSuccess) + '. Last failure: ' + ageText(lastFailure) + (lastError ? ' · error ' + lastError : '') + (outcome ? ' · outcome ' + outcome : '') + '.';
   const stats = last?.stats;
   const text = document.getElementById('contextOptimizerStats');
   if (!stats) {
-    text.textContent = 'No packet statistics yet. First multi-step context_packet call will populate this.';
+    text.textContent = activityText + packetText + ' No packet statistics yet. Automatic agent_read compression populates activity; context_packet remains available for explicit taskKey packets.';
     return;
   }
   const saved = Number(stats.savedTokensEstimated || 0).toLocaleString();
@@ -372,13 +401,47 @@ function renderContextOptimizerState(state) {
   const packet = Number(stats.packetTokensEstimated || 0).toLocaleString();
   const mode = stats.coldBoundary ? 'COLD' : 'HOT';
   const reuse = stats.stableReused ? 'stable reused' : 'stable rebuilt';
-  text.textContent = 'Last: ' + mode + ' · ' + reuse + ' · ' + stats.provider + ' · packet ≈' + packet + ' tok · avoided lead context ≈' + saved + ' tok (' + pct + '%) · KEEP/STALE/WASTED ' + stats.keepCount + '/' + stats.staleCount + '/' + stats.wastedCount + '. Estimates describe Aki compression, not provider cache hits.';
+  text.textContent = activityText + packetText + ' Last packet: ' + mode + ' · ' + reuse + ' · ' + stats.provider + ' · packet ≈' + packet + ' tok · avoided lead context ≈' + saved + ' tok (' + pct + '%) · KEEP/STALE/WASTED ' + stats.keepCount + '/' + stats.staleCount + '/' + stats.wastedCount + '. Estimates describe Aki compression, not provider cache hits.';
 }
 
 async function checkContextOptimizerStatus() {
   const s = await api('GET', '/api/context-optimizer-status');
   renderContextOptimizerState(s);
-  return (s.enabled ? 'ready' : 'disabled') + ' · budget ' + s.budgetTokens.toLocaleString() + ' tokens · hot window ' + s.hotWindowMinutes + 'm · ' + s.entries + ' cached task packet(s)';
+  const activity = s.activity || {};
+  const lastFailure = Number(activity.lastFailureAt || 0);
+  const lastSuccess = Number(activity.lastSuccessAt || 0);
+  const status = !s.enabled ? 'disabled' : lastFailure > lastSuccess ? 'degraded' : Number(activity.successes || 0) ? 'ready' : 'idle';
+  return status + ' · budget ' + s.budgetTokens.toLocaleString() + ' tokens (agent_read auto ≤4,000; explicit context_packet uses this budget) · hot window ' + s.hotWindowMinutes + 'm · ' + s.entries + ' cached task packet(s) · ' + Number(activity.attempts || 0) + ' attempts';
+}
+
+let contextStatusRequest = null;
+let contextStatusTimer = null;
+
+function contextTabVisible() {
+  return document.visibilityState !== 'hidden' && document.getElementById('tab-context')?.classList.contains('active');
+}
+
+function refreshContextOptimizerStatus() {
+  if (contextStatusRequest) return contextStatusRequest;
+  contextStatusRequest = checkContextOptimizerStatus().then((message) => {
+    if (contextTabVisible()) say('msgContextOptimizer', message, true);
+    return message;
+  }).catch((error) => {
+    if (contextTabVisible()) say('msgContextOptimizer', 'stats refresh failed', false);
+    throw error;
+  }).finally(() => { contextStatusRequest = null; });
+  return contextStatusRequest;
+}
+
+function syncContextOptimizerRefresh() {
+  if (!contextTabVisible()) {
+    if (contextStatusTimer) { clearInterval(contextStatusTimer); contextStatusTimer = null; }
+    return;
+  }
+  if (!contextStatusTimer) {
+    refreshContextOptimizerStatus().catch(() => {});
+    contextStatusTimer = setInterval(() => { if (contextTabVisible()) refreshContextOptimizerStatus().catch(() => {}); }, 15_000);
+  }
 }
 
 function renderFreeFirstState(state) {
@@ -458,7 +521,7 @@ const ACTIONS = {
     buildPrompt();
     return s.message + ' · budget ' + s.budgetTokens.toLocaleString() + ' · hot ' + s.hotWindowMinutes + 'm';
   }),
-  refreshContextOptimizer: (btn) => act(btn, 'msgContextOptimizer', checkContextOptimizerStatus),
+  refreshContextOptimizer: (btn) => act(btn, 'msgContextOptimizer', refreshContextOptimizerStatus),
   refreshFreeFirst: (btn) => act(btn, 'msgFreeFirst', checkFreeFirstStatus),
   syncProjectGraph: (btn) => act(btn, 'msgFreeFirst', async () => {
     const synced = await api('POST', '/api/project-graph-sync');
@@ -557,8 +620,11 @@ document.querySelectorAll('.tabs').forEach((nav) => {
   nav.querySelectorAll('.tab').forEach((tab) => (tab.onclick = () => {
     scope.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     scope.querySelectorAll('.tabpane').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + tab.dataset.tab));
+    syncContextOptimizerRefresh();
   }));
 });
+
+document.addEventListener('visibilitychange', syncContextOptimizerRefresh);
 
 function updateDomainPrice() {
   const opt = document.getElementById('tldSelect').selectedOptions[0];

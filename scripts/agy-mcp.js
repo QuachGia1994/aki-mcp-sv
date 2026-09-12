@@ -60,9 +60,9 @@ function resolveRequest({ cwd, mode }) {
   return { mode: useMode, dir: r.dir };
 }
 
-export function runAgy(args, cwd) {
+export function runAgy(args, cwd, { run = execFile } = {}) {
   return new Promise((resolve) => {
-    execFile(resolveAgyExecutable(), args, { cwd, timeout: AGY_SYNC_PROCESS_TIMEOUT_MS, maxBuffer: MAX_JOB_RESULT_BYTES }, (error, stdout, stderr) => {
+    run(resolveAgyExecutable(), args, { cwd, timeout: AGY_SYNC_PROCESS_TIMEOUT_MS, maxBuffer: MAX_JOB_RESULT_BYTES, windowsHide: true }, (error, stdout, stderr) => {
       if (error) return resolve(err(stdout || stderr || error.message));
       if (!stdout || !stdout.trim()) return resolve(err('agy returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.'));
       resolve(ok(stdout));

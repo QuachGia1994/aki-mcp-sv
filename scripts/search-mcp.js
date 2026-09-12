@@ -1,6 +1,6 @@
 // Whole-tree search MCP tool in one call. The filesystem MCP's search_files returns no directories and times out on a large root.
 import { execFile } from 'node:child_process';
-import { opendirSync } from 'node:fs';
+import { existsSync, opendirSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { getRoots, resolveRealUnderRootSync } from './roots.js';
@@ -14,6 +14,34 @@ const SKIP_DIRS = new Set([
 const MAX_DEPTH = 12;
 const DEFAULT_LIMIT = 100;
 const MAX_GLOB_PATTERN_LENGTH = 256;
+
+export function resolveGrepExecutable({ platform = process.platform, env = process.env, exists = existsSync } = {}) {
+  if (platform !== 'win32') return 'grep';
+  const pathValue = env.PATH ?? env.Path ?? '';
+  for (const rawEntry of pathValue.split(';')) {
+    const trimmedEntry = rawEntry.trim();
+    if (!trimmedEntry) continue;
+    const entry = trimmedEntry.startsWith('"') && trimmedEntry.endsWith('"') ? trimmedEntry.slice(1, -1) : trimmedEntry;
+    const gitExecutable = path.win32.join(entry, 'git.exe');
+    if (!exists(gitExecutable)) continue;
+    const gitBin = path.win32.dirname(gitExecutable);
+    const gitBinName = path.win32.basename(gitBin).toLowerCase();
+    const gitParent = path.win32.dirname(gitBin);
+    const gitParentName = path.win32.basename(gitParent).toLowerCase();
+    const gitRoots = gitBinName === 'cmd'
+      ? [gitParent]
+      : gitBinName === 'bin' && ['mingw64', 'mingw32', 'clangarm64', 'clangarm', 'usr'].includes(gitParentName)
+        ? [path.win32.dirname(gitParent)]
+        : gitBinName === 'bin'
+          ? [gitParent]
+          : [];
+    for (const gitRoot of gitRoots) {
+      const bundledGrep = path.win32.join(gitRoot, 'usr', 'bin', 'grep.exe');
+      if (exists(bundledGrep)) return bundledGrep;
+    }
+  }
+  return 'grep';
+}
 
 function wildcardMatch(pattern, value) {
   const needle = pattern.toLowerCase();
@@ -95,15 +123,15 @@ export function findPath(query, from, limit) {
   return `${found.length} result(s) under ${base}:\n${head.join('\n')}${note}`;
 }
 
-export function searchContent(query, from, glob, limit, { run = execFile } = {}) {
+export function searchContent(query, from, glob, limit, { run = execFile, resolveGrep = resolveGrepExecutable } = {}) {
   const base = resolveRealUnderRootSync(from);
   const args = ['-rniIE', '--binary-files=without-match', ...[...SKIP_DIRS].map((d) => `--exclude-dir=${d}`)];
   if (glob) args.push(`--include=${glob}`);
   args.push('-e', query, base);
   return new Promise((resolve, reject) => {
-    run('grep', args, { timeout: 30_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+    run(resolveGrep(), args, { timeout: 30_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (err && (err.code !== 1 || err.killed || err.signal)) {
-        const message = err.code === 'ENOENT' ? 'grep executable not found on PATH; install or expose the required Unix tools (Git for Windows on Windows)' : stderr?.trim() || err.message;
+        const message = err.code === 'ENOENT' ? 'grep executable not found on PATH or in Git for Windows usr/bin; install or expose the required Unix tools (Git for Windows on Windows)' : stderr?.trim() || err.message;
         return reject(new Error(message));
       }
       const lines = (stdout || '').split('\n').filter(Boolean);

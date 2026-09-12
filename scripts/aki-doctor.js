@@ -37,8 +37,8 @@ function canConnect(port, timeoutMs = 300) {
   });
 }
 
-export async function diagnoseMcpTransport() {
-  const [loopbackMcp, panel] = await Promise.all([canConnect(Number(process.env.AKI_LOCAL_MCP_PORT || 19999)), canConnect(Number(process.env.AKI_PANEL_PORT || 9998))]);
+export async function diagnoseMcpTransport({ env = process.env, connect = canConnect } = {}) {
+  const [loopbackMcp, panel] = await Promise.all([connect(Number(env.LOOPBACK_MCP_PORT || env.AKI_LOCAL_MCP_PORT || 19999)), connect(Number(env.PANEL_PORT || env.AKI_PANEL_PORT || 9998))]);
   const oauthFiles = ['oauth-client.json', 'passphrase.txt'].map((name) => ({ name, exists: existsSync(path.join(USER_DIR, name)) }));
   const oauth = oauthFiles.every((entry) => entry.exists);
   return { status: worst(loopbackMcp ? 'PASS' : 'WARN', panel ? 'PASS' : 'WARN', oauth ? 'PASS' : 'WARN'), loopbackMcp, panel, oauth, oauthFiles };
@@ -71,12 +71,15 @@ export async function diagnoseWorkers({ deep = false } = {}) {
   return { status: worst(xkiro.status, agy.status), xkiro, agy };
 }
 
-export async function diagnoseSubsystems({ deep = false } = {}) {
-  const contextOptimizer = getContextOptimizerStatus();
+export async function diagnoseSubsystems({ deep = false, contextOptimizer = getContextOptimizerStatus() } = {}) {
   const budgetRouter = deep ? await getBudgetRouterStatus({ refresh: true }) : { totals: readCostLedger().totals };
   const projectGraph = getProjectGraphStatus();
   const taskCheckpoint = getTaskCheckpointStatus();
-  return { status: contextOptimizer.enabled ? 'PASS' : 'WARN', contextOptimizer, budgetRouter, projectGraph, taskCheckpoint };
+  const activity = contextOptimizer.activity || {};
+  let status = 'WARN';
+  if (contextOptimizer.enabled && activity.successes > 0) status = 'PASS';
+  if (contextOptimizer.enabled && Number(activity.lastFailureAt || 0) > Number(activity.lastSuccessAt || 0)) status = 'FAIL';
+  return { status, contextOptimizer, budgetRouter, projectGraph, taskCheckpoint };
 }
 
 export async function runAkiDoctor({ deep = false } = {}) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { searchContent, toMatcher } from '../scripts/search-mcp.js';
+import { resolveGrepExecutable, searchContent, toMatcher } from '../scripts/search-mcp.js';
 
 test('glob matcher keeps documented star/question semantics without regex backtracking', () => {
   const basename = toMatcher('*.test.js');
@@ -17,6 +17,63 @@ test('glob matcher keeps documented star/question semantics without regex backtr
 
 test('glob matcher rejects oversized wildcard patterns before tree traversal', () => {
   assert.throws(() => toMatcher('*'.repeat(257)), /glob pattern exceeds 256 characters/);
+});
+
+test('Windows resolves Git for Windows grep beside git on PATH without changing PATH', () => {
+  const git = String.raw`C:\Program Files\Git\cmd\git.exe`;
+  const grep = String.raw`C:\Program Files\Git\usr\bin\grep.exe`;
+  const pathValue = [String.raw`C:\Windows\System32`, `"${String.raw`C:\Program Files\Git\cmd`}"`].join(';');
+  const checked = [];
+  const originalPath = process.env.PATH;
+  const resolved = resolveGrepExecutable({ platform: 'win32', env: { PATH: pathValue }, exists: (candidate) => {
+    checked.push(candidate);
+    return candidate === git || candidate === grep;
+  } });
+  assert.equal(resolved, grep);
+  assert.ok(checked.includes(git));
+  assert.ok(checked.includes(grep));
+  assert.equal(process.env.PATH, originalPath);
+});
+
+test('non-Windows keeps the bare GNU grep name', () => {
+  assert.equal(resolveGrepExecutable({ platform: 'linux', env: {}, exists: () => { throw new Error('must not inspect PATH'); } }), 'grep');
+});
+
+test('Windows resolves grep from the Git for Windows MinGW layout', () => {
+  const git = String.raw`C:\Program Files\Git\mingw64\bin\git.exe`;
+  const grep = String.raw`C:\Program Files\Git\usr\bin\grep.exe`;
+  const resolved = resolveGrepExecutable({
+    platform: 'win32',
+    env: { PATH: String.raw`C:\Program Files\Git\mingw64\bin` },
+    exists: (candidate) => candidate === git || candidate === grep,
+  });
+  assert.equal(resolved, grep);
+});
+
+test('Windows falls back to PATH grep when Git for Windows has no bundled grep', () => {
+  const git = String.raw`C:\Program Files\Git\cmd\git.exe`;
+  const resolved = resolveGrepExecutable({
+    platform: 'win32',
+    env: { PATH: String.raw`C:\Program Files\Git\cmd` },
+    exists: (candidate) => candidate === git,
+  });
+  assert.equal(resolved, 'grep');
+});
+
+test('search_content passes the resolved executable to execFile', async () => {
+  const expected = String.raw`C:\Program Files\Git\usr\bin\grep.exe`;
+  const run = (executable, _args, _options, callback) => {
+    assert.equal(executable, expected);
+    callback(Object.assign(new Error('no match'), { code: 1 }), '', '');
+  };
+  assert.match(await searchContent('needle', process.cwd(), undefined, 10, { run, resolveGrep: () => expected }), /no lines matched/);
+});
+
+test('Windows search_content runs with the bundled GNU grep', { skip: process.platform !== 'win32' }, async () => {
+  const executable = resolveGrepExecutable();
+  assert.match(executable, /[\\/]usr[\\/]bin[\\/]grep\.exe$/i);
+  const result = await searchContent('resolveGrepExecutable', process.cwd(), 'search-mcp.js', 1);
+  assert.match(result, /matching line\(s\):/);
 });
 
 test('search_content rejects execution failures instead of reporting no matches or partial success', async () => {

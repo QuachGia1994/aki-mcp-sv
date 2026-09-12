@@ -49,6 +49,24 @@ function runBuildPrompt({ ruleFiles = ALL_RULE_FILES, checkedRuleFiles = CORE_RU
   return { prompt: elements.get('prompt').value, count: elements.get('promptCount') };
 }
 
+function renderOptimizerStats(state) {
+  const source = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
+  const start = source.indexOf('function ageText(');
+  const end = source.indexOf('\n\nasync function checkContextOptimizerStatus', start);
+  assert.ok(start >= 0 && end > start, 'optimizer renderer source should be present');
+  const elements = new Map([
+    ['contextOptimizerDot', { textContent: '', className: '', title: '' }],
+    ['contextOptimizerEnabled', { checked: false }],
+    ['contextBudgetTokens', { value: '' }],
+    ['contextHotWindow', { value: '' }],
+    ['contextOptimizerStats', { textContent: '' }],
+  ]);
+  const context = { document: { getElementById: (id) => elements.get(id) } };
+  vm.runInNewContext(`${source.slice(start, end)}\nthis.renderContextOptimizerState = renderContextOptimizerState;`, context);
+  context.renderContextOptimizerState(state);
+  return { text: elements.get('contextOptimizerStats').textContent, dot: elements.get('contextOptimizerDot') };
+}
+
 test('fork workflow instructions are checked and locked in section 3', () => {
   const html = render();
   for (const id of ['researchGitHubBeforePlan', 'sharedLivePlan', 'realRepoOnly', 'triggerBuildOnly', 'nativeVisualTools', 'leanContextPolicy']) {
@@ -131,11 +149,50 @@ test('Context Optimizer panel exposes bounded lead-packet controls without claim
   assert.match(html, /data-act="syncProjectGraph"/);
   assert.match(html, /data-act="runAkiDoctor"/);
   assert.match(html, /Provider-reported tokens, Aki estimates, avoided lead context, and cache hits stay separate metrics/);
+  assert.match(html, /lower of this budget and 4,000 tokens/);
   assert.match(client, /\/api\/context-optimizer-status/);
   assert.match(client, /\/api\/budget-router-status/);
   assert.match(client, /\/api\/project-graph-sync/);
   assert.match(client, /\/api\/doctor/);
   assert.match(client, /\/api\/context-optimizer-config/);
+  assert.match(client, /contextStatusRequest/);
+  assert.match(client, /setInterval\(\(\) => \{ if \(contextTabVisible\(\)\) refreshContextOptimizerStatus\(\)\.catch\(\(\) => \{\}\); \}, 15_000\)/);
+  assert.match(client, /document\.visibilityState !== 'hidden'/);
+});
+
+test('Context Optimizer panel renders activity counters separately from cached task entries', () => {
+  const now = Date.now();
+  const rendered = renderOptimizerStats({
+    enabled: true,
+    entries: 2,
+    activity: {
+      attempts: 7,
+      successes: 5,
+      failures: 1,
+      skipped: 1,
+      reused: 4,
+      lastAttemptAt: now - 2 * 60 * 60 * 1000,
+      lastSuccessAt: now - 3 * 60 * 60 * 1000,
+      lastFailureAt: now - 60 * 60 * 1000,
+      lastError: 'worker timeout',
+      lastTaskKey: 'plan-1',
+      lastOutcome: 'success',
+    },
+  });
+  assert.match(rendered.text, /Cached tasks: 2 · attempts 7 · successes 5 · failures 1 · skipped 1 · reused 4/);
+  assert.match(rendered.text, /Last attempt: 2h ago · task plan-1/);
+  assert.match(rendered.text, /Last success: 3h ago/);
+  assert.match(rendered.text, /Last failure: 1h ago · error worker timeout/);
+  assert.match(rendered.text, /Automatic agent_read compression populates activity/);
+  assert.match(rendered.dot.title, /enabled setting/);
+});
+
+test('Context Optimizer panel keeps legacy cached packets honest when activity is absent', () => {
+  const rendered = renderOptimizerStats({ enabled: true, entries: 1, last: { stats: { packetTokensEstimated: 10, savedTokensEstimated: 0, savedPctEstimated: 0, provider: 'legacy', keepCount: 0, staleCount: 0, wastedCount: 0, coldBoundary: true, stableReused: false } } });
+  assert.match(rendered.text, /Cached tasks: 1 · attempts 0 · successes 0 · failures 0 · skipped 0 · reused 0/);
+  assert.match(rendered.text, /Last attempt: never/);
+  assert.match(rendered.text, /Last packet: COLD/);
+  assert.match(rendered.text, /Latest cached packet: never/);
 });
 
 test('Gemini Spark panel documents one-call repo snapshot and unavoidable client-side approvals', () => {
@@ -161,8 +218,8 @@ test('generated workflow is lean, reuses evidence, and keeps routed context out 
   assert.match(client, /delegate if ROI>coordination/);
   assert.match(client, /AGENTS\/HANDOFF 30-100 lines/);
   assert.match(client, /no sandbox\/temp unless asked/);
-  assert.match(client, /multi=context_packet;code=edit_file\/write_file;tests=run_cmd cwd=repo/);
-  assert.match(client, /deep=agent_read;code=edit_file\/write_file;tests=run_cmd cwd=repo/);
+     assert.match(client, /agent_read auto-compress \(taskKey\);context_packet \(taskKey\);edit_file\/write_file;run_cmd/);
+    assert.match(client, /deep=agent_read;code=edit_file\/write_file;tests=run_cmd cwd=repo/);
   assert.match(client, /browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix/);
 });
 

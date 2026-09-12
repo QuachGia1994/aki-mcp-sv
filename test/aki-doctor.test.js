@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderDoctorMarkdown, runAkiDoctor } from '../scripts/aki-doctor.js';
+import { diagnoseMcpTransport, diagnoseSubsystems, renderDoctorMarkdown, runAkiDoctor } from '../scripts/aki-doctor.js';
+
+test('Doctor distinguishes enabled configuration from successful optimizer activity', async () => {
+  assert.equal((await diagnoseSubsystems({ contextOptimizer: { enabled: true } })).status, 'WARN');
+  assert.equal((await diagnoseSubsystems({ contextOptimizer: { enabled: true, activity: { successes: 1, lastSuccessAt: 10, lastFailureAt: 20 } } })).status, 'FAIL');
+  assert.equal((await diagnoseSubsystems({ contextOptimizer: { enabled: true, activity: { successes: 2, lastSuccessAt: 30, lastFailureAt: 20 } } })).status, 'PASS');
+});
+
+test('Doctor probes the ports used by the running server configuration', async () => {
+  const ports = [];
+  const report = await diagnoseMcpTransport({ env: { LOOPBACK_MCP_PORT: '20001', PANEL_PORT: '10001', AKI_LOCAL_MCP_PORT: '30001', AKI_PANEL_PORT: '30002' }, connect: async (port) => { ports.push(port); return true; } });
+  assert.deepEqual(ports, [20001, 10001]);
+  assert.equal(report.loopbackMcp, true);
+  assert.equal(report.panel, true);
+});
 
 test('Aki Doctor module is read-only by construction', () => {
   const source = readFileSync(new URL('../scripts/aki-doctor.js', import.meta.url), 'utf8');

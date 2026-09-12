@@ -42,10 +42,12 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     const instructions = client.getInstructions();
     assert.match(instructions, /Gemini Spark confirms every MCP tools\/call client-side/);
     assert.match(instructions, /call local__repo_snapshot exactly once/);
-    assert.match(instructions, /Use local__agent_read only for semantic\/cross-source retrieval after repo_snapshot is insufficient/);
+    assert.match(instructions, /Use local__agent_read for semantic\/cross-source retrieval after repo_snapshot is insufficient/);
+    assert.match(instructions, /automatically compresses the read and persists bounded activity\/checkpoint state/);
     assert.match(instructions, /do not decompose broad analysis into list_allowed_directories\/find_path\/search_content\/read_text_file/);
-    assert.match(instructions, /call local__context_packet with the shared plan\/task id before expensive lead\/Astra reasoning/);
-    assert.match(instructions, /Reuse the same taskKey on follow-ups/);
+    assert.match(instructions, /pass the shared plan\/task id as taskKey to local__agent_read/);
+    assert.match(instructions, /call local__context_packet explicitly when a durable packet is needed before expensive lead\/Astra reasoning/i);
+    assert.match(instructions, /reuse the same taskKey on follow-ups/i);
     assert.match(instructions, /Use local__budget_router_read instead of choosing xKiro\/agy manually/);
     assert.match(instructions, /local__task_checkpoint_recover after compaction\/restart\/account handoff/);
     assert.match(instructions, /local__aki_doctor for unified read-only health diagnosis/);
@@ -83,7 +85,7 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__repo_snapshot')?.annotations, localRead);
     assert.deepEqual(tools.get('local__read_text_file')?.annotations, localRead);
     assert.deepEqual(tools.get('filesystem__read_text_file')?.annotations, localRead);
-    assert.deepEqual(tools.get('local__agent_read')?.annotations, remoteRead);
+    assert.deepEqual(tools.get('local__agent_read')?.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
     assert.equal(tools.has('local__opencode_read'), false);
     assert.equal(tools.has('local__opencode_status'), false);
     assert.equal(tools.has('local__kiro_read'), false);

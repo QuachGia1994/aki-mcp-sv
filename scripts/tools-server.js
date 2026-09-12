@@ -22,8 +22,8 @@ import { register as registerImageInbox } from './image-inbox.js';
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
   'For broad local repo/codebase analysis, call local__repo_snapshot exactly once with the project path; it returns a bounded tree plus prioritized source/config/docs in one local read pass and is designed to finish within short client deadlines.',
-  'Use local__agent_read only for semantic/cross-source retrieval after repo_snapshot is insufficient; do not decompose broad analysis into list_allowed_directories/find_path/search_content/read_text_file unless the one-call paths fail or the user requests granular reads.',
-  'For multi-step/deep work, call local__context_packet with the shared plan/task id before expensive lead/Astra reasoning; it recovers the task checkpoint, searches compact durable project knowledge, then uses the Budget Router so raw retrieval/compression stays in the cheapest healthy eligible worker. Reuse the same taskKey on follow-ups; force a cold rebuild only when stable assumptions changed.',
+  'Use local__agent_read for semantic/cross-source retrieval after repo_snapshot is insufficient; when Context Optimizer is enabled it automatically compresses the read and persists bounded activity/checkpoint state; do not decompose broad analysis into list_allowed_directories/find_path/search_content/read_text_file unless the one-call paths fail or the user requests granular reads.',
+  'For multi-step/deep work, pass the shared plan/task id as taskKey to local__agent_read; reuse the same taskKey on follow-ups so they reuse the compact packet. Call local__context_packet explicitly when a durable packet is needed before expensive lead/Astra reasoning; it recovers the task checkpoint, searches compact durable project knowledge, then uses the Budget Router so raw retrieval/compression stays in the cheapest healthy eligible worker. Force a cold rebuild only when stable assumptions changed.',
   'Use local__budget_router_read instead of choosing xKiro/agy manually; its ledger keeps actual provider tokens, estimates, avoided lead context, and reported cache hits as separate metrics.',
   'Use local__task_checkpoint_recover after compaction/restart/account handoff, local__graph_query for durable project decisions/facts, and local__aki_doctor for unified read-only health diagnosis.',
   'When the owner asks to inspect a screenshot/photo they placed in the local Postman image inbox, call local__image_inbox with action=latest by default, action=list when the filename is ambiguous, or action=read with the exact basename. The tool returns MCP-native image content for visual analysis.',
@@ -52,7 +52,7 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'image_inbox',
 ]);
 
-const REMOTE_READ_ONLY_TOOLS = new Set(['xkiro_read', 'xkiro_status', 'agent_read', 'budget_router_status', 'aki_doctor']);
+const REMOTE_READ_ONLY_TOOLS = new Set(['xkiro_read', 'xkiro_status', 'budget_router_status', 'aki_doctor']);
 
 const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['write_file', { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false }],
@@ -64,6 +64,9 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['run_cmd', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['budget_router_read', { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
+  // agent_read can persist bounded optimizer/checkpoint activity when the optimizer is enabled;
+  // keep the static hint conservative even though it never mutates the requested worktree.
+  ['agent_read', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   ['context_packet', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   ['graph_sync', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
   ['task_checkpoint_save', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }],

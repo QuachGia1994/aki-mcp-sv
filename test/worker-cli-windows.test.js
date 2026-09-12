@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AGY_JOB_PROCESS_TIMEOUT_MS, AGY_SYNC_PROCESS_TIMEOUT_MS, buildAgyArgs, register as registerAgy, resolveAgyExecutable } from '../scripts/agy-mcp.js';
+import { AGY_JOB_PROCESS_TIMEOUT_MS, AGY_SYNC_PROCESS_TIMEOUT_MS, buildAgyArgs, register as registerAgy, resolveAgyExecutable, runAgy } from '../scripts/agy-mcp.js';
 
 test('agy plan mode auto-approves confirmations while remaining plan-mode read-only', () => {
   const args = buildAgyArgs({
@@ -53,4 +53,16 @@ test('agy resolves the native Windows installation before PATH fallback', () => 
     exists: (path) => path === expected,
   });
   assert.equal(resolved, expected);
+});
+
+test('agy synchronous execution hides the Windows console window', async () => {
+  let options;
+  const result = await runAgy(['--version'], process.cwd(), {
+    run: (_executable, _args, receivedOptions, callback) => {
+      options = receivedOptions;
+      callback(null, 'agy 1.0.0\n', '');
+    },
+  });
+  assert.equal(options.windowsHide, true);
+  assert.equal(result.content[0].text, 'agy 1.0.0\n');
 });

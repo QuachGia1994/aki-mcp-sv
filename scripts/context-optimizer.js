@@ -94,19 +94,16 @@ export function fitPacketToBudget(stable, dynamic, budgetTokens) {
   const maxChars = clampInt(budgetTokens, DEFAULT_CONTEXT_OPTIMIZER_CONFIG.budgetTokens, 2000, 32000) * CHARS_PER_TOKEN;
   const render = () => `${renderStablePrefix(stableOut)}\n${renderDynamicTail(dynamicOut)}`;
   const trimOrder = [
-    ...DYNAMIC_KEYS.map((key) => ['dynamic', key]),
+    ...['risks', 'tests', 'changes', 'evidence'].map((key) => ['dynamic', key]),
     ['stable', 'architecture'],
-    ['stable', 'acceptance'],
-    ['stable', 'constraints'],
     ['stable', 'decisions'],
-    ['stable', 'goal'],
   ];
   let guard = 0;
   while (render().length > maxChars && guard++ < 500) {
     let removed = false;
     for (const [kind, key] of trimOrder) {
       const target = kind === 'dynamic' ? dynamicOut : stableOut;
-      const min = kind === 'stable' && key === 'goal' ? 1 : 0;
+      const min = kind === 'dynamic' && key === 'evidence' ? 1 : 0;
       if (target[key].length > min) {
         target[key].pop();
         removed = true;
@@ -134,6 +131,29 @@ function parseJsonObject(text) {
   throw new Error('context worker did not return a valid JSON packet');
 }
 
+function isObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function validateWorkerPacket(candidate, { cold, previous } = {}) {
+  if (!isObject(candidate) || !isObject(candidate.stable) || !isObject(candidate.dynamic) || !isObject(candidate.classify)) {
+    throw new Error('context worker returned an incomplete JSON packet');
+  }
+  for (const key of STABLE_KEYS) {
+    if (candidate.stable[key] !== undefined && !Array.isArray(candidate.stable[key])) throw new Error(`context worker packet stable.${key} must be an array`);
+  }
+  for (const key of DYNAMIC_KEYS) {
+    if (candidate.dynamic[key] !== undefined && !Array.isArray(candidate.dynamic[key])) throw new Error(`context worker packet dynamic.${key} must be an array`);
+  }
+  for (const key of ['keep', 'stale', 'wasted']) {
+    if (candidate.classify[key] !== undefined && !Array.isArray(candidate.classify[key])) throw new Error(`context worker packet classify.${key} must be an array`);
+  }
+  const normalized = normalizeWorkerPacket(candidate);
+  if (cold && !normalized.stable.goal.length) throw new Error('context worker packet must include a nonempty stable goal on COLD rebuild');
+  if (!cold && !previous?.stable?.goal?.length) throw new Error('context optimizer cannot reuse an invalid HOT stable goal');
+  return normalized;
+}
+
 function parseWorkerTokens(text) {
   const match = text.match(/\[xKiro [^\]]*?·\s*([\d,]+) tokens\s*·/i);
   return match ? Number(match[1].replace(/,/g, '')) : null;
@@ -143,9 +163,35 @@ function stateKey(dir, taskKey) {
   return createHash('sha256').update(`${pathIdentity(dir)}\n${taskKey}`).digest('hex').slice(0, 24);
 }
 
+function normalizeActivity(value = {}) {
+  const count = (key) => Math.max(0, Math.floor(Number(value[key]) || 0));
+  const timestamp = (key) => Number.isFinite(Number(value[key])) && Number(value[key]) > 0 ? Number(value[key]) : null;
+  return {
+    attempts: count('attempts'),
+    successes: count('successes'),
+    failures: count('failures'),
+    skipped: count('skipped'),
+    reused: count('reused'),
+    lastAttemptAt: timestamp('lastAttemptAt'),
+    lastSuccessAt: timestamp('lastSuccessAt'),
+    lastFailureAt: timestamp('lastFailureAt'),
+    lastError: value.lastError ? String(value.lastError).slice(0, 500) : '',
+    lastTaskKey: value.lastTaskKey ? String(value.lastTaskKey).slice(0, 120) : '',
+    lastOutcome: ['success', 'failure', 'skipped'].includes(value.lastOutcome) ? value.lastOutcome : '',
+  };
+}
+
+function normalizeState(value = {}) {
+  return {
+    version: 2,
+    entries: value.entries && typeof value.entries === 'object' && !Array.isArray(value.entries) ? value.entries : {},
+    activity: normalizeActivity(value.activity),
+  };
+}
+
 function readState() {
   const state = readJsonObject(CONTEXT_OPTIMIZER_STATE_PATH, { version: 1, entries: {} });
-  return { version: 1, entries: state.entries && typeof state.entries === 'object' && !Array.isArray(state.entries) ? state.entries : {} };
+  return normalizeState(state);
 }
 
 function pruneState(state, config, now) {
@@ -154,7 +200,45 @@ function pruneState(state, config, now) {
     .filter(([, entry]) => Number(entry?.lastTouched || 0) > 0 && now - Number(entry.lastTouched) <= ttlMs)
     .sort((a, b) => Number(b[1].lastTouched) - Number(a[1].lastTouched))
     .slice(0, config.maxEntries);
-  return { version: 1, entries: Object.fromEntries(entries) };
+  return { ...normalizeState(state), entries: Object.fromEntries(entries) };
+}
+
+let stateMutationTail = Promise.resolve();
+
+function mutateState(loadState, saveState, mutator) {
+  const run = stateMutationTail.then(() => {
+    const state = normalizeState(loadState());
+    const next = mutator(state) || state;
+    saveState(normalizeState(next));
+    return next;
+  });
+  stateMutationTail = run.catch(() => {});
+  return run;
+}
+
+function updateActivity(state, { outcome, at, taskKey = '', error = '', reused = false, countAttempt = true }) {
+  const activity = normalizeActivity(state.activity);
+  if (countAttempt) {
+    activity.attempts += 1;
+    activity.lastAttemptAt = at;
+    activity.lastTaskKey = String(taskKey || '').slice(0, 120);
+  }
+  if (outcome) {
+    activity.lastOutcome = outcome;
+    activity.lastError = outcome === 'failure' ? String(error || 'optimizer failed').slice(0, 500) : '';
+  }
+  if (outcome === 'success') {
+    activity.successes += 1;
+    activity.lastSuccessAt = at;
+    if (reused) activity.reused += 1;
+  } else if (outcome === 'failure') {
+    activity.failures += 1;
+    activity.lastFailureAt = at;
+  } else if (outcome === 'skipped') {
+    activity.skipped += 1;
+  }
+  state.activity = activity;
+  return state;
 }
 
 function previousItems(entry) {
@@ -219,8 +303,9 @@ function fitDynamicToLockedPrefix(stableText, dynamic, budgetTokens) {
   let guard = 0;
   while (`${stableText}\n${renderDynamicTail(dynamicOut)}`.length > maxChars && guard++ < 500) {
     let removed = false;
-    for (const key of DYNAMIC_KEYS) {
-      if (dynamicOut[key].length) {
+    for (const key of ['risks', 'tests', 'changes', 'evidence']) {
+      const min = key === 'evidence' ? 1 : 0;
+      if (dynamicOut[key].length > min) {
         dynamicOut[key].pop();
         removed = true;
         break;
@@ -250,6 +335,7 @@ export function applyWorkerPacket({ previous, candidate, cold, budgetTokens, wor
     stableText = renderStablePrefix(stable);
     truncated = fitted.truncated;
   }
+  if (truncated) throw new Error('essential context exceeds budget; increase budget');
   const dynamicText = renderDynamicTail(dynamic);
   const rendered = `${stableText}\n${dynamicText}`;
   const workerTokens = parseWorkerTokens(workerText);
@@ -259,6 +345,7 @@ export function applyWorkerPacket({ previous, candidate, cold, budgetTokens, wor
   const savedPct = sourceTokens > 0 ? Math.round((savedTokens / sourceTokens) * 1000) / 10 : 0;
   const stats = {
     sourceTokensEstimated: sourceTokens,
+    sourceScope: 'optimizer request plus optional durable context; not full worker retrieval',
     sourceUsageAuthoritative: false,
     workerProviderTokens: workerTokens,
     packetTokensEstimated: packetTokens,
@@ -288,41 +375,49 @@ export function applyWorkerPacket({ previous, candidate, cold, budgetTokens, wor
 }
 
 export async function runContextPacket(
-  { prompt, cwd, taskKey = 'default', forceCold = false, budgetTokens },
+  { prompt, cwd, taskKey, forceCold = false, budgetTokens, ephemeral = false },
   { worker = defaultFreeWorker, now = Date.now, config: configOverride, loadState = readState, saveState = (state) => writeJsonAtomic(CONTEXT_OPTIMIZER_STATE_PATH, state), recoverCheckpoint = recoverTaskContext, graphStatus = getProjectGraphStatus, graphSync = syncProjectGraph, graphQuery = runGraphQuery, checkpointSave = saveTaskCheckpoint, recordSavings = recordContextSavings } = {},
 ) {
   const config = normalizeContextOptimizerConfig(configOverride ?? readContextOptimizerConfig());
+  const currentTime = Number(now());
+  const task = String(taskKey || 'default').trim().slice(0, 120) || 'default';
+  const persistEntry = !ephemeral;
+  const taskForActivity = persistEntry ? task : '';
+  const mark = (details) => mutateState(loadState, saveState, (state) => updateActivity(state, { ...details, at: Number(now()), taskKey: taskForActivity }));
+  await mark({ outcome: config.enabled ? '' : 'skipped' });
   if (!config.enabled) return err('Aki Context Optimizer is disabled in the local panel');
   const resolved = resolveOrFail(cwd);
-  if (!resolved.ok) return err(`rejected: ${resolved.error.message}`);
+  if (!resolved.ok) {
+    await mark({ outcome: 'failure', error: `rejected: ${resolved.error.message}`, countAttempt: false });
+    return err(`rejected: ${resolved.error.message}`);
+  }
   const dir = resolved.dir;
-  const task = String(taskKey || 'default').trim().slice(0, 120) || 'default';
   const budget = clampInt(budgetTokens, config.budgetTokens, 2000, 32000);
-  const currentTime = Number(now());
   let state = pruneState(loadState(), config, currentTime);
   const key = stateKey(dir, task);
-  const previous = state.entries[key] || null;
+  const previous = persistEntry ? state.entries[key] || null : null;
   let cold = Boolean(forceCold || !previous || currentTime >= Number(previous.hotUntil || 0));
-  const durable = task !== 'default' ? durableContextForTask({ prompt, taskKey: task, cwd: dir, cold, now: currentTime }, { recoverCheckpoint, graphStatus, graphSync, graphQuery }) : '';
-  const request = durable ? `${durable}\n\n[CURRENT_REQUEST]\n${prompt}` : prompt;
-  const workerPrompt = buildOptimizerWorkerPrompt({ prompt: request, previous, cold, budgetTokens: budget });
   try {
+    const durable = persistEntry && task !== 'default' ? durableContextForTask({ prompt, taskKey: task, cwd: dir, cold, now: currentTime }, { recoverCheckpoint, graphStatus, graphSync, graphQuery }) : '';
+    const request = durable ? `${durable}\n\n[CURRENT_REQUEST]\n${prompt}` : prompt;
+    const workerPrompt = buildOptimizerWorkerPrompt({ prompt: request, previous, cold, budgetTokens: budget });
     let workerRun = await worker({ prompt: workerPrompt, cwd: dir, previous, cold, budgetTokens: budget });
+    if (workerRun?.isError || workerRun?.result?.isError) throw new Error(extractText(workerRun?.result || workerRun).split('\n')[0] || 'context worker failed');
     let workerText = extractText(workerRun.result);
     let candidate = parseJsonObject(workerText);
+    validateWorkerPacket(candidate, { cold, previous });
     if (!cold && staleInvalidatesStable(previous, candidate)) {
       cold = true;
       const rebuildPrompt = buildOptimizerWorkerPrompt({ prompt: request, previous, cold: true, budgetTokens: budget });
       workerRun = await worker({ prompt: rebuildPrompt, cwd: dir, previous, cold: true, budgetTokens: budget });
+      if (workerRun?.isError || workerRun?.result?.isError) throw new Error(extractText(workerRun?.result || workerRun).split('\n')[0] || 'context worker failed');
       workerText = extractText(workerRun.result);
       candidate = parseJsonObject(workerText);
+      validateWorkerPacket(candidate, { cold: true, previous });
     }
     const provider = workerRun.provider;
     const entry = applyWorkerPacket({ previous, candidate, cold, budgetTokens: budget, workerText, sourceContextText: request, provider, now: currentTime, taskKey: task, dir, config });
-    state.entries[key] = entry;
-    state = pruneState(state, config, currentTime);
-    saveState(state);
-    if (task !== 'default') {
+    if (persistEntry && task !== 'default') {
       checkpointSave({
         taskKey: task,
         cwd: dir,
@@ -333,12 +428,18 @@ export async function runContextPacket(
         context: { stable: entry.stable, dynamic: entry.dynamic },
       });
     }
-    recordSavings({ provider, costClass: 'free', taskType: 'context_compress', estimatedInputTokens: entry.stats.packetTokensEstimated, estimatedLeadContextAvoided: entry.stats.savedTokensEstimated });
+    recordSavings({ provider, costClass: 'free', taskType: 'context_compress', estimatedInputTokens: entry.stats.sourceTokensEstimated, estimatedLeadContextAvoided: entry.stats.savedTokensEstimated });
+    await mutateState(loadState, saveState, (latest) => {
+      if (persistEntry) latest.entries[key] = entry;
+      latest = pruneState(latest, config, currentTime);
+      return updateActivity(latest, { outcome: 'success', at: Number(now()), taskKey: taskForActivity, reused: entry.stats.stableReused, countAttempt: false });
+    });
     const mode = cold ? 'COLD' : 'HOT';
     const prefix = entry.stats.stableReused ? 'stable reused' : 'stable rebuilt';
     const savings = `${entry.stats.savedTokensEstimated.toLocaleString()} est tokens (${entry.stats.savedPctEstimated}%)`;
     return ok(`[Aki Context ${mode} · ${prefix} · ${provider} · saved ${savings}]\n${entry.stableText}\n${entry.dynamicText}`);
   } catch (e) {
+    try { await mark({ outcome: 'failure', error: e.message, countAttempt: false }); } catch { /* preserve the worker error when telemetry storage fails */ }
     return err(e.message);
   }
 }
@@ -359,6 +460,7 @@ export function getContextOptimizerStatus() {
   }, { savedTokensEstimated: 0, packetTokensEstimated: 0, sourceTokensEstimated: 0, coldBoundaries: 0, stableReused: 0 });
   return {
     ...config,
+    activity: normalizeActivity(state.activity),
     entries: entries.length,
     totals,
     last: last ? {
