@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 ## [Unreleased]
 
 ### Added
+- **Postman OpenCode vision bridge.** `local__vision_analyze` now treats `Postman-Image-Inbox` as safe local staging only: it resolves the newest or exact direct-child image, sends PNG/JPEG/GIF/WebP to a temporary `opencode serve --pure` listener bound to `127.0.0.1` with tools disabled, and returns plain MCP text to Postman Agent Mode. The raw `local__image_inbox` list/image path remains for compatibility; OpenCode is not restored as a general-purpose Aki worker/provider.
 - **Aki Watch Postman Team Auto-Joiner GUI.** A Tauri desktop controller now supports manual invite runs with per-account progress, background Telegram watcher Start/Stop, profile scan/login verification, readiness preflight, profile selection, and a native Windows/macOS/Linux CI build matrix. The join path now follows the supplied author's automatic Account Chooser flow: discover saved accounts, switch each session through its chooser card, auto-confirm normal invite controls/checkboxes, and verify the final team destination.
 - **Aki Watch Windows portable ZIP.** CI now stages the release executable beside the exact Tauri runtime-resource map under the same `target/release/bundle/` root as the MSI, smoke-launches that no-install layout, and publishes it as a dedicated portable artifact. Local staging removes the legacy duplicate portable folders before refreshing `bundle/portable/`.
 

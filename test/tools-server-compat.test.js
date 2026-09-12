@@ -38,6 +38,7 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.equal(names.has('local__task_checkpoint_save'), true);
     assert.equal(names.has('local__task_checkpoint_recover'), true);
     assert.equal(names.has('local__aki_doctor'), true);
+    assert.equal(names.has('local__vision_analyze'), true);
     assert.equal(names.has('local__image_inbox'), true);
     const instructions = client.getInstructions();
     assert.match(instructions, /Gemini Spark confirms every MCP tools\/call client-side/);
@@ -51,7 +52,8 @@ test('single-process tools server keeps pre-1.10 filesystem aliases', async () =
     assert.match(instructions, /Use local__budget_router_read instead of choosing xKiro\/agy manually/);
     assert.match(instructions, /local__task_checkpoint_recover after compaction\/restart\/account handoff/);
     assert.match(instructions, /local__aki_doctor for unified read-only health diagnosis/);
-    assert.match(instructions, /local__image_inbox with action=latest by default/);
+    assert.match(instructions, /call local__vision_analyze with no name for the newest image/);
+    assert.match(instructions, /Use local__image_inbox only to list ambiguous files/);
     assert.match(instructions, /Astra 6 policy \(any variant or reasoning effort\).*gpt-5\.6-luna with reasoning_effort=high/);
     assert.match(instructions, /native Luna is unavailable, report that once.*without claiming Luna ran/);
     assert.match(instructions, /use the normal scoped write\/edit tools in the real worktree/);
@@ -95,6 +97,7 @@ test('tools/list advertises accurate MCP safety annotations for Gemini-style con
     assert.deepEqual(tools.get('local__graph_status')?.annotations, localRead);
     assert.deepEqual(tools.get('local__task_checkpoint_get')?.annotations, localRead);
     assert.deepEqual(tools.get('local__task_checkpoint_recover')?.annotations, localRead);
+    assert.deepEqual(tools.get('local__vision_analyze')?.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true });
     assert.deepEqual(tools.get('local__image_inbox')?.annotations, localRead);
     assert.deepEqual(tools.get('local__budget_router_status')?.annotations, remoteRead);
     assert.deepEqual(tools.get('local__aki_doctor')?.annotations, remoteRead);

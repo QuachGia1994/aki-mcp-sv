@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-09-10 · v1.15.0
+> updated 2026-09-12 · v1.15.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini / Postman) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -15,7 +15,7 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `agy` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-high` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `xkiro` | `xkiro_read`, `xkiro_status` | Use xKiro's free-tier API as a bounded read-only worker. The remote xKiro model receives only five scoped Aki read primitives inside the requested `cwd`; model selection is checked against the live catalog and must remain `access_tier=free`. | The remote model delegates; xKiro reasons and calls Aki's read-only primitives |
 | `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is the private lab `aiobox/labs/aki-pmcontrol`; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
-| `image-inbox` (`scripts/image-inbox.js`) | `image_inbox` | Exposes only the owner's dedicated local screenshot/photo inbox as MCP-native image content. `latest` reads the newest supported direct-child image, `read` takes one exact basename, and `list` disambiguates; MIME is sniffed from bytes and one image is capped at 8 MiB. | The remote model, directly — read-only visual context |
+| `image-inbox` (`scripts/image-inbox.js`, `scripts/opencode-vision.js`) | `vision_analyze`, `image_inbox` | `vision_analyze` selects only a safe direct-child inbox image, sends it to a temporary loopback-only OpenCode vision server with tools disabled, and returns plain MCP text; `image_inbox` remains the raw/list compatibility path. MIME is byte-sniffed and one image is capped at 8 MiB. | The remote model requests visual context; OpenCode performs bounded vision analysis |
 
 ## Native host skills — browser and ImageGen
 
@@ -53,7 +53,7 @@ Agent arms are not equivalent to direct file primitives: they offload a whole in
 
 ## Anchor — load-bearing, do not remove
 
-`xkiro` and `agy` are the current owner worker requirements. They carry real behavior (free-quota or local agent delegation) that direct primitives do not provide. `xkiro` must remain free-only by default. OpenCode and Kiro were retired by owner decision on 2026-09-10 and are no longer part of the runtime/tool surface.
+`xkiro` and `agy` are the current owner general-purpose worker requirements. They carry real behavior (free-quota or local agent delegation) that direct primitives do not provide. `xkiro` must remain free-only by default. Kiro and the old general-purpose OpenCode worker/provider surface were retired by owner decision on 2026-09-10. OpenCode is now used only as the bounded backend for `vision_analyze`; it is not restored as a general worker/router tool.
 
 ## History
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listInboxImages, readInboxImage, resolveImageInboxDir } from '../scripts/image-inbox.js';
+import { analyzeInboxImage, listInboxImages, readInboxImage, resolveImageInboxDir } from '../scripts/image-inbox.js';
 
 const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlZbDMAAAAASUVORK5CYII=', 'base64');
 
@@ -36,6 +36,40 @@ test('image inbox returns MCP-native image content', () => {
   assert.equal(result.content[1].type, 'image');
   assert.equal(result.content[1].mimeType, 'image/png');
   assert.equal(Buffer.from(result.content[1].data, 'base64').equals(PNG_1X1), true);
+});
+
+test('OpenCode vision bridge analyzes the newest safe inbox image and returns text only', async () => {
+  const { inbox } = fixture();
+  writeFileSync(path.join(inbox, 'screen.png'), PNG_1X1);
+  let received;
+  const result = await analyzeInboxImage({
+    dir: inbox,
+    prompt: 'Read this UI',
+    analyze: async (input) => {
+      received = input;
+      return { text: 'Visible UI: test screen', model: 'opencode/mimo-v2.5-free' };
+    },
+  });
+  assert.equal(result.isError, undefined);
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].type, 'text');
+  assert.match(result.content[0].text, /Visible UI: test screen/);
+  assert.equal(received.filename, 'screen.png');
+  assert.equal(received.mimeType, 'image/png');
+  assert.equal(received.prompt, 'Read this UI');
+  assert.equal(received.buffer.equals(PNG_1X1), true);
+});
+
+test('OpenCode vision bridge keeps exact-name access inside the inbox', async () => {
+  const { root, inbox } = fixture();
+  writeFileSync(path.join(root, 'outside.png'), PNG_1X1);
+  const result = await analyzeInboxImage({
+    dir: inbox,
+    name: '..\\outside.png',
+    analyze: async () => ({ text: 'must not run' }),
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /direct-child basename/);
 });
 
 test('image inbox rejects traversal, fake image extensions, and oversized payloads', () => {

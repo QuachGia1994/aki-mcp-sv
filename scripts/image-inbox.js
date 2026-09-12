@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { containedIn, getRoots, resolveRealUnderRootSync } from './roots.js';
 import { err } from './mcp-tool.js';
+import { analyzeImageWithOpenCode, OPENCODE_VISION_DEFAULT_MODEL } from './opencode-vision.js';
 
 const DEFAULT_DIR_NAME = 'Postman-Image-Inbox';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -42,7 +43,7 @@ function safeBasename(name) {
   return value;
 }
 
-function imageEntry(dir, name) {
+export function loadInboxImage(dir, name) {
   const safe = safeBasename(name);
   const requested = path.join(dir, safe);
   const real = resolveRealUnderRootSync(requested, { roots: [dir] });
@@ -63,7 +64,7 @@ export function listInboxImages({ dir, limit = MAX_LIST } = {}) {
   for (const dirent of readdirSync(inbox, { withFileTypes: true })) {
     if (!dirent.isFile()) continue;
     try {
-      const entry = imageEntry(inbox, dirent.name);
+      const entry = loadInboxImage(inbox, dirent.name);
       rows.push({ name: entry.name, size: entry.size, modifiedMs: entry.modifiedMs, mimeType: entry.mimeType });
     } catch { /* unsupported or unsafe files do not enter the inbox listing */ }
   }
@@ -78,13 +79,37 @@ function formatList(dir, rows) {
 
 export function readInboxImage({ dir, name } = {}) {
   const inbox = dir || resolveImageInboxDir();
-  const entry = imageEntry(inbox, name);
+  const entry = loadInboxImage(inbox, name);
   return {
     content: [
       { type: 'text', text: `Image inbox file: ${entry.name}\nMIME: ${entry.mimeType}\nSize: ${entry.size} bytes\nModified: ${new Date(entry.modifiedMs).toISOString()}` },
       { type: 'image', data: entry.buffer.toString('base64'), mimeType: entry.mimeType },
     ],
   };
+}
+
+export async function analyzeInboxImage({ dir, name, prompt, analyze = analyzeImageWithOpenCode } = {}) {
+  try {
+    const inbox = dir || resolveImageInboxDir();
+    const selectedName = name || listInboxImages({ dir: inbox, limit: 1 })[0]?.name;
+    if (!selectedName) return err(`image inbox is empty: ${inbox}`);
+    const entry = loadInboxImage(inbox, selectedName);
+    const result = await analyze({
+      buffer: entry.buffer,
+      mimeType: entry.mimeType,
+      filename: entry.name,
+      prompt,
+      cwd: process.cwd(),
+    });
+    return {
+      content: [{
+        type: 'text',
+        text: `OpenCode vision analysis\nImage: ${entry.name}\nModel: ${result.model || OPENCODE_VISION_DEFAULT_MODEL}\n\n${result.text}`,
+      }],
+    };
+  } catch (error) {
+    return err(`OpenCode vision: ${error.message || String(error)}`);
+  }
 }
 
 export function runImageInbox({ action = 'latest', name, limit = MAX_LIST } = {}) {
@@ -103,11 +128,20 @@ export function runImageInbox({ action = 'latest', name, limit = MAX_LIST } = {}
 export function register(server) {
   server.registerTool('image_inbox', {
     title: 'Postman Image Inbox',
-    description: 'Read images the owner drops into the local Postman image inbox. Use action=latest when the user says “xem ảnh mới nhất” or refers to the just-added image; action=list to disambiguate; action=read with an exact basename for a named image. latest/read return an MCP image content block for visual analysis, not OCR text.',
+    description: 'List or return raw image content from the owner-controlled local Postman image inbox. Postman Agent Mode should prefer vision_analyze for actual visual understanding because vision_analyze returns plain text after OpenCode analyzes the image.',
     inputSchema: {
       action: z.enum(['latest', 'read', 'list']).optional().default('latest'),
       name: z.string().max(255).optional().describe('exact direct-child filename, required for action=read'),
       limit: z.number().int().min(1).max(MAX_LIST).optional().default(MAX_LIST),
     },
   }, async (args) => runImageInbox(args));
+
+  server.registerTool('vision_analyze', {
+    title: 'Analyze Postman Inbox Image with OpenCode',
+    description: 'Use this when the owner asks to xem/phan tich an image in the Postman image inbox. With no name it analyzes the newest supported image. With name it analyzes that exact direct-child basename. Returns plain text from a local-only OpenCode vision bridge; it never grants arbitrary filesystem image access.',
+    inputSchema: {
+      name: z.string().max(255).optional().describe('exact direct-child filename; omit to analyze the newest image'),
+      prompt: z.string().max(4000).optional().describe('what to inspect in the image; omit for general UI/error analysis'),
+    },
+  }, async (args) => analyzeInboxImage(args));
 }

@@ -99,9 +99,10 @@ test('Postman prompt uses the same durable long-chat protocol as the controller'
   assert.match(instruction, /target 30–100 lines, never exceed 100/);
   assert.match(instruction, /AGENTS\.md as a thin project map \(normally 30–100 lines\)/);
   assert.match(instruction, /verification depth follows risk/);
-  assert.match(instruction, /images=image_inbox/);
+  assert.match(instruction, /images=vision_analyze/);
+  assert.match(instruction, /raw\/list fallback=image_inbox/);
   assert.match(instruction, /xem ảnh mới nhất/);
-  assert.match(instruction, /Do not OCR unless explicitly asked/);
+  assert.match(instruction, /do not substitute OCR unless explicitly asked/);
   assert.match(html, /ONE shared plan \+ stable taskKey/);
   assert.match(html, /task_checkpoint_save\/recover/);
 });

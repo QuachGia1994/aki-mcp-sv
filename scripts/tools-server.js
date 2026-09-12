@@ -26,7 +26,7 @@ const SERVER_INSTRUCTIONS = [
   'For multi-step/deep work, pass the shared plan/task id as taskKey to local__agent_read; reuse the same taskKey on follow-ups so they reuse the compact packet. Call local__context_packet explicitly when a durable packet is needed before expensive lead/Astra reasoning; it recovers the task checkpoint, searches compact durable project knowledge, then uses the Budget Router so raw retrieval/compression stays in the cheapest healthy eligible worker. Force a cold rebuild only when stable assumptions changed.',
   'Use local__budget_router_read instead of choosing xKiro/agy manually; its ledger keeps actual provider tokens, estimates, avoided lead context, and reported cache hits as separate metrics.',
   'Use local__task_checkpoint_recover after compaction/restart/account handoff, local__graph_query for durable project decisions/facts, and local__aki_doctor for unified read-only health diagnosis.',
-  'When the owner asks to inspect a screenshot/photo they placed in the local Postman image inbox, call local__image_inbox with action=latest by default, action=list when the filename is ambiguous, or action=read with the exact basename. The tool returns MCP-native image content for visual analysis.',
+  'When the owner asks to inspect a screenshot/photo they placed in the local Postman image inbox, call local__vision_analyze with no name for the newest image or with the exact basename for a named image. It uses bounded local OpenCode vision and returns plain MCP text. Use local__image_inbox only to list ambiguous files or when raw image content is explicitly needed.',
   'Astra 6 policy (any variant or reasoning effort): review the requirements and current work, settle a bounded scope, then delegate approximately 90% of remaining substantive implementation and tests to the native host subagent model gpt-5.6-luna with reasoning_effort=high. Pass the real cwd, shared plan/task key, ownership, acceptance criteria, and required evidence; Astra reviews the result and risky diffs.',
   'If native Luna is unavailable, report that once and use an existing permitted route without claiming Luna ran; do not reconfigure providers or fake runtime model detection. The 90% target is guidance, not quota enforcement, and trivial Q&A stays with the lead.',
   'For implementation outside a native Luna handoff, use the normal scoped write/edit tools in the real worktree and verify separately with local__run_cmd; review risky diffs or unresolved items before completion.',
@@ -64,6 +64,7 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['run_cmd', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['agy_run', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
   ['budget_router_read', { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
+  ['vision_analyze', { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   // agent_read can persist bounded optimizer/checkpoint activity when the optimizer is enabled;
   // keep the static hint conservative even though it never mutates the requested worktree.
   ['agent_read', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
