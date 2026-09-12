@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 import json
 import os
@@ -12,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from threading import Lock
 import time
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
@@ -34,11 +36,22 @@ SECURITY_VERIFICATION_MARKERS = (
     "checking if the site connection is secure",
 )
 ACCOUNT_CARD_SELECTOR = "#account_select_container a.pm-card-account, a.pm-card-account, a[data-testid*='account-chooser']"
-ACCOUNT_DISCOVERY_ATTEMPTS = 25
-ACCOUNT_CARD_LOOKUP_ATTEMPTS = 15
-ACCOUNT_JOIN_ATTEMPTS = 18
-ACCOUNT_POLL_SECONDS = 2.0
-ACCOUNT_SYNC_SECONDS = 4.0
+ACCOUNT_DISCOVERY_ATTEMPTS = 32
+ACCOUNT_CARD_LOOKUP_ATTEMPTS = 20
+ACCOUNT_JOIN_ATTEMPTS = 30
+ACCOUNT_DISCOVERY_POLL_SECONDS = 0.25
+ACCOUNT_CARD_POLL_SECONDS = 0.25
+ACCOUNT_JOIN_POLL_SECONDS = 0.35
+ACCOUNT_SYNC_SECONDS = 1.0
+VERIFY_SETTLE_SECONDS = 0.35
+AUTOMATION_WORKERS = 8
+RETRY_WORKERS = 2
+TRANSIENT_JOIN_ERRORS = (
+    "No signed-in Postman account card was found",
+    "Postman account card was not found after returning",
+    "Postman did not reach a confirmed team page",
+    "Postman showed join confirmation but did not complete",
+)
 # Files that mark a directory as a real LibreWolf/Firefox profile.
 PROFILE_MARKER_FILES = ("prefs.js", "times.json", "compatibility.ini")
 # When a Google/Postman "Keep these accounts separate" prompt appears, choose "Keep separate".
@@ -158,6 +171,22 @@ def transition_signal(url: str) -> bool:
     host = (parsed.hostname or "").lower()
     path = parsed.path.lower()
     return host == "identity.getpostman.com" or (host == "app.getpostman.com" and "/web-invite-accept" in path)
+
+
+def pool_name_from_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return None
+    suffix = ".postman.co"
+    if not host.endswith(suffix):
+        return None
+    prefix = host[: -len(suffix)]
+    if not prefix or prefix in {"go", "web"}:
+        return None
+    return prefix
 
 
 def profile_display_name(dir_name: str) -> str:
@@ -374,6 +403,7 @@ def firefox_driver(binary: Path, profile_dir: Path, headless: bool, page_load_ti
     webdriver, _, Options, _, _ = selenium_modules()
     options = Options()
     options.binary_location = str(binary)
+    options.page_load_strategy = "eager"
     if headless:
         options.add_argument("-headless")
     # Drive a copy of the caller's LibreWolf profile so its signed-in Postman session is reused
@@ -493,12 +523,12 @@ def profile_session_inventory(profile_dir: Path) -> dict:
 def wait_document_ready(driver, timeout: int) -> None:
     try:
         _, _, _, _, WebDriverWait = selenium_modules()
-        WebDriverWait(driver, timeout).until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
+        WebDriverWait(driver, min(timeout, 8)).until(lambda current: current.execute_script("return document.readyState") in ("interactive", "complete"))
     except Exception:
         pass
 
 
-def discover_account_cards(driver, attempts: int = ACCOUNT_DISCOVERY_ATTEMPTS, poll_seconds: float = ACCOUNT_POLL_SECONDS) -> dict | None:
+def discover_account_cards(driver, attempts: int = ACCOUNT_DISCOVERY_ATTEMPTS, poll_seconds: float = ACCOUNT_DISCOVERY_POLL_SECONDS) -> dict | None:
     script = f"""
 const cards = Array.from(document.querySelectorAll({json.dumps(ACCOUNT_CARD_SELECTOR)}));
 const list = [];
@@ -531,7 +561,7 @@ return {{ count: list.length, accounts: list, teamName: teamTitleEl ? teamTitleE
     return None
 
 
-def find_account_card_href(driver, email: str, attempts: int = ACCOUNT_CARD_LOOKUP_ATTEMPTS, poll_seconds: float = ACCOUNT_POLL_SECONDS) -> str | None:
+def find_account_card_href(driver, email: str, attempts: int = ACCOUNT_CARD_LOOKUP_ATTEMPTS, poll_seconds: float = ACCOUNT_CARD_POLL_SECONDS) -> str | None:
     script = f"""
 const targetEmail = String(arguments[0] || '').toLowerCase();
 const cards = Array.from(document.querySelectorAll({json.dumps(ACCOUNT_CARD_SELECTOR)}));
@@ -585,18 +615,75 @@ return { url, clicked, checked };
             return {"url": "", "clicked": None, "checked": 0}
 
 
+def safe_transition_diagnostic(driver, url: str | None, body: str, title: str, last_action: str | None) -> dict:
+    parsed = urlparse(url or "")
+    lowered = f"{title}\n{body}".lower()
+    if security_verification_signal(url or "", body, title):
+        classification = "challenge"
+    elif team_destination_signal(url or ""):
+        classification = "team_page"
+    elif transition_signal(url or ""):
+        classification = "auth_redirect"
+    elif any(marker in lowered for marker in ("sign in", "log in", "sign up")):
+        classification = "signed_out"
+    elif any(marker in lowered for marker in ("join team", "accept invite", "invite")):
+        classification = "web_invite_accept"
+    elif "account" in lowered and ("choose" in lowered or "select" in lowered):
+        classification = "identity_chooser"
+    else:
+        classification = "unknown"
+    try:
+        _, By, _, _, _ = selenium_modules()
+        auth_state = postman_auth_state(driver, By)
+    except Exception:
+        auth_state = "unknown"
+    return {
+        "host": parsed.hostname or "",
+        "path": parsed.path or "/",
+        "classification": classification,
+        "title": re.sub(r"\s+", " ", title or "")[:80],
+        "lastAction": re.sub(r"\s+", " ", last_action or "")[:80] or None,
+        "authState": auth_state,
+    }
+
+
+def transient_join_error(error: str | None) -> bool:
+    return any(marker in str(error or "") for marker in TRANSIENT_JOIN_ERRORS)
+
+
+def resolve_account_card_href(driver, chooser_url: str, email: str, timeout: int, reloads: int = 3) -> str | None:
+    # Re-open the account chooser and locate the target account's switch URL robustly. The
+    # chooser can re-render its cards slowly after a previous session switch, so reload a few
+    # times and reuse the same discovery that captured the hrefs instead of a single probe.
+    target = str(email or "").strip().lower()
+    for attempt in range(max(1, reloads)):
+        try:
+            driver.get(chooser_url)
+        except Exception:
+            pass
+        wait_document_ready(driver, timeout)
+        discovery = discover_account_cards(driver)
+        for card in (discovery or {}).get("accounts") or []:
+            href = card.get("href")
+            if str(card.get("email") or "").strip().lower() == target and isinstance(href, str) and href.startswith("https://"):
+                return href
+        href = find_account_card_href(driver, email)
+        if href:
+            return href
+    return None
+
+
 def process_chooser_account(driver, chooser_url: str, account: dict, timeout: int, progress: dict) -> tuple[str, str | None, str | None]:
     _, By, _, _, _ = selenium_modules()
     email = str(account.get("email") or "").strip()
     if not email:
         return "failed", "Postman account card has no email", None
 
-    try:
-        driver.get(chooser_url)
-    except Exception:
-        pass
-    wait_document_ready(driver, timeout)
-    card_href = find_account_card_href(driver, email)
+    known_href = account.get("href")
+    if isinstance(known_href, str) and known_href.startswith("https://"):
+        card_href = known_href
+    else:
+        card_href = resolve_account_card_href(driver, chooser_url, email, timeout)
     if not card_href:
         return "failed", "Postman account card was not found after returning to the account chooser", None
 
@@ -610,8 +697,12 @@ def process_chooser_account(driver, chooser_url: str, account: dict, timeout: in
     challenge_seen = False
     join_confirmation_seen = False
     rate_limit_refreshes = 0
+    last_action = None
+    body = ""
+    title = ""
     for attempt in range(ACCOUNT_JOIN_ATTEMPTS):
-        time.sleep(ACCOUNT_POLL_SECONDS)
+        if attempt:
+            time.sleep(ACCOUNT_JOIN_POLL_SECONDS)
         dismiss_keep_separate(driver, By)
         step = automatic_accept_step(driver)
         try:
@@ -641,7 +732,8 @@ def process_chooser_account(driver, chooser_url: str, account: dict, timeout: in
                 pass
             continue
         if step.get("clicked"):
-            emit_progress({"type": "account_status", "status": "auto_clicked", "clicked": step.get("clicked"), "email": email, **progress})
+            last_action = str(step.get("clicked"))
+            emit_progress({"type": "account_status", "status": "auto_clicked", "clicked": last_action[:80], "email": email, **progress})
         elif transition_signal(final_url or ""):
             emit_progress({"type": "account_status", "status": "waiting_transition", "attempt": attempt + 1, "totalAttempts": ACCOUNT_JOIN_ATTEMPTS, "email": email, **progress})
 
@@ -656,11 +748,14 @@ def process_chooser_account(driver, chooser_url: str, account: dict, timeout: in
                 return "failed", "Postman account session is not signed in", final_url
             return "failed", "Postman rejected or expired the invite", final_url
 
+    diagnostic = safe_transition_diagnostic(driver, final_url, body, title, last_action)
+    diagnostic_text = json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":"))
+    emit_progress({"type": "transition_diagnostic", "email": email, "diagnostic": diagnostic, **progress})
     if challenge_seen:
-        return "failed", "Postman security challenge did not clear automatically before the join timeout", final_url
+        return "failed", f"Postman security challenge did not clear automatically before the join timeout; diagnostic={diagnostic_text}", final_url
     if join_confirmation_seen:
-        return "failed", "Postman showed join confirmation but did not complete the team transition", final_url
-    return "failed", "Postman did not reach a confirmed team page after automatic account switch/accept", final_url
+        return "failed", f"Postman showed join confirmation but did not complete the team transition; diagnostic={diagnostic_text}", final_url
+    return "failed", f"Postman did not reach a confirmed team page after automatic account switch/accept; diagnostic={diagnostic_text}", final_url
 
 
 def discover_rows(profiles_root: Path, profile_directories: list[str], scratch_root: Path) -> list[dict]:
@@ -669,11 +764,14 @@ def discover_rows(profiles_root: Path, profile_directories: list[str], scratch_r
         rows = []
         for index, dir_name in enumerate(firefox_profile_directories(profiles_root, profile_directories)):
             profile = profiles_root / dir_name
+            inventory = profile_session_inventory(profile)
+            has_session = bool(inventory["postmanOrigins"]) or "cookies.sqlite" in inventory["files"]
             rows.append({
                 "profile": profile_display_name(dir_name),
                 "dir": dir_name,
                 "path": str(profile),
                 "email": places_email(profile, temp_dir, index),
+                "hasPostmanSession": has_session,
             })
     deduped = []
     seen_emails: set[str] = set()
@@ -709,14 +807,24 @@ def smoke_browser(profiles_root: Path, binary: Path, profile_directories: list[s
 
 
 def verify_login(profiles_root: Path, binary: Path, profile_directories: list[str], scratch_root: Path, headless: bool, timeout: int, verify_url: str) -> dict:
-    _, By, _, _, WebDriverWait = selenium_modules()
+    started = time.perf_counter()
+    _, By, _, _, _ = selenium_modules()
     profiles = discover_rows(profiles_root, profile_directories, scratch_root)
     if not profiles:
         raise RuntimeError("no LibreWolf profiles found")
-    results = []
-    for index, row in enumerate(profiles, 1):
-        emit_progress({"type": "verify_start", "index": index, "total": len(profiles), "profile": row["profile"], "email": row.get("email")})
+    jobs = []
+    for row in profiles:
         inventory = profile_session_inventory(Path(row["path"]))
+        if not row.get("email") and not inventory["postmanOrigins"] and "cookies.sqlite" not in inventory["files"]:
+            continue
+        jobs.append((row, inventory))
+    if not jobs:
+        raise RuntimeError("no configured Postman profiles found")
+    total = len(jobs)
+    workers = min(AUTOMATION_WORKERS, total)
+
+    def verify_profile(index: int, row: dict, inventory: dict) -> tuple[int, dict]:
+        emit_progress({"type": "verify_start", "index": index, "total": total, "profile": row["profile"], "email": row.get("email")})
         entry = {
             "profile": row["profile"],
             "email": row.get("email"),
@@ -726,16 +834,14 @@ def verify_login(profiles_root: Path, binary: Path, profile_directories: list[st
         driver = None
         try:
             log(f"[postman-pool] verify {row['profile']} -> {row.get('email') or 'email unknown'}")
-            driver = firefox_driver(binary, Path(row["path"]), headless, timeout, scratch_root)
+            driver = firefox_driver(binary, Path(row["path"]), True, min(timeout, 15), scratch_root)
             try:
                 driver.get(verify_url)
             except Exception:
                 pass
-            try:
-                WebDriverWait(driver, timeout).until(lambda d: d.execute_script("return document.readyState") in ("interactive", "complete"))
-            except Exception:
-                pass
-            time.sleep(2)
+            wait_document_ready(driver, timeout)
+            if VERIFY_SETTLE_SECONDS:
+                time.sleep(VERIFY_SETTLE_SECONDS)
             dismiss_keep_separate(driver, By)
             entry["authState"] = postman_auth_state(driver, By)
             try:
@@ -747,41 +853,88 @@ def verify_login(profiles_root: Path, binary: Path, profile_directories: list[st
             entry["error"] = str(exc)
         finally:
             close_firefox(driver)
-        results.append(entry)
-        emit_progress({"type": "verify_done", "index": index, "total": len(profiles), **entry})
-    return {"verifyUrl": verify_url, "results": results}
+        emit_progress({"type": "verify_done", "index": index, "total": total, **entry})
+        return index, entry
+
+    results_by_index: dict[int, dict] = {}
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="postman-verify") as executor:
+        futures = [executor.submit(verify_profile, index, row, inventory) for index, (row, inventory) in enumerate(jobs, 1)]
+        for future in as_completed(futures):
+            index, entry = future.result()
+            results_by_index[index] = entry
+    results = [results_by_index[index] for index in range(1, total + 1)]
+    return {"verifyUrl": verify_url, "headless": True, "workers": workers, "elapsedSeconds": round(time.perf_counter() - started, 3), "results": results}
+
+
+def email_sort_key(email: str) -> tuple:
+    return tuple(int(part) if part.isdigit() else part for part in re.split(r"(\d+)", email.casefold()))
 
 
 def write_joined_emails(rows: list[dict]) -> Path:
     target = Path.home() / ".aki" / "mcpsv" / "postman-emails.txt"
     target.parent.mkdir(parents=True, exist_ok=True)
-    emails = sorted({row["email"] for row in rows if row.get("email")})
+    emails = sorted({row["email"] for row in rows if row.get("email")}, key=email_sort_key)
     target.write_text("\n".join(emails) + ("\n" if emails else ""), encoding="utf-8")
     return target
 
 
 def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories: list[str], scratch_root: Path, headless: bool, timeout: int) -> dict:
+    started = time.perf_counter()
     if not valid_invite_url(invite_url):
         raise RuntimeError("not a recognized Postman invite URL")
     chooser_url = account_chooser_url(invite_url)
-    joined: list[dict] = []
-    skipped: list[dict] = []
-    failed: list[dict] = []
     profiles = discover_rows(profiles_root, profile_directories, scratch_root)
     if not profiles:
         raise RuntimeError("no LibreWolf profiles found")
 
-    seen_emails: set[str] = set()
-    processed = 0
-    discovered_total = 0
-    baseline_total = len(profiles)
+    known_emails = {str(row.get("email") or "").lower() for row in profiles if row.get("email")}
+    baseline_total = len(known_emails) or len(profiles)
+    main_email = next((str(row["email"]).lower() for row in profiles if row.get("email") and row["profile"].casefold() == "default-default"), None)
+    if not main_email:
+        main_email = next((str(row["email"]).lower() for row in profiles if row.get("email")), None)
 
-    for row in profiles:
+    seen_emails: set[str] = set()
+    seen_lock = Lock()
+    progress_lock = Lock()
+    pool_lock = Lock()
+    progress_index = 0
+    pool_name: str | None = None
+
+    def reserve_accounts(accounts: list[dict]) -> list[dict]:
+        unique_accounts = []
+        with seen_lock:
+            for account in accounts:
+                email = str(account.get("email") or "").strip().lower()
+                if not email or email in seen_emails:
+                    continue
+                seen_emails.add(email)
+                unique_accounts.append({**account, "email": email})
+        return unique_accounts
+
+    def next_index() -> int:
+        nonlocal progress_index
+        with progress_lock:
+            progress_index += 1
+            return progress_index
+
+    def current_total() -> int:
+        with seen_lock:
+            return max(baseline_total, len(seen_emails))
+
+    def process_profile(profile_order: int, row: dict) -> dict:
+        nonlocal pool_name
         profile_name = row["profile"]
+        local_joined: list[dict] = []
+        local_skipped: list[dict] = []
+        local_failed: list[dict] = []
         driver = None
         try:
+            inventory = profile_session_inventory(Path(row["path"]))
+            if not row.get("email") and not inventory["postmanOrigins"] and "cookies.sqlite" not in inventory["files"]:
+                emit_progress({"type": "profile_skipped", "profile": profile_name, "reason": "no_postman_session"})
+                return {"joined": local_joined, "skipped": local_skipped, "failed": local_failed}
             log(f"[postman-pool] chooser scan {profile_name} -> {row.get('email') or 'email unknown'}")
-            driver = firefox_driver(binary, Path(row["path"]), headless, timeout, scratch_root)
+            driver = firefox_driver(binary, Path(row["path"]), headless, min(timeout, 20), scratch_root)
             try:
                 driver.get(chooser_url)
             except Exception:
@@ -789,76 +942,173 @@ def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories:
             wait_document_ready(driver, timeout)
             discovery = discover_account_cards(driver)
             accounts = list(discovery.get("accounts") or []) if discovery else []
-            unique_accounts = []
-            for account in accounts:
-                email = str(account.get("email") or "").strip().lower()
-                if not email or email in seen_emails:
-                    continue
-                seen_emails.add(email)
-                unique_accounts.append({**account, "email": email})
+            unique_accounts = reserve_accounts(accounts)
 
             if accounts and not unique_accounts:
                 emit_progress({"type": "profile_skipped", "profile": profile_name, "reason": "duplicate_accounts"})
-                continue
+                return {"joined": local_joined, "skipped": local_skipped, "failed": local_failed}
             if not unique_accounts:
-                processed += 1
-                total = max(baseline_total, discovered_total, processed)
+                if not row.get("email"):
+                    emit_progress({"type": "profile_skipped", "profile": profile_name, "reason": "no_identified_account"})
+                    return {"joined": local_joined, "skipped": local_skipped, "failed": local_failed}
+                index = next_index()
                 result = {
                     "profile": profile_name,
-                    "email": row.get("email"),
+                    "email": str(row.get("email")).lower(),
                     "status": "failed",
-                    "error": "No signed-in Postman account cards were found in the account chooser for this LibreWolf profile",
+                    "error": "No signed-in Postman account card was found for this LibreWolf profile",
+                    "_profileOrder": profile_order,
+                    "_accountOrder": 0,
                 }
-                emit_progress({"type": "account_start", "index": processed, "total": total, "profile": profile_name, "email": row.get("email")})
-                emit_progress({"type": "account_done", "index": processed, "total": total, **result})
-                failed.append(result)
-                continue
+                emit_progress({"type": "account_start", "index": index, "total": current_total(), "profile": profile_name, "email": result["email"]})
+                emit_progress({"type": "account_done", "index": index, "total": current_total(), **{key: value for key, value in result.items() if not key.startswith("_")}})
+                local_failed.append(result)
+                return {"joined": local_joined, "skipped": local_skipped, "failed": local_failed}
 
-            discovered_total += len(unique_accounts)
-            total = max(baseline_total, discovered_total)
             emit_progress({
                 "type": "accounts_discovered",
                 "profile": profile_name,
                 "teamName": (discovery or {}).get("teamName") or "",
                 "count": len(unique_accounts),
-                "total": total,
+                "total": current_total(),
                 "accounts": [{"email": account.get("email"), "name": account.get("name") or ""} for account in unique_accounts],
             })
 
-            for account in unique_accounts:
-                processed += 1
-                total = max(baseline_total, discovered_total, processed)
+            for account_order, account in enumerate(unique_accounts):
+                index = next_index()
                 email = account.get("email")
                 base = {"profile": profile_name, "email": email, "name": account.get("name") or ""}
-                emit_progress({"type": "account_start", "index": processed, "total": total, **base})
-                status, error, _ = process_chooser_account(
-                    driver,
-                    chooser_url,
-                    account,
-                    timeout,
-                    {"profile": profile_name},
-                )
-                result = {**base, "status": status}
+                emit_progress({"type": "account_start", "index": index, "total": current_total(), **base})
+                status, error, final_url = process_chooser_account(driver, chooser_url, account, timeout, {"profile": profile_name})
+                candidate_pool = pool_name_from_url(final_url)
+                if candidate_pool:
+                    with pool_lock:
+                        if not pool_name:
+                            pool_name = candidate_pool
+                result = {**base, "status": status, "_profileOrder": profile_order, "_accountOrder": account_order, "_href": account.get("href")}
                 if error:
                     result["error"] = error
                 if status in ("joined", "already_joined"):
-                    joined.append(result)
+                    local_joined.append(result)
                 elif status == "skipped":
-                    skipped.append(result)
+                    local_skipped.append(result)
                 else:
-                    failed.append(result)
-                emit_progress({"type": "account_done", "index": processed, "total": total, **result})
+                    local_failed.append(result)
+                emit_progress({"type": "account_done", "index": index, "total": current_total(), **{key: value for key, value in result.items() if not key.startswith("_")}})
         except Exception as exc:
-            processed += 1
-            total = max(baseline_total, discovered_total, processed)
-            result = {"profile": profile_name, "email": row.get("email"), "status": "failed", "error": str(exc)}
-            failed.append(result)
-            emit_progress({"type": "account_done", "index": processed, "total": total, **result})
+            if row.get("email"):
+                index = next_index()
+                result = {
+                    "profile": profile_name,
+                    "email": str(row.get("email")).lower(),
+                    "status": "failed",
+                    "error": str(exc),
+                    "_profileOrder": profile_order,
+                    "_accountOrder": 0,
+                }
+                local_failed.append(result)
+                emit_progress({"type": "account_done", "index": index, "total": current_total(), **{key: value for key, value in result.items() if not key.startswith("_")}})
         finally:
             close_firefox(driver)
+        return {"joined": local_joined, "skipped": local_skipped, "failed": local_failed}
 
-    email_file = write_joined_emails(joined)
-    return {"joined": joined, "skipped": skipped, "failed": failed, "emailFile": str(email_file)}
+    workers = min(AUTOMATION_WORKERS, len(profiles))
+    merged = {"joined": [], "skipped": [], "failed": []}
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="postman-join") as executor:
+        futures = [executor.submit(process_profile, index, row) for index, row in enumerate(profiles)]
+        for future in as_completed(futures):
+            profile_result = future.result()
+            for group in merged:
+                merged[group].extend(profile_result[group])
+
+    profile_by_name = {row["profile"]: row for row in profiles}
+    retry_candidates = [row for row in merged["failed"] if transient_join_error(row.get("error"))]
+
+    def retry_account(candidate: dict) -> tuple[dict, dict]:
+        nonlocal pool_name
+        profile_name = candidate.get("profile")
+        email = str(candidate.get("email") or "").strip().lower()
+        replacement = dict(candidate)
+        driver = None
+        emit_progress({"type": "retry_start", "profile": profile_name, "email": email})
+        try:
+            source = profile_by_name.get(profile_name)
+            if not source:
+                raise RuntimeError("LibreWolf profile was not found for retry")
+            driver = firefox_driver(binary, Path(source["path"]), headless, min(timeout, 20), scratch_root)
+            status, error, final_url = process_chooser_account(
+                driver,
+                chooser_url,
+                {"email": email, "name": candidate.get("name") or "", "href": candidate.get("_href")},
+                timeout,
+                {"profile": profile_name, "retry": 1},
+            )
+            replacement["status"] = status
+            if error:
+                replacement["error"] = error
+            else:
+                replacement.pop("error", None)
+            candidate_pool = pool_name_from_url(final_url)
+            if candidate_pool:
+                with pool_lock:
+                    if not pool_name:
+                        pool_name = candidate_pool
+        except Exception as exc:
+            replacement["status"] = "failed"
+            replacement["error"] = str(exc)
+        finally:
+            close_firefox(driver)
+        emit_progress({
+            "type": "retry_done",
+            "profile": profile_name,
+            "email": email,
+            "status": replacement.get("status"),
+            "error": replacement.get("error"),
+        })
+        return candidate, replacement
+
+    if retry_candidates:
+        retry_workers = min(RETRY_WORKERS, len(retry_candidates))
+        replacements: list[tuple[dict, dict]] = []
+        with ThreadPoolExecutor(max_workers=retry_workers, thread_name_prefix="postman-join-retry") as executor:
+            futures = [executor.submit(retry_account, candidate) for candidate in retry_candidates]
+            for future in as_completed(futures):
+                replacements.append(future.result())
+        for original, replacement in replacements:
+            if original in merged["failed"]:
+                merged["failed"].remove(original)
+            target = "joined" if replacement.get("status") in ("joined", "already_joined") else "failed"
+            merged[target].append(replacement)
+
+    for group in merged:
+        merged[group].sort(key=lambda row: (row.get("_profileOrder", 999), row.get("_accountOrder", 999)))
+        for row in merged[group]:
+            row.pop("_profileOrder", None)
+            row.pop("_accountOrder", None)
+            row.pop("_href", None)
+
+    account_rows: dict[str, dict] = {}
+    for group in ("joined", "skipped", "failed"):
+        for row in merged[group]:
+            email = str(row.get("email") or "").strip().lower()
+            if email and email not in account_rows:
+                account_rows[email] = {"email": email, "status": row.get("status") or group.rstrip("ed")}
+    ordered_emails = sorted(account_rows, key=email_sort_key)
+    if main_email and main_email in account_rows:
+        ordered_emails.remove(main_email)
+        ordered_emails.insert(0, main_email)
+    accounts = [account_rows[email] for email in ordered_emails]
+    email_file = write_joined_emails(merged["joined"])
+    return {
+        **merged,
+        "poolName": pool_name,
+        "accountCount": len(accounts),
+        "mainEmail": main_email,
+        "accounts": accounts,
+        "workers": workers,
+        "elapsedSeconds": round(time.perf_counter() - started, 3),
+        "emailFile": str(email_file),
+    }
 
 
 def write_result_file(result_file: str | None, payload: str) -> None:

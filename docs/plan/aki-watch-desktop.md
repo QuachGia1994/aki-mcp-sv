@@ -18,7 +18,7 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 - Windows uses `py -3`; macOS/Linux use `python3`.
 - Interactive Telegram login/observe opens a native console/terminal: Windows new console, macOS Terminal through `osascript`, Linux via `x-terminal-emulator`, `gnome-terminal`, or `konsole`.
 - Packaged GUI processes restore the user's shell PATH with `tauri-apps/fix-path-env-rs` pinned to `c4c45d503ea115a839aae718d02f79e7c7f0f673`, so Node/Python installed through normal package managers remain discoverable.
-- Bundle target is `all`; actual installers are built on their native host/CI. Windows does not produce a native macOS DMG by itself. Windows additionally stages a no-install portable folder by copying the release executable plus the exact `bundle.resources` map from `tauri.conf.json`, then archives it as a ZIP.
+- Bundle target is `all`; actual installers are built on their native host/CI. Windows does not produce a native macOS DMG by itself. Windows additionally stages a no-install portable folder under the same `target/release/bundle/` root as the MSI, copying the release executable plus the exact `bundle.resources` map from `tauri.conf.json`; legacy duplicate portable staging folders are removed before each stage, then CI archives it as a ZIP.
 - Version SSoT remains `package.json`; `tauri.conf.json` references it and `Cargo.toml` must stay in lockstep.
 
 ## Screens
@@ -46,7 +46,9 @@ Goal: provide a small Tauri v2 GUI for Postman pool auto-join that reuses the pr
 - [x] Accessibility hardening: tabs/progress/live regions plus profile checkbox picker; restrictive local CSP enabled.
 - [x] Dedicated `.github/workflows/aki-watch.yml` native build/smoke matrix added and proven green on Windows/macOS/Linux.
 - [x] Windows no-install portable ZIP stages the executable beside the same Tauri runtime resources, is smoke-launched in CI, and publishes as `aki-watch-windows-portable`.
-- [ ] Run a fresh real Postman invite E2E; static tests cannot prove the provider's current page flow.
+- [x] Opus button-audit cleanup: Paste uses the native clipboard plugin, the orphan synchronous profile-verify route and unused opener capability are removed, the log toggle id matches its behavior, and disabled actions expose prerequisite reasons.
+- [x] Verify Login is always headless and both Verify/Join use a bounded five-profile worker pool with shorter polling/page-load waits; empty profiles are skipped and completion reports expose team slug, unique account count, main account, and natural email ordering. Real Windows Verify evidence: 16/16 configured accounts authenticated to `forever30d` in 84.993s; latest controlled five-profile benchmark measured 126.761s with one worker vs 33.329s with five workers (3.80x on the five-profile sample; the measured one-worker rate implies about 4.8x for the full 16-profile run).
+- [ ] Run a fresh real Postman invite E2E; static tests cannot prove the provider's current page flow or the final Join speed against a new provider invite.
 - [ ] Later: native in-window OTP/2FA fields, keychain secret storage, code signing/updater, optional bundled runtimes.
 
 ## Risks / limits

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { browserArgs, buildJoinWorkerInvocation, normalizeManualInvite, parseWorkerEvents } from '../scripts/postman-pool-control.js';
+import { browserArgs, buildJoinWorkerInvocation, buildVerifyWorkerInvocation, normalizeManualInvite, parseWorkerEvents } from '../scripts/postman-pool-control.js';
 
 test('GUI join worker keeps invite data out of argv and preserves browser config', () => {
   const config = {
@@ -27,6 +27,19 @@ test('GUI accepts a full invite URL or raw invite code without changing the work
   assert.equal(normalizeManualInvite(url), url);
   assert.equal(normalizeManualInvite('abcdefghijklmnop'), url);
   assert.equal(normalizeManualInvite('not a code'), null);
+});
+
+test('Verify Login is always hidden even when the saved browser setting is visible', () => {
+  const invocation = buildVerifyWorkerInvocation({
+    librewolfBinary: 'C:\\LibreWolf\\librewolf.exe',
+    profilesRoot: 'C:\\Profiles',
+    profileDirectories: [],
+    scratchRoot: 'D:\\scratch',
+    headless: false,
+    timeoutSeconds: 45,
+  }, 'D:\\verify.json');
+  assert.equal(invocation.args.filter((arg) => arg === '--headless').length, 1);
+  assert.match(invocation.args.join(' '), /--verify-login/);
 });
 
 test('GUI progress parser recovers account chooser and verification events from mixed worker log', () => {
@@ -56,10 +69,27 @@ test('Aki Watch bundle ships its complete runtime dependency set and enables CSP
     assert.equal(resources[`../../../scripts/${name}`], `aki-watch-runtime/scripts/${name}`);
   }
   const rustSource = readFileSync(new URL('../apps/aki-watch/src-tauri/src/lib.rs', import.meta.url), 'utf8');
+  const cargo = readFileSync(new URL('../apps/aki-watch/src-tauri/Cargo.toml', import.meta.url), 'utf8');
+  const capabilities = JSON.parse(readFileSync(new URL('../apps/aki-watch/src-tauri/capabilities/default.json', import.meta.url), 'utf8'));
+  const frontend = readFileSync(new URL('../apps/aki-watch/src/main.js', import.meta.url), 'utf8');
+  const portableScript = readFileSync(new URL('../apps/aki-watch/scripts/package-portable.mjs', import.meta.url), 'utf8');
   assert.match(rustSource, /postman-pool-control\.js/);
   assert.match(rustSource, /postman-pool\.js/);
   assert.match(rustSource, /userdata\.js/);
   assert.match(rustSource, /cfg\(not\(debug_assertions\)\)/);
+  assert.doesNotMatch(rustSource, /profiles_verify|tauri_plugin_opener/);
+  assert.match(rustSource, /tauri_plugin_clipboard_manager/);
+  assert.doesNotMatch(cargo, /tauri-plugin-opener/);
+  assert.match(cargo, /tauri-plugin-clipboard-manager/);
+  assert.ok(capabilities.permissions.includes('clipboard-manager:allow-read-text'));
+  assert.ok(!capabilities.permissions.includes('opener:default'));
+  assert.match(frontend, /invoke\('clipboard_read'\)/);
+  assert.doesNotMatch(frontend, /navigator\.clipboard|clipboardManager/);
+  assert.match(portableScript, /bundleDir/);
+  assert.match(portableScript, /portableRoot/);
+  assert.match(portableScript, /path\.join\(releaseDir, 'portable'\)/);
+  assert.match(portableScript, /path\.join\(releaseDir, 'portable-dist'\)/);
+  assert.match(portableScript, /path\.join\(releaseDir, 'aki-watch-runtime'\)/);
   assert.ok(config.app?.security?.csp);
   assert.match(config.app.security.csp['connect-src'], /ipc:/);
 });

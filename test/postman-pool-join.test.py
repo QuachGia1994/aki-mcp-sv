@@ -62,6 +62,18 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertTrue(MODULE.transition_signal("https://identity.getpostman.com/accounts/auth/test"))
         self.assertTrue(MODULE.transition_signal("https://app.getpostman.com/web-invite-accept?invite_code=x"))
         self.assertFalse(MODULE.transition_signal("https://example.com/web-invite-accept"))
+        self.assertEqual(MODULE.pool_name_from_url("https://forever30d.postman.co/workspace/abc"), "forever30d")
+        self.assertIsNone(MODULE.pool_name_from_url("https://go.postman.co/home"))
+        self.assertIsNone(MODULE.pool_name_from_url("https://identity.getpostman.com/accounts"))
+
+    def test_fast_path_is_bounded_to_eight_workers_and_short_polls(self):
+        self.assertEqual(MODULE.AUTOMATION_WORKERS, 8)
+        self.assertEqual(MODULE.RETRY_WORKERS, 2)
+        self.assertLessEqual(MODULE.ACCOUNT_DISCOVERY_POLL_SECONDS, 0.25)
+        self.assertLessEqual(MODULE.ACCOUNT_CARD_POLL_SECONDS, 0.25)
+        self.assertLessEqual(MODULE.ACCOUNT_JOIN_POLL_SECONDS, 0.35)
+        self.assertLessEqual(MODULE.ACCOUNT_SYNC_SECONDS, 1.0)
+        self.assertEqual(sorted(["manpost10@yopmail.com", "manpost2@yopmail.com", "manpost1@yopmail.com"], key=MODULE.email_sort_key), ["manpost1@yopmail.com", "manpost2@yopmail.com", "manpost10@yopmail.com"])
 
     def test_join_confirmation_text_without_team_destination_is_not_success(self):
         class By:
@@ -353,10 +365,13 @@ class PostmanJoinVerificationTests(unittest.TestCase):
             MODULE.close_firefox = original_close
             MODULE.write_joined_emails = original_write
             MODULE.emit_progress = original_emit
-        self.assertEqual([event["type"] for event in events], ["accounts_discovered", "account_start", "account_done", "accounts_discovered", "account_start", "account_done"])
-        self.assertEqual(events[1]["email"], "one@example.com")
-        self.assertEqual(events[2]["status"], "joined")
-        self.assertEqual(events[-1]["status"], "failed")
+        event_types = [event["type"] for event in events]
+        self.assertEqual(event_types.count("accounts_discovered"), 2)
+        self.assertEqual(event_types.count("account_start"), 2)
+        self.assertEqual(event_types.count("account_done"), 2)
+        done = {event["email"]: event for event in events if event["type"] == "account_done"}
+        self.assertEqual(done["one@example.com"]["status"], "joined")
+        self.assertEqual(done["two@example.com"]["status"], "failed")
         self.assertEqual(len(result["joined"]), 1)
         self.assertEqual(len(result["failed"]), 1)
         self.assertNotIn("manualAccept", result)
@@ -364,6 +379,11 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertFalse(any("url" in item for group in ("joined", "failed", "skipped") for item in result[group]))
         self.assertNotIn("abc1234567890123", repr(events))
         self.assertNotIn("abc1234567890123", repr(result))
+        self.assertEqual(result["poolName"], "team")
+        self.assertEqual(result["accountCount"], 2)
+        self.assertEqual(result["mainEmail"], "one@example.com")
+        self.assertEqual(result["workers"], 2)
+        self.assertEqual([row["email"] for row in result["accounts"]], ["one@example.com", "two@example.com"])
 
     def test_run_skips_profiles_when_account_chooser_only_contains_already_processed_accounts(self):
         rows = [

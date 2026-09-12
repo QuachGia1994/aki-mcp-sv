@@ -31,19 +31,65 @@ assert.equal(isAuthorizedTelegramMessage({ chat: { id: -100999 }, from: { id: 42
 assert.equal(isAuthorizedTelegramMessage({ chat: { id: -100123 }, from: { id: 7 } }, config), false);
 
 const report = formatPostmanPoolReport({
+  poolName: 'forever30d',
+  mainEmail: 'one@example.com',
+  accounts: [
+    { email: 'two@example.com', status: 'already_joined' },
+    { email: 'one@example.com', status: 'joined' },
+    { email: 'four@example.com', status: 'failed', error: `failed at ${invite}` },
+  ],
   joined: [
     { profile: 'Hồ sơ 1', email: 'one@example.com', status: 'joined' },
     { profile: 'Hồ sơ 2', email: 'two@example.com', status: 'already_joined' },
   ],
-  skipped: [{ profile: 'Hồ sơ 3', email: null, status: 'locked' }],
+  skipped: [],
   failed: [{ profile: 'Hồ sơ 4', email: 'four@example.com', status: 'failed', error: `failed at ${invite}` }],
 });
-assert.match(report, /2 joined\/already joined/);
-assert.match(report, /one@example\.com/);
-assert.match(report, /two@example\.com/);
-assert.match(report, /1 skipped/);
-assert.match(report, /1 failed/);
+assert.equal(report, ['forever30d', '3 account', 'one@example.com [main]', 'four@example.com [failed]', 'two@example.com'].join('\n'));
 assert.doesNotMatch(report, /invite_code=/, 'Telegram report must never echo the invite bearer URL');
+
+const ownerReport = formatPostmanPoolReport({
+  poolName: 'forever30d',
+  mainEmail: 'kim.phong619@gmail.com',
+  accounts: [
+    'ultra.vn@gmail.com',
+    'guaanthony94@gmail.com',
+    'dttlinh1970@gmail.com',
+    'phongqk.veo3@gmail.com',
+    'kim.phat619@gmail.com',
+    'manpost1@yopmail.com',
+    'manpost2@yopmail.com',
+    'manpost3@yopmail.com',
+    'manpost4@yopmail.com',
+    'manpost5@yopmail.com',
+    'manpost7@yopmail.com',
+    'manpost8@yopmail.com',
+    'manpost9@yopmail.com',
+    'manpost10@yopmail.com',
+    'manpost11@yopmail.com',
+    'kim.phong619@gmail.com',
+  ].map((email) => ({ email, status: 'joined' })),
+});
+assert.equal(ownerReport, [
+  'forever30d',
+  '16 account',
+  'kim.phong619@gmail.com [main]',
+  'dttlinh1970@gmail.com',
+  'guaanthony94@gmail.com',
+  'kim.phat619@gmail.com',
+  'manpost1@yopmail.com',
+  'manpost2@yopmail.com',
+  'manpost3@yopmail.com',
+  'manpost4@yopmail.com',
+  'manpost5@yopmail.com',
+  'manpost7@yopmail.com',
+  'manpost8@yopmail.com',
+  'manpost9@yopmail.com',
+  'manpost10@yopmail.com',
+  'manpost11@yopmail.com',
+  'phongqk.veo3@gmail.com',
+  'ultra.vn@gmail.com',
+].join('\n'));
 
 const accountEvent = parsePostmanPoolWorkerEvent('[postman-pool:event] {"type":"account_status","status":"auto_clicked","profile":"Hồ sơ 5","email":"five@example.com"}');
 assert.deepEqual(accountEvent, { type: 'account_status', status: 'auto_clicked', profile: 'Hồ sơ 5', email: 'five@example.com' });

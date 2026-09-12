@@ -10,10 +10,23 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, '..');
 const tauriDir = path.join(appDir, 'src-tauri');
 const releaseDir = path.join(tauriDir, 'target', 'release');
-const portableDir = path.join(releaseDir, 'portable', 'Aki-Watch-portable');
+const bundleDir = path.join(releaseDir, 'bundle');
+const portableRoot = path.join(bundleDir, 'portable');
+const portableDir = path.join(portableRoot, 'Aki-Watch-portable');
 const executable = path.join(releaseDir, 'aki-watch.exe');
 const configPath = path.join(tauriDir, 'tauri.conf.json');
 const packagePath = path.join(appDir, 'package.json');
+
+function removeGeneratedDir(directory) {
+  try {
+    rmSync(directory, { recursive: true, force: true });
+  } catch (error) {
+    if (['EACCES', 'EPERM', 'EBUSY'].includes(error?.code)) {
+      throw new Error(`cannot replace ${directory}; close Aki Watch before staging the portable package`);
+    }
+    throw error;
+  }
+}
 
 if (!existsSync(executable)) {
   throw new Error(`release executable not found: ${executable}`);
@@ -26,7 +39,10 @@ if (!resources || Array.isArray(resources) || typeof resources !== 'object') {
   throw new Error('tauri.conf.json bundle.resources must be an object map');
 }
 
-rmSync(portableDir, { recursive: true, force: true });
+for (const legacyDir of [path.join(releaseDir, 'portable'), path.join(releaseDir, 'portable-dist'), path.join(releaseDir, 'aki-watch-runtime')]) {
+  removeGeneratedDir(legacyDir);
+}
+removeGeneratedDir(portableDir);
 mkdirSync(portableDir, { recursive: true });
 cpSync(executable, path.join(portableDir, 'aki-watch.exe'));
 

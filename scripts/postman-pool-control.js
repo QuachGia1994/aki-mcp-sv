@@ -6,7 +6,7 @@ import { existsSync, closeSync, openSync, readFileSync, renameSync, unlinkSync, 
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { POSTMAN_POOL_CONFIG_PATH, normalizeInviteUrl, startPostmanPoolWatcher } from './postman-pool.js';
+import { POSTMAN_POOL_CONFIG_PATH, formatPostmanPoolReport, normalizeInviteUrl, resolveReportCredentials, sendPostmanPoolReportMessage, startPostmanPoolWatcher } from './postman-pool.js';
 import { USER_DIR } from './userdata.js';
 
 const SELF_PATH = fileURLToPath(import.meta.url);
@@ -14,6 +14,7 @@ const JOIN_SCRIPT = fileURLToPath(new URL('./postman-pool-join.py', import.meta.
 const WATCHER_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-watcher-runtime.json');
 const WATCHER_LOG_PATH = path.join(USER_DIR, 'postman-pool-watcher.log');
 const JOIN_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-join-runtime.json');
+const JOIN_REPORT_STATE_PATH = path.join(USER_DIR, 'postman-pool-join-report-state.json');
 const VERIFY_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-verify-runtime.json');
 const EVENT_PREFIX = '[postman-pool:event] ';
 
@@ -97,6 +98,11 @@ export function buildJoinWorkerInvocation(config, resultFile) {
   return pythonCommand([JOIN_SCRIPT, '--json-stdin', '--result-file', resultFile, ...browserArgs(config)]);
 }
 
+export function buildVerifyWorkerInvocation(config, resultFile) {
+  const args = browserArgs({ ...config, headless: true });
+  return pythonCommand([JOIN_SCRIPT, '--verify-login', '--result-file', resultFile, ...args]);
+}
+
 function runPythonJson(args, input = null) {
   const command = pythonCommand([JOIN_SCRIPT, ...args]);
   const result = spawnSync(command.file, command.args, {
@@ -114,11 +120,6 @@ function runPythonJson(args, input = null) {
 export function scanProfiles(configPath = POSTMAN_POOL_CONFIG_PATH) {
   const config = readBrowserConfig(configPath);
   return runPythonJson([...browserArgs(config), '--dry-run']);
-}
-
-export function verifyProfiles(configPath = POSTMAN_POOL_CONFIG_PATH) {
-  const config = readBrowserConfig(configPath);
-  return runPythonJson([...browserArgs(config), '--verify-login']);
 }
 
 async function watcherRequest(runtime, method, pathname) {
@@ -269,6 +270,50 @@ function processJobStatus(runtimePath, emptyStatus, exitedMessage) {
   return status;
 }
 
+export async function sendJoinCompletionReport(result, { configPath = POSTMAN_POOL_CONFIG_PATH, reportFile = JOIN_REPORT_STATE_PATH, jobError = null, fetchImpl = fetch } = {}) {
+  const credentials = resolveReportCredentials(configPath);
+  const saveReport = (report) => {
+    const state = { ...report, jobError, updatedAt: Date.now() };
+    writeJsonAtomic(reportFile, state);
+    return state;
+  };
+  saveReport({ status: 'sending' });
+  try {
+    if (!credentials.reportBotToken || !credentials.reportChatId) throw new Error('Complete Report Bot Token and Report Chat ID in Settings.');
+    const text = jobError ? `Postman pool: automation failed · ${jobError}` : formatPostmanPoolReport(result);
+    const telegramResult = await sendPostmanPoolReportMessage(credentials, text, fetchImpl);
+    return saveReport({ status: 'sent', messageId: telegramResult?.message_id ?? null });
+  } catch (error) {
+    let message = String(error?.message || error);
+    if (credentials.reportBotToken) message = message.split(credentials.reportBotToken).join('[redacted]');
+    message = message.replace(/https?:\/\/\S+/gi, '[url]').replace(/\s+/g, ' ').slice(0, 180);
+    return saveReport({ status: 'failed', error: message });
+  }
+}
+
+export async function runManualJoin({ inviteUrl, configPath = POSTMAN_POOL_CONFIG_PATH, resultFile, reportFile = JOIN_REPORT_STATE_PATH }, { spawnImpl = spawn, fetchImpl = fetch } = {}) {
+  let result = null;
+  let jobError = null;
+  try {
+    const config = readBrowserConfig(configPath);
+    const command = buildJoinWorkerInvocation(config, resultFile);
+    await new Promise((resolve, reject) => {
+      const child = spawnImpl(command.file, command.args, { stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
+      child.once('error', reject);
+      child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`Join worker exited (${code ?? 'signal'})`)));
+      child.stdin.on('error', reject);
+      child.stdin.end(`${JSON.stringify({ inviteUrl })}\n`);
+    });
+    result = readJson(resultFile, null);
+    if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Join worker did not write a valid result');
+  } catch (error) {
+    jobError = String(error?.message || error).replace(/https?:\/\/\S+/gi, '[url]').replace(/\s+/g, ' ').slice(0, 180);
+  }
+  const report = await sendJoinCompletionReport(result, { configPath, reportFile, jobError, fetchImpl });
+  console.log(`[postman-pool:report] ${report.status}${report.error ? `: ${report.error}` : ''}`);
+  return report;
+}
+
 function stopProcessTree(pid) {
   if (!processAlive(pid)) return;
   if (process.platform === 'win32') {
@@ -280,7 +325,15 @@ function stopProcessTree(pid) {
 }
 
 export function joinStatus() {
-  return processJobStatus(JOIN_RUNTIME_PATH, { running: false, events: [], log: '' }, 'Join process exited before writing a result');
+  const status = processJobStatus(JOIN_RUNTIME_PATH, { running: false, events: [], log: '' }, 'Join process exited before writing a result');
+  const runtime = readJson(JOIN_RUNTIME_PATH, null);
+  if (runtime?.reportFile) {
+    status.report = readJson(runtime.reportFile, { status: 'pending' });
+    if (status.report.jobError) status.error = status.report.jobError;
+    if (!status.running && ['pending', 'sending'].includes(status.report.status)) status.report = { status: 'failed', error: 'Report process exited before confirming delivery.' };
+  }
+  if (status.result) status.summary = formatPostmanPoolReport(status.result);
+  return status;
 }
 
 export function startJoin(inviteUrl, configPath = POSTMAN_POOL_CONFIG_PATH) {
@@ -288,21 +341,22 @@ export function startJoin(inviteUrl, configPath = POSTMAN_POOL_CONFIG_PATH) {
   if (!normalized) throw new Error('Not a recognized Postman invite URL');
   const current = joinStatus();
   if (current.running) throw new Error(`A join is already running (pid ${current.pid})`);
-  const config = readBrowserConfig(configPath);
+  readBrowserConfig(configPath);
   const { resultFile, logFile } = joinPaths();
   removeFile(resultFile);
   removeFile(logFile);
-  const command = buildJoinWorkerInvocation(config, resultFile);
+  writeJsonAtomic(JOIN_REPORT_STATE_PATH, { status: 'pending' });
   const logFd = openSync(logFile, 'w');
-  const child = spawn(command.file, command.args, {
+  const child = spawn(process.execPath, [SELF_PATH, '--run-join'], {
     detached: true,
     stdio: ['pipe', logFd, logFd],
     windowsHide: true,
   });
   closeSync(logFd);
-  child.stdin.end(`${JSON.stringify({ inviteUrl: normalized })}\n`);
+  child.stdin.end(`${JSON.stringify({ inviteUrl: normalized, configPath, resultFile, reportFile: JOIN_REPORT_STATE_PATH })}\n`);
   child.unref();
-  const runtime = { pid: child.pid, startedAt: new Date().toISOString(), resultFile, logFile };
+  const startedAt = new Date().toISOString();
+  const runtime = { pid: child.pid, startedAt, resultFile, logFile, reportFile: JOIN_REPORT_STATE_PATH };
   writeJsonAtomic(JOIN_RUNTIME_PATH, runtime);
   return { running: true, ...runtime, events: [], log: '' };
 }
@@ -334,12 +388,13 @@ export function startVerify(configPath = POSTMAN_POOL_CONFIG_PATH) {
   const { resultFile, logFile } = verifyPaths();
   removeFile(resultFile);
   removeFile(logFile);
-  const command = pythonCommand([JOIN_SCRIPT, '--verify-login', '--result-file', resultFile, ...browserArgs(config)]);
+  const command = buildVerifyWorkerInvocation(config, resultFile);
   const logFd = openSync(logFile, 'w');
   const child = spawn(command.file, command.args, {
     detached: true,
     stdio: ['ignore', logFd, logFd],
     windowsHide: true,
+    env: { ...process.env, MOZ_HEADLESS: '1' },
   });
   closeSync(logFd);
   child.unref();
@@ -378,10 +433,10 @@ async function main() {
   if (args.includes('--watcher-start-json')) return printJson(await startWatcher());
   if (args.includes('--watcher-stop-json')) return printJson(await stopWatcher());
   if (args.includes('--profiles-scan-json')) return printJson(scanProfiles());
-  if (args.includes('--profiles-verify-json')) return printJson(verifyProfiles());
   if (args.includes('--verify-status-json')) return printJson(verifyStatus());
   if (args.includes('--verify-start-json')) return printJson(startVerify());
   if (args.includes('--verify-stop-json')) return printJson(stopVerify());
+  if (args.includes('--run-join')) return runManualJoin(await readStdinJson());
   if (args.includes('--join-status-json')) return printJson(joinStatus());
   if (args.includes('--join-stop-json')) return printJson(stopJoin());
   if (args.includes('--join-start-json')) {

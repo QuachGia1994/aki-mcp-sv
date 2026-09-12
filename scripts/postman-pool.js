@@ -82,13 +82,34 @@ function shortError(value) {
 }
 
 export function formatPostmanPoolReport(result) {
-  const joined = Array.isArray(result?.joined) ? result.joined : [];
-  const skipped = Array.isArray(result?.skipped) ? result.skipped : [];
-  const failed = Array.isArray(result?.failed) ? result.failed : [];
-  const lines = [`Postman pool: ${joined.length} joined/already joined · ${skipped.length} skipped · ${failed.length} failed`];
-  for (const row of joined) lines.push(`✓ ${row.email || row.profile || 'unknown account'}${row.profile && row.email ? ` (${row.profile})` : ''}`);
-  for (const row of skipped) lines.push(`- ${row.email || row.profile || 'unknown account'}: ${shortError(row.status || row.error || 'skipped')}`);
-  for (const row of failed) lines.push(`✗ ${row.email || row.profile || 'unknown account'}: ${shortError(row.error || row.status || 'failed')}`);
+  let mainEmail = String(result?.mainEmail || '').trim().toLowerCase();
+  const fallbackRows = [];
+  for (const [group, rows] of [['joined', result?.joined], ['skipped', result?.skipped], ['failed', result?.failed]]) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const email = String(row?.email || '').trim().toLowerCase();
+      if (!email) continue;
+      fallbackRows.push({ email, status: row?.status || group });
+      if (!mainEmail && String(row?.profile || '').toLowerCase() === 'default-default') mainEmail = email;
+    }
+  }
+  const sourceRows = Array.isArray(result?.accounts) && result.accounts.length ? result.accounts : fallbackRows;
+  const byEmail = new Map();
+  for (const row of sourceRows) {
+    const email = String(row?.email || '').trim().toLowerCase();
+    if (email && !byEmail.has(email)) byEmail.set(email, { email, status: row?.status || 'unknown' });
+  }
+  const emails = [...byEmail.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  if (mainEmail && byEmail.has(mainEmail)) {
+    emails.splice(emails.indexOf(mainEmail), 1);
+    emails.unshift(mainEmail);
+  }
+  const poolName = String(result?.poolName || '').trim() || 'Postman pool';
+  const lines = [poolName, `${emails.length} account`];
+  for (const email of emails) {
+    const row = byEmail.get(email);
+    const suffix = `${email === mainEmail ? ' [main]' : ''}${row.status === 'failed' ? ' [failed]' : ''}`;
+    lines.push(`${email}${suffix}`);
+  }
   return lines.join('\n');
 }
 
@@ -200,9 +221,13 @@ async function telegramBotCall(config, method, body, fetchImpl) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10000),
   });
   const data = await response.json();
-  if (!response.ok || !data.ok) throw new Error(`Telegram ${method} failed (${response.status})`);
+  if (!response.ok || !data.ok) {
+    const description = shortError(String(data.description || '').split(config.reportBotToken).join('[redacted]'));
+    throw new Error(`Telegram ${method} failed (${response.status}): ${description}`);
+  }
   return data.result;
 }
 

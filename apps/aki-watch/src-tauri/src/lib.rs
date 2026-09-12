@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use tauri::Manager;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 static BUNDLED_RUNTIME_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -444,8 +445,10 @@ async fn profiles_scan() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn profiles_verify() -> Result<String, String> {
-    control_command(vec!["--profiles-verify-json".into()], None).await
+fn clipboard_read(app: tauri::AppHandle) -> Result<String, String> {
+    app.clipboard()
+        .read_text()
+        .map_err(|error| format!("failed to read clipboard: {error}"))
 }
 
 #[tauri::command]
@@ -504,7 +507,7 @@ mod tests {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             if let Ok(resource_dir) = app.path().resource_dir() {
                 if let Some(runtime) = canonical_runtime_dir(resource_dir.join("aki-watch-runtime"))
@@ -528,7 +531,7 @@ pub fn run() {
             watcher_start,
             watcher_stop,
             profiles_scan,
-            profiles_verify,
+            clipboard_read,
             verify_start,
             verify_status,
             verify_stop,

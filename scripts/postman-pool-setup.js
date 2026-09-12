@@ -189,13 +189,13 @@ function preflightView(configPath) {
     missingConfig: status.missing,
     dependencies: {
       node: process.version,
-      python: pyVer.ok ? pyVer.text : null,
+      python: pyVer.ok ? pyVer.text.replace(/^Python\s+/i, '').trim() : null,
       telethon,
       selenium,
       geckodriver: pyVer.ok ? geckodriverStatus() : null,
       librewolfBinary: scanData?.librewolfBinary || raw.librewolfBinary || null,
     },
-    profiles: scanData?.profiles?.length || 0,
+    profiles: (scanData?.profiles || []).filter((profile) => profile?.email).length,
     profilesRoot: scanData?.profilesRoot || raw.profilesRoot || null,
   };
 }

@@ -1,4 +1,4 @@
-const { invoke } = window.__TAURI__.core;
+﻿const { invoke } = window.__TAURI__.core;
 const $ = (selector) => document.querySelector(selector);
 
 const state = {
@@ -46,15 +46,24 @@ function friendlyError(error) {
   return text;
 }
 
+function setActionGuard(selector, disabled, reason = '') {
+  const button = $(selector);
+  button.disabled = disabled;
+  if (disabled && reason) button.title = reason;
+  else button.removeAttribute('title');
+}
+
 function applyActionGuards() {
   const joinReady = state.preflight?.joinReady === true;
   const watcherReady = state.preflight?.watcherReady === true;
-  $('#join-start-btn').disabled = state.joinRunning || !joinReady;
-  $('#join-stop-btn').disabled = !state.joinRunning;
-  $('#watch-start-btn').disabled = state.watcherRunning || !watcherReady;
-  $('#watch-stop-btn').disabled = !state.watcherRunning;
-  $('#verify-btn').disabled = state.verifyRunning || !joinReady;
-  $('#verify-stop-btn').disabled = !state.verifyRunning;
+  const joinIssue = state.preflight?.joinIssues?.[0]?.message || 'Join prerequisites are not ready.';
+  const watcherIssue = state.preflight?.watcherIssues?.[0]?.message || 'Watcher prerequisites are not ready.';
+  setActionGuard('#join-start-btn', state.joinRunning || !joinReady, state.joinRunning ? 'Join is already running.' : joinIssue);
+  setActionGuard('#join-stop-btn', !state.joinRunning, 'No join is running.');
+  setActionGuard('#watch-start-btn', state.watcherRunning || !watcherReady, state.watcherRunning ? 'Watcher is already running.' : watcherIssue);
+  setActionGuard('#watch-stop-btn', !state.watcherRunning, 'Watcher is not running.');
+  setActionGuard('#verify-btn', state.verifyRunning || !joinReady, state.verifyRunning ? 'Verification is already running.' : joinIssue);
+  setActionGuard('#verify-stop-btn', !state.verifyRunning, 'No verification is running.');
 }
 
 function renderPreflight(data) {
@@ -111,6 +120,7 @@ function statusLabel(status) {
     cloudflare_challenge: 'Challenge page',
     challenge_page: 'Challenge page',
     unknown: 'Unknown',
+    not_configured: 'Not configured',
     error: 'Error',
   };
   return labels[status] || status || 'Ready';
@@ -187,6 +197,7 @@ function rowsFromJoin(data) {
       for (const account of event.accounts || []) ensure({ ...account, profile: event.profile });
       continue;
     }
+    if (event?.type === 'profile_skipped') continue;
     if (!event?.profile && !event?.email) continue;
     const row = ensure(event);
     if (event.email) row.email = event.email;
@@ -226,7 +237,9 @@ function renderJoin(data) {
   $('#join-progress-track').setAttribute('aria-valuenow', String(percent));
   state.joinRunning = data.running === true;
   applyActionGuards();
-  if (data.running) {
+  if (data.running && data.result) {
+    $('#join-status').textContent = 'Join completed. Sending Telegram report…';
+  } else if (data.running) {
     const current = [...(data.events || [])].reverse().find((event) => event.type === 'account_status' || event.type === 'account_start');
     const detail = current?.status ? ` · ${statusLabel(current.status)}` : '';
     $('#join-status').textContent = `Join running${current?.email ? ` — ${current.email}` : current?.profile ? ` — ${current.profile}` : ''}${detail}.`;
@@ -237,7 +250,12 @@ function renderJoin(data) {
   } else if (data.error) {
     $('#join-status').textContent = friendlyError(data.error);
   }
-  if (data.log && !state.joinLogHidden) $('#join-log').textContent = data.log;
+  if (!data.running && data.report?.status === 'sent') $('#join-status').textContent += ' Telegram report sent.';
+  if (!data.running && data.report?.status === 'failed') $('#join-status').textContent += ` Telegram report failed: ${data.report.error}`;
+  if (!state.joinLogHidden) {
+    if (data.summary) $('#join-log').textContent = `${data.summary}\n\n${data.log || ''}`.trim();
+    else if (data.log) $('#join-log').textContent = data.log;
+  }
 }
 
 async function scanProfiles() {
@@ -246,7 +264,7 @@ async function scanProfiles() {
   $('#join-status').textContent = 'Scanning LibreWolf profiles…';
   try {
     const result = parseJson(await invoke('profiles_scan'));
-    state.profiles = result.profiles || [];
+    state.profiles = (result.profiles || []).filter((profile) => profile?.email);
     $('#metric-profiles').textContent = state.profiles.length;
     renderRows(baseRows());
     renderProfilePicker();
@@ -537,7 +555,7 @@ async function environmentCheck() {
 
 async function pasteInvite() {
   try {
-    const text = await navigator.clipboard.readText();
+    const text = await invoke('clipboard_read');
     if (text) $('#invite-url').value = text.trim();
   } catch {
     $('#join-status').textContent = 'Clipboard access was blocked; use Ctrl+V in the invite field.';
@@ -554,9 +572,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('#verify-stop-btn').addEventListener('click', stopVerify);
   $('#join-start-btn').addEventListener('click', startJoin);
   $('#join-stop-btn').addEventListener('click', stopJoin);
-  $('#clear-log-btn').addEventListener('click', async () => {
+  $('#toggle-log-btn').addEventListener('click', async () => {
     state.joinLogHidden = !state.joinLogHidden;
-    $('#clear-log-btn').textContent = state.joinLogHidden ? 'Show log' : 'Hide log';
+    $('#toggle-log-btn').textContent = state.joinLogHidden ? 'Show log' : 'Hide log';
     if (state.joinLogHidden) $('#join-log').textContent = 'Log hidden in the UI.';
     else await refreshJoin();
   });
