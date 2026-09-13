@@ -4,6 +4,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-13
+
+### Fixed
+- **`npm test` crashed on CI (no clipboard tool on `ubuntu-latest`)**: `system-mcp.js` imported `exec`/`spawn` by name, so `mock.method` in the test could not intercept calls made from inside the module, and `clipboardWrite`'s Linux fallback hit a real `wl-copy` `ENOENT`. Switched to the repo's `import cp from 'node:child_process'` pattern (mockable) and dropped `promisify(cp.exec)`, which bypasses mocks via its `util.promisify.custom` symbol.
+- **Running `akimcp`/`npm start` a second time always opened the panel to "wrong token"**: a second launch used to race the running instance for the same ports — `start.js` opened the browser before the gatekeeper/panel finished binding, so the fresh token landed on the instance already holding `:9998` (403), then the new process died on `EADDRINUSE` in the background with no visible reason. Fixed at the root instead of patched: `start.js` now tracks the running instance in `~/.aki/mcpsv/instance.json` and, on a second launch, reuses its panel when the version matches (opens it, exits 0) or stops it first when it's older (the user just upgraded) — no port race, no manual "kill the old one" step. The panel also falls back to the next free port if something unrelated already holds it, since (unlike the gatekeeper) nothing external pins its port; a genuine `EADDRINUSE` on the gatekeeper's fixed port now names the likely cause.
+
 ## [2.0.0] - 2026-09-13
 
 ### Added
