@@ -39,6 +39,9 @@ const DCR_RATE_MAX = 16;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const PASSPHRASE_LENGTH = 10; // 32^10 = 2^50 — brute-force still infeasible over network
+const AUTHORIZE_FAILURE_MAX = 5;
+const AUTHORIZE_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+const AUTHORIZE_COOLDOWN_MS = 10 * 60 * 1000;
 // Display-only, to avoid leaking the OS username on a page reachable pre-passphrase; the file read below still uses PASSPHRASE_FILE.
 const PASSPHRASE_DISPLAY_PATH = PASSPHRASE_FILE.replace(os.homedir(), '~');
 
@@ -140,6 +143,80 @@ function safeEqual(a, b) {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
+function firstHeader(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' ? raw.split(',')[0].trim() : '';
+}
+
+function normalizeAddress(value) {
+  const address = String(value || '').trim();
+  return address.startsWith('::ffff:') ? address.slice(7) : address;
+}
+
+function isLoopbackAddress(address) {
+  return address === '127.0.0.1' || address === '::1';
+}
+
+export function authorizationSource(req) {
+  const peer = normalizeAddress(req?.socket?.remoteAddress);
+  if (!isLoopbackAddress(peer)) return peer || 'unknown';
+  const forwarded = firstHeader(req?.headers?.['cf-connecting-ip']) || firstHeader(req?.headers?.['x-forwarded-for']);
+  return normalizeAddress(forwarded) || peer || 'unknown';
+}
+
+export function createAuthorizeFailureLimiter({
+  maxFailures = AUTHORIZE_FAILURE_MAX,
+  windowMs = AUTHORIZE_FAILURE_WINDOW_MS,
+  cooldownMs = AUTHORIZE_COOLDOWN_MS,
+  now = Date.now,
+} = {}) {
+  const failures = new Map();
+
+  function activeEntry(key, at) {
+    const entry = failures.get(key);
+    if (!entry) return null;
+    if (entry.cooldownUntil && entry.cooldownUntil <= at) {
+      failures.delete(key);
+      return null;
+    }
+    if (!entry.cooldownUntil && at - entry.windowStartedAt >= windowMs) {
+      failures.delete(key);
+      return null;
+    }
+    return entry;
+  }
+
+  function prune(at) {
+    for (const key of failures.keys()) activeEntry(key, at);
+  }
+
+  return {
+    key(req, clientId) {
+      const source = authorizationSource(req);
+      return isLoopbackAddress(source) || source === 'unknown' ? `${source}\0${clientId || 'unknown-client'}` : source;
+    },
+    check(key) {
+      const at = now();
+      const entry = activeEntry(key, at);
+      if (!entry?.cooldownUntil) return { allowed: true, retryAfterMs: 0 };
+      return { allowed: false, retryAfterMs: entry.cooldownUntil - at };
+    },
+    failure(key) {
+      const at = now();
+      prune(at);
+      const entry = activeEntry(key, at) || { failures: 0, windowStartedAt: at, cooldownUntil: 0 };
+      entry.failures += 1;
+      if (entry.failures >= maxFailures) entry.cooldownUntil = at + cooldownMs;
+      failures.set(key, entry);
+      return { blocked: entry.cooldownUntil > at, retryAfterMs: Math.max(0, entry.cooldownUntil - at) };
+    },
+    success(key) {
+      failures.delete(key);
+    },
+  };
+}
+
+const authorizeFailureLimiter = createAuthorizeFailureLimiter();
 const json = (res, status, body) => httpJson(res, status, body, { 'Cache-Control': 'no-store' });
 
 export function metadataHandlers(origin) {
@@ -298,12 +375,30 @@ export async function handleAuthorize(req, res, passphrase, origin) {
     return;
   }
 
+  const attemptKey = authorizeFailureLimiter.key(req, clientId);
+  const availability = authorizeFailureLimiter.check(attemptKey);
+  if (!availability.allowed) {
+    const retryAfter = Math.max(1, Math.ceil(availability.retryAfterMs / 1000));
+    log(`[oauth] authorize POST: source cooldown (${authorizationSource(req)})`);
+    res.writeHead(429, { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': String(retryAfter) });
+    res.end(errorPage('Try again later', 'Too many incorrect passphrase attempts from this connection.'));
+    return;
+  }
+
   if (!safeEqual(q.get('passphrase'), passphrase)) {
-    log('[oauth] authorize POST: WRONG passphrase');
+    const failure = authorizeFailureLimiter.failure(attemptKey);
+    log(`[oauth] authorize POST: WRONG passphrase (${authorizationSource(req)})`);
+    if (failure.blocked) {
+      const retryAfter = Math.max(1, Math.ceil(failure.retryAfterMs / 1000));
+      res.writeHead(429, { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': String(retryAfter) });
+      res.end(errorPage('Try again later', 'Too many incorrect passphrase attempts from this connection.'));
+      return;
+    }
     res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(errorPage('Wrong passphrase', "That passphrase didn't match."));
     return;
   }
+  authorizeFailureLimiter.success(attemptKey);
   const code = randomBytes(24).toString('hex');
   authCodes.set(code, { clientId, redirectUri, codeChallenge, expires: Date.now() + CODE_TTL_MS });
   log(`[oauth] authorize approved -> code issued (state=${state ? 'yes' : 'no'}), redirecting to ${new URL(redirectUri).host}`);
