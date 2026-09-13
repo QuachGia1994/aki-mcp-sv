@@ -5,13 +5,16 @@ import { readFileSync, existsSync } from 'node:fs';
 
 const argOf = (flag) => { const i = process.argv.indexOf(flag); return i !== -1 ? process.argv[i + 1] : null; };
 
-if (process.argv.includes('-v') || process.argv.includes('--version')) {
+function readVersion() {
   try {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-    console.log(pkg.version);
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
   } catch {
-    console.log('2.0.0');
+    return '2.0.1';
   }
+}
+
+if (process.argv.includes('-v') || process.argv.includes('--version')) {
+  console.log(readVersion());
   process.exit(0);
 }
 
@@ -53,10 +56,31 @@ import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { USER_DIR, IS_DEV, readIngressConfig } from './userdata.js';
 import { killPostmanDaemon } from './postman-mcp.js';
+import { readLock, isPidAlive, writeLock, clearLock, killAndWait } from './instance-lock.js';
 
 const isDev = IS_DEV;
+const version = readVersion();
 const customGatePort = argOf('--port');
 const customPanelPort = argOf('--panel-port');
+
+// Never fight a running instance for its ports (that produced the token-403 bug): reuse it if same version, replace it if older.
+const existingLock = readLock();
+if (existingLock && existingLock.pid !== process.pid && isPidAlive(existingLock.pid)) {
+  if (existingLock.version === version) {
+    const url = `http://127.0.0.1:${existingLock.panelPort}/?t=${existingLock.token}`;
+    console.log(`[start] akimcp v${version} is already running (pid ${existingLock.pid}) — opening its panel`);
+    if (process.argv.includes('--no-browser')) {
+      console.log(`[start] panel: ${url}`);
+    } else {
+      try { await openBrowser(url); } catch (e) { console.error(`[start] could not open the browser (open manually: ${url}): ${e.message}`); }
+    }
+    process.exit(0);
+  } else {
+    console.log(`[start] stopping older akimcp v${existingLock.version} (pid ${existingLock.pid}) to start v${version}`);
+    await killAndWait(existingLock.pid);
+    clearLock();
+  }
+}
 
 const gatePort = customGatePort || process.env.GATEKEEPER_PORT || (isDev ? '9997' : '9999');
 const panelPort = customPanelPort || process.env.PANEL_PORT || (isDev ? '9996' : '9998');
@@ -182,8 +206,15 @@ if (origin) {
   console.log('[start] Gatekeeper paused (waiting for ingress setup in the web panel)');
 }
 
-panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, updateInfo, isDev });
-const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
+panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, updateInfo, isDev, onFatal: () => shutdown(1) });
+// Listen errors arrive asynchronously; opening the browser before both servers bind would land this run's token on whatever instance already owns the port (403 "wrong token").
+const bound = (server) => new Promise((resolve) => (server.listening ? resolve() : server.once('listening', resolve)));
+await Promise.all([gateServer, panel].filter(Boolean).map(bound));
+// The panel falls back to the next free port when something else already holds the configured one
+// (panel.js); the gatekeeper port stays fixed since Tailscale/cloudflared ingress is mapped to it.
+const actualPanelPort = panel.actualPort ?? Number(panelPort);
+const panelUrl = `http://127.0.0.1:${actualPanelPort}/?t=${panelToken}`;
+writeLock({ pid: process.pid, panelPort: actualPanelPort, gatePort: Number(gatePort), token: panelToken, version });
 // Escape hatch for automated runs (bootstrap smoke tests) that must not pop a browser window — off by default, normal `npm start` is unaffected.
 if (process.env.MCP_SKIP_BROWSER_OPEN) {
   console.log(`[start] MCP_SKIP_BROWSER_OPEN set — not opening a browser (panel: ${panelUrl})`);
@@ -198,6 +229,7 @@ if (process.env.MCP_SKIP_BROWSER_OPEN) {
 function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearLock();
   cloudflared?.kill();
   killPostmanDaemon();
   gateServer?.close();

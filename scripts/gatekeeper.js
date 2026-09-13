@@ -64,7 +64,7 @@ export function startGatekeeper(origin, onFatal) {
   });
 
   server.on('error', (e) => {
-    logErr(`[gatekeeper] failed to listen on :${port}: ${e.message}`);
+    logErr(`[gatekeeper] failed to listen on :${port}: ${e.message}${e.code === 'EADDRINUSE' ? ' — another akimcp instance is probably still running; stop it first' : ''}`);
     onFatal?.();
   });
   server.listen(port, () => {

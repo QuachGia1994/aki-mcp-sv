@@ -250,7 +250,7 @@ export const ROUTES = {
   },
 };
 
-export function startPanel({ port, token, origin, ingress, client, passphrase, updateInfo, isDev = false }) {
+export function startPanel({ port, token, origin, ingress, client, passphrase, updateInfo, isDev = false, onFatal }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
     const route = `${req.method} ${urlPath}`;
@@ -277,6 +277,22 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
     }
   });
 
-  server.listen(port, '127.0.0.1', () => console.log(`[panel] http://127.0.0.1:${port}/?t=${token}`));
+  // Unlike the gatekeeper (mapped to a fixed port by Tailscale/cloudflared ingress), nothing external pins the panel's port, so stepping past a conflict is safe.
+  const MAX_PORT_ATTEMPTS = 20;
+  let attempt = 0;
+  server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS) {
+      attempt++;
+      server.listen(port + attempt, '127.0.0.1');
+      return;
+    }
+    console.error(`[panel] failed to listen on :${port + attempt}: ${e.message}`);
+    onFatal?.();
+  });
+  server.on('listening', () => {
+    server.actualPort = server.address().port;
+    console.log(`[panel] http://127.0.0.1:${server.actualPort}/?t=${token}`);
+  });
+  server.listen(port, '127.0.0.1');
   return server;
 }
