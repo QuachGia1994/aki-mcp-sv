@@ -160,7 +160,13 @@
     badgeId: 'aki-badge-reject-folder',
     checkboxId: 'aki-opt-reject-folder',
     rowLabel: 'Auto <strong>reject</strong> "Connect a local folder"',
-    bodyNeedle: 'connect a local folder to this workspace'
+    bodyNeedles: [
+      'connect a local folder to this workspace',
+      'connect a local folder',
+      'opening folder picker',
+      'select a local folder',
+      'choose a local folder'
+    ]
   };
   if (typeof window.__pmStats[AUTO_REJECT_PICK_FOLDER.statKey] !== 'number') {
     window.__pmStats[AUTO_REJECT_PICK_FOLDER.statKey] = 0;
@@ -181,6 +187,62 @@
             </label>
             <span id="${t.badgeId}" class="aki-badge">${window.__pmStats[t.statKey]}</span>
           </div>`;
+  }
+
+  function folderPickerIntent(value) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    return !!text && AUTO_REJECT_PICK_FOLDER.bodyNeedles.some((needle) => text.includes(needle));
+  }
+
+  function folderPickerGuardEnabled() {
+    return !!config?.[AUTO_REJECT_PICK_FOLDER.configKey];
+  }
+
+  function creditRejectedFolderPicker(source) {
+    window.__pmStats[AUTO_REJECT_PICK_FOLDER.statKey]++;
+    console.log(`[⚡ AutoRun] blocked local folder picker (${source}; Stats: rejectPickFolder=${window.__pmStats[AUTO_REJECT_PICK_FOLDER.statKey]})`);
+    updateRejectFolderBadge();
+  }
+
+  function installFolderPickerGuard() {
+    if (window.__pmFolderPickerGuardInstalled) return;
+    window.__pmFolderPickerGuardInstalled = true;
+
+    document.addEventListener('click', (event) => {
+      if (!folderPickerGuardEnabled()) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || target.closest('#aki-control-panel')) return;
+      const directoryInput = target.closest('input[type="file"][webkitdirectory], input[type="file"][directory]');
+      const action = target.closest('button, [role="button"], a');
+      const actionCopy = action ? `${action.getAttribute('aria-label') || ''} ${action.innerText || action.textContent || ''}` : '';
+      if (!directoryInput && !folderPickerIntent(actionCopy)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      creditRejectedFolderPicker(directoryInput ? 'directory input' : 'folder action');
+    }, true);
+
+    if (typeof window.showDirectoryPicker === 'function' && !window.__pmOriginalShowDirectoryPicker) {
+      window.__pmOriginalShowDirectoryPicker = window.showDirectoryPicker.bind(window);
+      window.showDirectoryPicker = (...args) => {
+        if (!folderPickerGuardEnabled()) return window.__pmOriginalShowDirectoryPicker(...args);
+        creditRejectedFolderPicker('showDirectoryPicker');
+        return Promise.reject(new DOMException('Blocked by Aki local-folder guard', 'AbortError'));
+      };
+    }
+
+    if (typeof HTMLInputElement !== 'undefined'
+      && typeof HTMLInputElement.prototype.showPicker === 'function'
+      && !window.__pmOriginalInputShowPicker) {
+      window.__pmOriginalInputShowPicker = HTMLInputElement.prototype.showPicker;
+      HTMLInputElement.prototype.showPicker = function (...args) {
+        const isDirectory = this.type === 'file' && (this.hasAttribute('webkitdirectory') || this.hasAttribute('directory'));
+        if (!folderPickerGuardEnabled() || !isDirectory) {
+          return window.__pmOriginalInputShowPicker.apply(this, args);
+        }
+        creditRejectedFolderPicker('input.showPicker');
+        throw new DOMException('Blocked by Aki local-folder guard', 'AbortError');
+      };
+    }
   }
 
   function buttonLabel(btn) {
@@ -263,7 +325,7 @@
     permissionCards().forEach((card) => {
       if (card.dataset.akiPressed === '1') return;
       const copy = cardCopy(card);
-      const folderIntent = cfg[AUTO_REJECT_PICK_FOLDER.configKey] && copy.toLowerCase().includes(AUTO_REJECT_PICK_FOLDER.bodyNeedle);
+      const folderIntent = cfg[AUTO_REJECT_PICK_FOLDER.configKey] && folderPickerIntent(copy);
       if (folderIntent) {
         const decline = slotButton(card, 'decline');
         if (!decline) return;
@@ -404,6 +466,7 @@
   }
 
   let config = loadConfig();
+  installFolderPickerGuard();
   config.instruction = typeof window.__pmInitialInstruction === 'string' ? window.__pmInitialInstruction : '';
 
   function syncAndSaveConfig(extra = {}) {

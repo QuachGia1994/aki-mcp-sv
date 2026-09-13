@@ -66,14 +66,18 @@ class PostmanJoinVerificationTests(unittest.TestCase):
         self.assertIsNone(MODULE.pool_name_from_url("https://go.postman.co/home"))
         self.assertIsNone(MODULE.pool_name_from_url("https://identity.getpostman.com/accounts"))
 
-    def test_fast_path_is_bounded_to_eight_workers_and_short_polls(self):
-        self.assertEqual(MODULE.AUTOMATION_WORKERS, 8)
-        self.assertEqual(MODULE.RETRY_WORKERS, 2)
+    def test_fast_path_keeps_verify_fast_but_limits_identity_join_burst(self):
+        self.assertEqual(MODULE.VERIFY_WORKERS, 8)
+        self.assertEqual(MODULE.JOIN_WORKERS, 4)
+        self.assertEqual(MODULE.RETRY_WORKERS, 1)
         self.assertLessEqual(MODULE.ACCOUNT_DISCOVERY_POLL_SECONDS, 0.25)
         self.assertLessEqual(MODULE.ACCOUNT_CARD_POLL_SECONDS, 0.25)
         self.assertLessEqual(MODULE.ACCOUNT_JOIN_POLL_SECONDS, 0.35)
         self.assertLessEqual(MODULE.ACCOUNT_SYNC_SECONDS, 1.0)
         self.assertEqual(sorted(["manpost10@yopmail.com", "manpost2@yopmail.com", "manpost1@yopmail.com"], key=MODULE.email_sort_key), ["manpost1@yopmail.com", "manpost2@yopmail.com", "manpost10@yopmail.com"])
+
+    def test_security_challenge_requires_manual_librewolf_verification_instead_of_auto_retry(self):
+        self.assertFalse(MODULE.transient_join_error("Manual LibreWolf verification required for Hồ sơ 1; diagnostic={}"))
 
     def test_join_confirmation_text_without_team_destination_is_not_success(self):
         class By:

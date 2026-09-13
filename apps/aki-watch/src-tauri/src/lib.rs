@@ -482,6 +482,22 @@ async fn join_stop() -> Result<String, String> {
     control_command(vec!["--join-stop-json".into()], None).await
 }
 
+#[tauri::command]
+async fn cdp_join_start(invite_url: String) -> Result<String, String> {
+    let payload = serde_json::json!({ "inviteUrl": invite_url }).to_string();
+    control_command(vec!["--cdp-join-start-json".into()], Some(payload)).await
+}
+
+#[tauri::command]
+async fn cdp_join_status() -> Result<String, String> {
+    control_command(vec!["--cdp-join-status-json".into()], None).await
+}
+
+#[tauri::command]
+async fn cdp_join_stop() -> Result<String, String> {
+    control_command(vec!["--cdp-join-stop-json".into()], None).await
+}
+
 #[cfg(windows)]
 pub fn backend_smoke() -> Result<(), String> {
     run_node_script(control_script(), &["--join-status-json"], None).map(|_| ())
@@ -537,7 +553,10 @@ pub fn run() {
             verify_stop,
             join_start,
             join_status,
-            join_stop
+            join_stop,
+            cdp_join_start,
+            cdp_join_status,
+            cdp_join_stop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

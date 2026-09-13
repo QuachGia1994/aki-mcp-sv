@@ -139,7 +139,7 @@ export async function analyzeImageWithOpenCode({
   env = process.env,
 } = {}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('OpenCode vision requires a non-empty image buffer');
-  if (!SUPPORTED_MIME.has(mimeType)) throw new Error(`OpenCode vision supports PNG, JPEG, GIF, or WebP; got ${mimeType || 'unknown'}`);
+  if (!SUPPORTED_MIME.has(mimeType)) throw new Error(`OpenCode vision supports PNG, JPEG, GIF, or WebP; got ${mimeType || 'unknown'}. Convert HEIC/HEIF to JPEG first (e.g. rename .heic → .jpg or use an image converter).`);
   const requestText = String(prompt || '').trim();
   if (!requestText) throw new Error('OpenCode vision prompt is empty');
   const selected = splitModel(model);

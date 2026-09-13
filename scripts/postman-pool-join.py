@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing
 import json
@@ -9,12 +10,15 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import sqlite3
+import struct
 import subprocess
 import sys
 import tempfile
 from threading import Lock
 import time
+import urllib.request
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 if sys.platform == "win32":
@@ -44,8 +48,9 @@ ACCOUNT_CARD_POLL_SECONDS = 0.25
 ACCOUNT_JOIN_POLL_SECONDS = 0.35
 ACCOUNT_SYNC_SECONDS = 1.0
 VERIFY_SETTLE_SECONDS = 0.35
-AUTOMATION_WORKERS = 8
-RETRY_WORKERS = 2
+VERIFY_WORKERS = 8
+JOIN_WORKERS = 4
+RETRY_WORKERS = 1
 TRANSIENT_JOIN_ERRORS = (
     "No signed-in Postman account card was found",
     "Postman account card was not found after returning",
@@ -64,6 +69,15 @@ KEEP_SEPARATE_XPATHS = (
 RATE_LIMIT_MARKERS = ("rate limit", "too many requests", "too many attempts")
 RATE_LIMIT_WAIT_SECONDS = 2.0
 MAX_RATE_LIMIT_REFRESHES = 6
+
+# CDP real-profile join: open real LibreWolf profiles (no clone, no geckodriver), let the user
+# clear any Cloudflare challenge by hand, then drive the join over the Firefox CDP endpoint.
+MAX_CDP_PROFILES = 8
+CDP_POLL_INTERVAL = 0.5          # seconds between URL polls while waiting for the challenge to clear
+CDP_CHALLENGE_TIMEOUT = 300      # max seconds to wait for the user to complete the Cloudflare bypass
+CDP_JOIN_TIMEOUT = 30            # max seconds for a single CDP Runtime.evaluate round-trip
+CDP_READY_TIMEOUT = 20           # max seconds to wait for a launched profile's CDP endpoint to answer
+CDP_JOIN_ATTEMPTS = 40           # poll attempts per account while auto-accepting the invite
 
 
 def log(message: str) -> None:
@@ -752,7 +766,12 @@ def process_chooser_account(driver, chooser_url: str, account: dict, timeout: in
     diagnostic_text = json.dumps(diagnostic, ensure_ascii=False, separators=(",", ":"))
     emit_progress({"type": "transition_diagnostic", "email": email, "diagnostic": diagnostic, **progress})
     if challenge_seen:
-        return "failed", f"Postman security challenge did not clear automatically before the join timeout; diagnostic={diagnostic_text}", final_url
+        profile_name = str(progress.get("profile") or "this profile")
+        return (
+            "challenge_page",
+            f"Manual LibreWolf verification required for {profile_name}. Open that LibreWolf profile, complete the Postman security check, then retry Join Now; diagnostic={diagnostic_text}",
+            final_url,
+        )
     if join_confirmation_seen:
         return "failed", f"Postman showed join confirmation but did not complete the team transition; diagnostic={diagnostic_text}", final_url
     return "failed", f"Postman did not reach a confirmed team page after automatic account switch/accept; diagnostic={diagnostic_text}", final_url
@@ -821,7 +840,7 @@ def verify_login(profiles_root: Path, binary: Path, profile_directories: list[st
     if not jobs:
         raise RuntimeError("no configured Postman profiles found")
     total = len(jobs)
-    workers = min(AUTOMATION_WORKERS, total)
+    workers = min(VERIFY_WORKERS, total)
 
     def verify_profile(index: int, row: dict, inventory: dict) -> tuple[int, dict]:
         emit_progress({"type": "verify_start", "index": index, "total": total, "profile": row["profile"], "email": row.get("email")})
@@ -1012,7 +1031,7 @@ def run(invite_url: str, profiles_root: Path, binary: Path, profile_directories:
             close_firefox(driver)
         return {"joined": local_joined, "skipped": local_skipped, "failed": local_failed}
 
-    workers = min(AUTOMATION_WORKERS, len(profiles))
+    workers = min(JOIN_WORKERS, len(profiles))
     merged = {"joined": [], "skipped": [], "failed": []}
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="postman-join") as executor:
         futures = [executor.submit(process_profile, index, row) for index, row in enumerate(profiles)]
@@ -1141,6 +1160,535 @@ def spawn_detached(argv: list[str], log_file: str | None) -> int:
     return child.pid
 
 
+# ---------------------------------------------------------------------------
+# CDP real-profile join
+# ---------------------------------------------------------------------------
+# The whole point of this mode: geckodriver clones a profile and cannot survive a Cloudflare
+# challenge unattended. Here we launch the REAL profile visibly, the user solves the challenge by
+# hand, and we drive the resulting authenticated page over Firefox's own CDP endpoint. No selenium.
+
+
+def free_port() -> int:
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def launch_real_profile(binary: Path, profile_dir: Path, debug_port: int) -> subprocess.Popen:
+    # --no-remote + --new-instance let several LibreWolf windows run against distinct profiles at once;
+    # --remote-debugging-port turns on the CDP endpoint we poll and drive. No profile copy: the real
+    # signed-in session (and the user's manual Cloudflare bypass) is exactly what we need.
+    args = [
+        str(binary),
+        "--profile", str(profile_dir),
+        "--remote-debugging-port", str(debug_port),
+        "--no-remote",
+        "--new-instance",
+    ]
+    kwargs = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x00000200  # CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(args, **kwargs)
+
+
+def cdp_get_tabs(port: int, timeout: float = 2.0) -> list[dict]:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return data if isinstance(data, list) else []
+    except Exception:
+        # Firefox exposes /json/list; some builds also answer /json. Fall back once.
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
+
+def cdp_page_tab(port: int) -> dict | None:
+    tabs = cdp_get_tabs(port)
+    pages = [tab for tab in tabs if tab.get("type") == "page" and tab.get("webSocketDebuggerUrl")]
+    if pages:
+        return pages[0]
+    # Some Firefox CDP builds omit "type"; accept any tab that carries a debugger socket.
+    for tab in tabs:
+        if tab.get("webSocketDebuggerUrl"):
+            return tab
+    return None
+
+
+def cdp_page_url(port: int) -> str | None:
+    tab = cdp_page_tab(port)
+    return tab.get("url") if tab else None
+
+
+def _ws_send_frame(sock: socket.socket, message: bytes) -> None:
+    # Client frames MUST be masked (RFC 6455 §5.3). Single text frame, FIN set.
+    header = bytearray([0x81])
+    length = len(message)
+    if length < 126:
+        header.append(0x80 | length)
+    elif length < 65536:
+        header.append(0x80 | 126)
+        header += struct.pack(">H", length)
+    else:
+        header.append(0x80 | 127)
+        header += struct.pack(">Q", length)
+    mask = os.urandom(4)
+    header += mask
+    masked = bytes(byte ^ mask[i % 4] for i, byte in enumerate(message))
+    sock.sendall(bytes(header) + masked)
+
+
+def _ws_read_message(sock: socket.socket, recv_buf: bytearray) -> tuple[str | None, bytearray]:
+    # Parse one server frame out of recv_buf (server->client frames are never masked). Returns the
+    # decoded text payload plus the leftover buffer, or (None, buf) when more bytes are needed.
+    if len(recv_buf) < 2:
+        return None, recv_buf
+    length_byte = recv_buf[1] & 0x7F
+    offset = 2
+    if length_byte == 126:
+        if len(recv_buf) < 4:
+            return None, recv_buf
+        length = struct.unpack(">H", recv_buf[2:4])[0]
+        offset = 4
+    elif length_byte == 127:
+        if len(recv_buf) < 10:
+            return None, recv_buf
+        length = struct.unpack(">Q", recv_buf[2:10])[0]
+        offset = 10
+    else:
+        length = length_byte
+    if len(recv_buf) < offset + length:
+        return None, recv_buf
+    payload = bytes(recv_buf[offset:offset + length])
+    leftover = recv_buf[offset + length:]
+    try:
+        return payload.decode("utf-8"), leftover
+    except Exception:
+        return "", leftover
+
+
+def ws_send_recv(ws_url: str, payload: dict, timeout: float = CDP_JOIN_TIMEOUT) -> dict | None:
+    # Minimal stdlib CDP WebSocket call: open ws://, do the RFC 6455 handshake, send one JSON-RPC
+    # message, read frames until the response with a matching id arrives. Kept tiny on purpose so the
+    # target machine needs no websocket-client dependency.
+    parsed = urlparse(ws_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 80
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    target_id = payload.get("id")
+    sock = None
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        key = base64.b64encode(os.urandom(16)).decode()
+        handshake = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        )
+        sock.sendall(handshake.encode())
+        header_buf = b""
+        sock.settimeout(timeout)
+        while b"\r\n\r\n" not in header_buf:
+            chunk = sock.recv(1024)
+            if not chunk:
+                return None
+            header_buf += chunk
+        _, _, leftover = header_buf.partition(b"\r\n\r\n")
+        _ws_send_frame(sock, json.dumps(payload).encode("utf-8"))
+        recv_buf = bytearray(leftover)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            while True:
+                text, recv_buf = _ws_read_message(sock, recv_buf)
+                if text is None:
+                    break
+                try:
+                    message = json.loads(text)
+                except Exception:
+                    continue
+                if message.get("id") == target_id:
+                    return message
+            sock.settimeout(max(0.1, deadline - time.time()))
+            try:
+                chunk = sock.recv(65536)
+            except socket.timeout:
+                break
+            except Exception:
+                break
+            if not chunk:
+                break
+            recv_buf += chunk
+        return None
+    except Exception:
+        return None
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
+def cdp_evaluate(ws_url: str, expression: str, timeout: float = CDP_JOIN_TIMEOUT):
+    # Returns the by-value result of a Runtime.evaluate, or None on any transport/eval failure.
+    response = ws_send_recv(
+        ws_url,
+        {
+            "id": 1,
+            "method": "Runtime.evaluate",
+            "params": {"expression": expression, "returnByValue": True, "awaitPromise": False},
+        },
+        timeout,
+    )
+    if not isinstance(response, dict):
+        return None
+    result = response.get("result")
+    if isinstance(result, dict) and isinstance(result.get("result"), dict):
+        return result["result"].get("value")
+    return None
+
+
+def cdp_navigate(ws_url: str, url: str, timeout: float = CDP_JOIN_TIMEOUT) -> None:
+    # Firefox CDP has no reliable Page.navigate, so drive navigation through the page context.
+    cdp_evaluate(ws_url, f"window.location.href = {json.dumps(url)}; true", timeout)
+
+
+# JS reused across CDP calls — same selectors/logic the selenium path uses, run in one page eval.
+_CDP_DISCOVER_SCRIPT = (
+    "(function(){"
+    "const cards=Array.from(document.querySelectorAll(" + json.dumps(ACCOUNT_CARD_SELECTOR) + "));"
+    "const list=[];"
+    "for(const c of cards){"
+    "const emailEl=c.querySelector('.email')||c.querySelector('[title*=\"@\"]');"
+    "let email=emailEl?(emailEl.innerText||emailEl.title||'').trim():'';"
+    "if(!email){const m=(c.innerText||'').match(/[\\w.\\-+]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}/);if(m)email=m[0];}"
+    "const nameEl=c.querySelector('.name')||c.querySelector('h3');"
+    "const name=nameEl?(nameEl.innerText||'').trim():'';"
+    "if(email&&!list.some(x=>x.email.toLowerCase()===email.toLowerCase()))list.push({email,name,href:c.href});"
+    "}"
+    "return JSON.stringify({accounts:list,url:window.location.href});"
+    "})()"
+)
+
+_CDP_ACCEPT_SCRIPT = r"""(function(){
+const url=window.location.href;
+const buttons=Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit']"));
+let clicked=null;
+for(const b of buttons){
+  const text=(b.innerText||b.value||'').trim();
+  if(/sign in with a different account/i.test(text))continue;
+  if(/join team|accept invite|tham gia|confirm|continue|switch team|đồng ý|chấp nhận/i.test(text)){b.click();clicked=text;break;}
+}
+for(const kw of ['keep separate']){
+  for(const b of buttons){ if((b.innerText||'').trim().toLowerCase().includes(kw)){b.click();break;} }
+}
+let checked=0;
+for(const cb of Array.from(document.querySelectorAll("input[type='checkbox']"))){ if(!cb.checked){cb.click();checked+=1;} }
+return JSON.stringify({url,clicked,checked,body:(document.body?document.body.innerText:'').slice(0,4000),title:document.title||''});
+})()"""
+
+
+def _cdp_read_state(ws_url: str) -> dict:
+    raw = cdp_evaluate(
+        ws_url,
+        "JSON.stringify({url:window.location.href,body:(document.body?document.body.innerText:'').slice(0,4000),title:document.title||''})",
+        timeout=CDP_JOIN_TIMEOUT,
+    )
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+    return {}
+
+
+def cdp_join_account(port: int, chooser_url: str, account: dict, progress: dict) -> tuple[str, str | None, str | None]:
+    # CDP-driven version of process_chooser_account: navigate to the account card, poll the page, run
+    # the same accept JS, and settle on joined / challenge_page / failed using the shared signals.
+    email = str(account.get("email") or "").strip()
+    if not email:
+        return "failed", "Postman account card has no email", None
+    card_href = account.get("href")
+    if not (isinstance(card_href, str) and card_href.startswith("https://")):
+        return "failed", "Postman account card was not found after returning to the account chooser", None
+
+    tab = cdp_page_tab(port)
+    ws_url = tab.get("webSocketDebuggerUrl") if tab else None
+    if not ws_url:
+        return "failed", "CDP tab was not found for this profile", None
+
+    emit_progress({"type": "account_status", "status": "switching_session", "email": email, **progress})
+    cdp_navigate(ws_url, card_href)
+
+    final_url = None
+    challenge_seen = False
+    join_confirmation_seen = False
+    rate_limit_refreshes = 0
+    last_action = None
+    for attempt in range(CDP_JOIN_ATTEMPTS):
+        if attempt:
+            time.sleep(ACCOUNT_JOIN_POLL_SECONDS)
+        tab = cdp_page_tab(port)
+        ws_url = tab.get("webSocketDebuggerUrl") if tab else ws_url
+        raw = cdp_evaluate(ws_url, _CDP_ACCEPT_SCRIPT, timeout=CDP_JOIN_TIMEOUT)
+        step = {}
+        if isinstance(raw, str):
+            try:
+                step = json.loads(raw)
+            except Exception:
+                step = {}
+        final_url = (tab.get("url") if tab else None) or step.get("url") or final_url
+        body = str(step.get("body") or "")
+        title = str(step.get("title") or "")
+
+        if security_verification_signal(final_url or "", body, title):
+            challenge_seen = True
+        if rate_limit_signal(body, title) and rate_limit_refreshes < MAX_RATE_LIMIT_REFRESHES:
+            rate_limit_refreshes += 1
+            emit_progress({"type": "rate_limited", "refresh": rate_limit_refreshes, "email": email, **progress})
+            time.sleep(RATE_LIMIT_WAIT_SECONDS)
+            cdp_evaluate(ws_url, "window.location.reload(); true", timeout=CDP_JOIN_TIMEOUT)
+            continue
+        if step.get("clicked"):
+            last_action = str(step.get("clicked"))
+            emit_progress({"type": "account_status", "status": "auto_clicked", "clicked": last_action[:80], "email": email, **progress})
+        elif transition_signal(final_url or ""):
+            emit_progress({"type": "account_status", "status": "waiting_transition", "attempt": attempt + 1, "totalAttempts": CDP_JOIN_ATTEMPTS, "email": email, **progress})
+
+        if team_destination_signal(final_url or ""):
+            emit_progress({"type": "account_status", "status": "joined_syncing", "email": email, **progress})
+            time.sleep(ACCOUNT_SYNC_SECONDS)
+            return "joined", None, final_url
+        if joined_signal(body):
+            join_confirmation_seen = True
+        if invite_failure_signal(body) and not transition_signal(final_url or ""):
+            if any(marker in body.lower() for marker in ("sign in", "log in", "sign up")):
+                return "failed", "Postman account session is not signed in", final_url
+            return "failed", "Postman rejected or expired the invite", final_url
+
+    if challenge_seen:
+        profile_name = str(progress.get("profile") or "this profile")
+        return (
+            "challenge_page",
+            f"Cloudflare challenge still present for {profile_name}. Complete the check in that LibreWolf window, then retry CDP Join.",
+            final_url,
+        )
+    if join_confirmation_seen:
+        return "failed", "Postman showed join confirmation but did not complete the team transition", final_url
+    return "failed", "Postman did not reach a confirmed team page after automatic account switch/accept", final_url
+
+
+def cdp_join_run(
+    invite_url: str,
+    profiles_root: Path,
+    binary: Path,
+    profile_directories: list[str],
+    scratch_root: Path,
+    timeout: int,
+) -> dict:
+    started = time.perf_counter()
+    if not valid_invite_url(invite_url):
+        raise RuntimeError("not a recognized Postman invite URL")
+    chooser_url = account_chooser_url(invite_url)
+    profiles = discover_rows(profiles_root, profile_directories, scratch_root)
+    if not profiles:
+        raise RuntimeError("no LibreWolf profiles found")
+    batch = profiles[:MAX_CDP_PROFILES]
+
+    main_email = next((str(row["email"]).lower() for row in batch if row.get("email") and row["profile"].casefold() == "default-default"), None)
+    if not main_email:
+        main_email = next((str(row["email"]).lower() for row in batch if row.get("email")), None)
+
+    seen_emails: set[str] = set()
+    seen_lock = Lock()
+    progress_lock = Lock()
+    pool_lock = Lock()
+    progress_index = 0
+    pool_name: str | None = None
+
+    def reserve_accounts(accounts: list[dict]) -> list[dict]:
+        unique = []
+        with seen_lock:
+            for account in accounts:
+                email = str(account.get("email") or "").strip().lower()
+                if not email or email in seen_emails:
+                    continue
+                seen_emails.add(email)
+                unique.append({**account, "email": email})
+        return unique
+
+    def next_index() -> int:
+        nonlocal progress_index
+        with progress_lock:
+            progress_index += 1
+            return progress_index
+
+    def current_total() -> int:
+        with seen_lock:
+            return max(len(batch), len(seen_emails))
+
+    instances = []
+    for row in batch:
+        port = free_port()
+        proc = launch_real_profile(binary, Path(row["path"]), port)
+        instances.append({"row": row, "port": port, "proc": proc})
+        emit_progress({"type": "account_status", "status": "running", "profile": row["profile"], "email": row.get("email")})
+
+    def process_instance(inst: dict) -> dict:
+        nonlocal pool_name
+        row = inst["row"]
+        port = inst["port"]
+        profile_name = row["profile"]
+        local = {"joined": [], "skipped": [], "failed": []}
+
+        # 1. Wait for the profile's CDP endpoint to answer, then send it to the chooser URL.
+        ready_deadline = time.time() + CDP_READY_TIMEOUT
+        tab = None
+        while time.time() < ready_deadline:
+            tab = cdp_page_tab(port)
+            if tab and tab.get("webSocketDebuggerUrl"):
+                break
+            time.sleep(0.3)
+        if not tab or not tab.get("webSocketDebuggerUrl"):
+            local["failed"].append({"profile": profile_name, "email": (row.get("email") or ""), "status": "failed", "error": "LibreWolf CDP endpoint did not come up for this profile"})
+            return local
+        cdp_navigate(tab["webSocketDebuggerUrl"], chooser_url)
+        emit_progress({"type": "account_status", "status": "waiting_transition", "profile": profile_name, "email": row.get("email")})
+
+        # 2. Poll until the Cloudflare challenge is gone (user clears it by hand), or time out.
+        challenge_deadline = time.time() + CDP_CHALLENGE_TIMEOUT
+        cleared = False
+        while time.time() < challenge_deadline:
+            current_url = cdp_page_url(port) or ""
+            if current_url and not security_verification_signal(current_url, "", ""):
+                cleared = True
+                break
+            emit_progress({"type": "account_status", "status": "challenge_page", "profile": profile_name, "email": row.get("email")})
+            time.sleep(CDP_POLL_INTERVAL)
+        if not cleared:
+            local["failed"].append({"profile": profile_name, "email": (row.get("email") or ""), "status": "failed", "error": "Challenge timeout — the Cloudflare bypass was not completed in time"})
+            return local
+
+        # 3. Discover the signed-in account cards on the cleared chooser page.
+        tab = cdp_page_tab(port)
+        ws_url = tab.get("webSocketDebuggerUrl") if tab else None
+        accounts: list[dict] = []
+        team_name = ""
+        if ws_url:
+            for _ in range(ACCOUNT_DISCOVERY_ATTEMPTS):
+                raw = cdp_evaluate(ws_url, _CDP_DISCOVER_SCRIPT, timeout=CDP_JOIN_TIMEOUT)
+                if isinstance(raw, str):
+                    try:
+                        parsed = json.loads(raw)
+                    except Exception:
+                        parsed = {}
+                    if parsed.get("accounts"):
+                        accounts = parsed["accounts"]
+                        break
+                time.sleep(ACCOUNT_DISCOVERY_POLL_SECONDS)
+        unique_accounts = reserve_accounts(accounts)
+        if not unique_accounts:
+            if row.get("email"):
+                index = next_index()
+                result = {"profile": profile_name, "email": str(row.get("email")).lower(), "status": "failed", "error": "No signed-in Postman account card was found for this LibreWolf profile"}
+                emit_progress({"type": "account_start", "index": index, "total": current_total(), "profile": profile_name, "email": result["email"]})
+                emit_progress({"type": "account_done", "index": index, "total": current_total(), **result})
+                local["failed"].append(result)
+            else:
+                emit_progress({"type": "profile_skipped", "profile": profile_name, "reason": "no_identified_account"})
+            return local
+
+        emit_progress({
+            "type": "accounts_discovered",
+            "profile": profile_name,
+            "teamName": team_name,
+            "count": len(unique_accounts),
+            "total": current_total(),
+            "accounts": [{"email": account.get("email"), "name": account.get("name") or ""} for account in unique_accounts],
+        })
+
+        # 4. Join each account on this profile.
+        for account in unique_accounts:
+            index = next_index()
+            email = account.get("email")
+            base = {"profile": profile_name, "email": email, "name": account.get("name") or ""}
+            emit_progress({"type": "account_start", "index": index, "total": current_total(), **base})
+            status, error, final_url = cdp_join_account(port, chooser_url, account, {"profile": profile_name})
+            candidate_pool = pool_name_from_url(final_url)
+            if candidate_pool:
+                with pool_lock:
+                    if not pool_name:
+                        pool_name = candidate_pool
+            result = {**base, "status": status}
+            if error:
+                result["error"] = error
+            if status in ("joined", "already_joined"):
+                local["joined"].append(result)
+            elif status == "skipped":
+                local["skipped"].append(result)
+            else:
+                local["failed"].append(result)
+            emit_progress({"type": "account_done", "index": index, "total": current_total(), **result})
+        return local
+
+    merged = {"joined": [], "skipped": [], "failed": []}
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, len(instances)), thread_name_prefix="cdp-join") as executor:
+            futures = [executor.submit(process_instance, inst) for inst in instances]
+            for future in as_completed(futures):
+                part = future.result()
+                for group in merged:
+                    merged[group].extend(part.get(group, []))
+    finally:
+        for inst in instances:
+            proc = inst.get("proc")
+            if not proc:
+                continue
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        for inst in instances:
+            proc = inst.get("proc")
+            if not proc:
+                continue
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    accounts = sorted(
+        {str(row.get("email") or "").lower() for group in merged.values() for row in group if row.get("email")},
+        key=email_sort_key,
+    )
+    all_rows = [row for group in merged.values() for row in group]
+    email_file = write_joined_emails(all_rows)
+    return {
+        **merged,
+        "poolName": pool_name,
+        "accountCount": len(accounts),
+        "mainEmail": main_email,
+        "accounts": accounts,
+        "workers": len(instances),
+        "elapsedSeconds": round(time.perf_counter() - started, 3),
+        "emailFile": str(email_file),
+        "mode": "cdp",
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Join a Postman invite with dedicated LibreWolf profiles through geckodriver")
     parser.add_argument("--json-stdin", action="store_true")
@@ -1154,6 +1702,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--smoke-browser", action="store_true")
     parser.add_argument("--verify-login", action="store_true", help="open each profile copy and report whether its Postman session is still authenticated")
+    parser.add_argument("--cdp-join", action="store_true", help="open real LibreWolf profiles over CDP; the user clears any Cloudflare challenge by hand, then the join is driven automatically")
     parser.add_argument("--verify-url", default="https://go.postman.co/", help="page to load for the login check")
     parser.add_argument("--detach", action="store_true", help="run the join in a background process and return immediately")
     parser.add_argument("--result-file", help="write the final JSON result to this path")
@@ -1189,6 +1738,19 @@ def main() -> int:
             return 0
         if not invite_url:
             raise RuntimeError("invite URL is required")
+        if args.cdp_join:
+            result = cdp_join_run(
+                invite_url,
+                profiles_root,
+                binary,
+                args.profile_directory,
+                scratch_root,
+                max(10, min(120, args.timeout)),
+            )
+            payload = json.dumps(result, ensure_ascii=False)
+            write_result_file(args.result_file, payload)
+            print(payload)
+            return 0
         if args.detach:
             if not args.result_file:
                 raise RuntimeError("--detach requires --result-file")

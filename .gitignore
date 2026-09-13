@@ -4,6 +4,11 @@ dev/
 .akidevsync/
 .DS_Store
 
+# local scratch / build-test artifacts, never committed
+scratch/
+__pycache__/
+selfIdentity.plist
+
 # standalone-packaging build output (scripts/build/package.js) — regenerated per release, never committed
 dist/
 

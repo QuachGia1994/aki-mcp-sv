@@ -15,6 +15,8 @@ const WATCHER_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-watcher-runtime.j
 const WATCHER_LOG_PATH = path.join(USER_DIR, 'postman-pool-watcher.log');
 const JOIN_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-join-runtime.json');
 const JOIN_REPORT_STATE_PATH = path.join(USER_DIR, 'postman-pool-join-report-state.json');
+const CDP_JOIN_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-cdp-join-runtime.json');
+const CDP_JOIN_REPORT_STATE_PATH = path.join(USER_DIR, 'postman-pool-cdp-join-report-state.json');
 const VERIFY_RUNTIME_PATH = path.join(USER_DIR, 'postman-pool-verify-runtime.json');
 const EVENT_PREFIX = '[postman-pool:event] ';
 
@@ -370,6 +372,91 @@ export function stopJoin() {
   return { ...before, running: false, cancelled: true, error: null };
 }
 
+// --- CDP real-profile join -------------------------------------------------
+// Same lifecycle as the manual join, but the worker opens real LibreWolf profiles over CDP so the
+// user can clear the Cloudflare challenge by hand. Separate runtime/report files so a CDP run and a
+// classic run never clobber each other's state.
+
+function cdpJoinPaths() {
+  return {
+    resultFile: path.join(USER_DIR, 'postman-pool-cdp-join-result.json'),
+    logFile: path.join(USER_DIR, 'postman-pool-cdp-join.log'),
+  };
+}
+
+export function buildCdpJoinWorkerInvocation(config, inviteUrl, resultFile) {
+  return pythonCommand([JOIN_SCRIPT, '--cdp-join', '--invite', inviteUrl, '--result-file', resultFile, ...browserArgs({ ...config, headless: false })]);
+}
+
+export function cdpJoinStatus() {
+  const status = processJobStatus(CDP_JOIN_RUNTIME_PATH, { running: false, events: [], log: '' }, 'CDP join process exited before writing a result');
+  const runtime = readJson(CDP_JOIN_RUNTIME_PATH, null);
+  if (runtime?.reportFile) {
+    status.report = readJson(runtime.reportFile, { status: 'pending' });
+    if (status.report.jobError) status.error = status.report.jobError;
+    if (!status.running && ['pending', 'sending'].includes(status.report.status)) status.report = { status: 'failed', error: 'Report process exited before confirming delivery.' };
+  }
+  if (status.result) status.summary = formatPostmanPoolReport(status.result);
+  return status;
+}
+
+// Runs inside the detached background process (--run-cdp-join): spawn the Python CDP worker, wait for
+// its result file, then send the same Telegram completion report as the classic join.
+export async function runCdpJoin({ inviteUrl, configPath = POSTMAN_POOL_CONFIG_PATH, resultFile, reportFile = CDP_JOIN_REPORT_STATE_PATH }, { spawnImpl = spawn, fetchImpl = fetch } = {}) {
+  let result = null;
+  let jobError = null;
+  try {
+    const config = readBrowserConfig(configPath);
+    const command = buildCdpJoinWorkerInvocation(config, inviteUrl, resultFile);
+    await new Promise((resolve, reject) => {
+      const child = spawnImpl(command.file, command.args, { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true });
+      child.once('error', reject);
+      child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`CDP join worker exited (${code ?? 'signal'})`)));
+    });
+    result = readJson(resultFile, null);
+    if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('CDP join worker did not write a valid result');
+  } catch (error) {
+    jobError = String(error?.message || error).replace(/https?:\/\/\S+/gi, '[url]').replace(/\s+/g, ' ').slice(0, 180);
+  }
+  const report = await sendJoinCompletionReport(result, { configPath, reportFile, jobError, fetchImpl });
+  console.log(`[postman-pool:report] ${report.status}${report.error ? `: ${report.error}` : ''}`);
+  return report;
+}
+
+export function startCdpJoin(inviteUrl, configPath = POSTMAN_POOL_CONFIG_PATH) {
+  const normalized = normalizeManualInvite(inviteUrl);
+  if (!normalized) throw new Error('Not a recognized Postman invite URL');
+  const current = cdpJoinStatus();
+  if (current.running) throw new Error(`A CDP join is already running (pid ${current.pid})`);
+  readBrowserConfig(configPath);
+  const { resultFile, logFile } = cdpJoinPaths();
+  removeFile(resultFile);
+  removeFile(logFile);
+  writeJsonAtomic(CDP_JOIN_REPORT_STATE_PATH, { status: 'pending' });
+  const logFd = openSync(logFile, 'w');
+  const child = spawn(process.execPath, [SELF_PATH, '--run-cdp-join'], {
+    detached: true,
+    stdio: ['pipe', logFd, logFd],
+    windowsHide: true,
+  });
+  closeSync(logFd);
+  child.stdin.end(`${JSON.stringify({ inviteUrl: normalized, configPath, resultFile, reportFile: CDP_JOIN_REPORT_STATE_PATH })}\n`);
+  child.unref();
+  const startedAt = new Date().toISOString();
+  const runtime = { pid: child.pid, startedAt, resultFile, logFile, reportFile: CDP_JOIN_REPORT_STATE_PATH };
+  writeJsonAtomic(CDP_JOIN_RUNTIME_PATH, runtime);
+  return { running: true, ...runtime, events: [], log: '' };
+}
+
+export function stopCdpJoin() {
+  const runtime = readJson(CDP_JOIN_RUNTIME_PATH, null);
+  if (!runtime || !processAlive(runtime.pid)) return cdpJoinStatus();
+  const before = cdpJoinStatus();
+  stopProcessTree(runtime.pid);
+  removeFile(CDP_JOIN_RUNTIME_PATH);
+  return { ...before, running: false, cancelled: true, error: null };
+}
+
 function verifyPaths() {
   return {
     resultFile: path.join(USER_DIR, 'postman-pool-verify-result.json'),
@@ -442,6 +529,13 @@ async function main() {
   if (args.includes('--join-start-json')) {
     const input = await readStdinJson();
     return printJson(startJoin(input.inviteUrl));
+  }
+  if (args.includes('--run-cdp-join')) return runCdpJoin(await readStdinJson());
+  if (args.includes('--cdp-join-status-json')) return printJson(cdpJoinStatus());
+  if (args.includes('--cdp-join-stop-json')) return printJson(stopCdpJoin());
+  if (args.includes('--cdp-join-start-json')) {
+    const input = await readStdinJson();
+    return printJson(startCdpJoin(input.inviteUrl));
   }
   throw new Error('Expected a Postman pool control command');
 }

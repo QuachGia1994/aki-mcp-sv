@@ -18,7 +18,7 @@ function directoryRoots(roots = getRoots()) {
 export function resolveImageInboxDir({ env = process.env, cwd = process.cwd(), roots = getRoots() } = {}) {
   const dirs = directoryRoots(roots);
   const explicit = String(env.AKI_IMAGE_INBOX_DIR || '').trim();
-  if (explicit) return resolveRealUnderRootSync(explicit, { roots: dirs });
+  if (explicit) return resolveRealUnderRootSync(explicit, { roots: dirs.length ? dirs : [cwd] });
   const enclosing = dirs.filter((root) => containedIn(cwd, root)).sort((a, b) => a.length - b.length);
   const base = enclosing[0] || dirs[0] || cwd;
   return resolveRealUnderRootSync(path.join(base, DEFAULT_DIR_NAME), { roots: dirs.length ? dirs : [cwd] });

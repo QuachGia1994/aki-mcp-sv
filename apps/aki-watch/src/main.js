@@ -8,9 +8,11 @@ const state = {
   joinTimer: null,
   watcherTimer: null,
   verifyTimer: null,
+  cdpJoinTimer: null,
   joinRunning: false,
   watcherRunning: false,
   verifyRunning: false,
+  cdpJoinRunning: false,
   joinLogHidden: false,
 };
 
@@ -553,6 +555,94 @@ async function environmentCheck() {
   try { out.textContent = await invoke('env_check'); } catch (error) { out.textContent = `Environment check failed:\n${friendlyError(error)}`; }
 }
 
+function renderCdpJoin(data) {
+  const rows = rowsFromJoin(data);
+  renderRows(rows);
+  const totalFromEvents = Math.max(0, ...(data.events || []).map((event) => Number(event.total) || 0));
+  const total = totalFromEvents || rows.length;
+  const done = (data.events || []).filter((event) => event.type === 'account_done').length || (data.result ? rows.filter((row) => row.status !== 'waiting' && row.status !== 'running').length : 0);
+  const joined = data.result?.joined?.length ?? rows.filter((row) => ['joined', 'already_joined'].includes(row.status)).length;
+  const failed = data.result?.failed?.length ?? rows.filter((row) => row.status === 'failed').length;
+  $('#metric-profiles').textContent = state.profiles.length || total || '—';
+  $('#metric-progress').textContent = `${Math.min(done, total)} / ${total}`;
+  $('#metric-joined').textContent = joined;
+  $('#metric-failed').textContent = failed;
+  const percent = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  $('#cdp-join-progress').style.width = `${percent}%`;
+  $('#cdp-join-progress-track').setAttribute('aria-valuenow', String(percent));
+  state.cdpJoinRunning = data.running === true;
+  $('#cdp-join-start-btn').disabled = state.cdpJoinRunning;
+  $('#cdp-join-stop-btn').disabled = !state.cdpJoinRunning;
+  if (data.running) {
+    const current = [...(data.events || [])].reverse().find((event) => event.type === 'account_status' || event.type === 'account_start');
+    const detail = current?.status ? ` · ${statusLabel(current.status)}` : '';
+    $('#cdp-join-status').textContent = `CDP join running${current?.email ? ` — ${current.email}` : current?.profile ? ` — ${current.profile}` : ''}${detail}. Clear any Cloudflare check in the LibreWolf windows.`;
+  } else if (data.cancelled) {
+    $('#cdp-join-status').textContent = 'CDP join cancelled by user.';
+  } else if (data.result) {
+    $('#cdp-join-status').textContent = `CDP join completed: ${joined} joined/already joined · ${failed} failed.`;
+    if (data.report?.status === 'sent') $('#cdp-join-status').textContent += ' Telegram report sent.';
+    if (data.report?.status === 'failed') $('#cdp-join-status').textContent += ` Telegram report failed: ${data.report.error}`;
+  } else if (data.error) {
+    $('#cdp-join-status').textContent = friendlyError(data.error);
+  }
+}
+
+async function refreshCdpJoin() {
+  try {
+    const result = parseJson(await invoke('cdp_join_status'));
+    renderCdpJoin(result);
+    if (!result.running && state.cdpJoinTimer) {
+      clearInterval(state.cdpJoinTimer);
+      state.cdpJoinTimer = null;
+    }
+    return result;
+  } catch (error) {
+    $('#cdp-join-status').textContent = `CDP join status failed: ${friendlyError(error)}`;
+    return null;
+  }
+}
+
+function ensureCdpJoinPolling() {
+  if (state.cdpJoinTimer) return;
+  state.cdpJoinTimer = setInterval(refreshCdpJoin, 750);
+}
+
+async function startCdpJoin() {
+  const readiness = await refreshPreflight();
+  if (!readiness.joinReady) {
+    $('#cdp-join-status').textContent = readiness.joinIssues?.[0]?.message || 'Join prerequisites are not ready.';
+    return;
+  }
+  const inviteUrl = $('#invite-url').value.trim();
+  if (!inviteUrl) {
+    $('#cdp-join-status').textContent = 'Paste a Postman invite first.';
+    $('#invite-url').focus();
+    return;
+  }
+  $('#cdp-join-start-btn').disabled = true;
+  $('#cdp-join-status').textContent = 'Opening real LibreWolf profiles…';
+  try {
+    if (!state.profiles.length) await scanProfiles();
+    const result = parseJson(await invoke('cdp_join_start', { inviteUrl }));
+    renderCdpJoin(result);
+    ensureCdpJoinPolling();
+  } catch (error) {
+    $('#cdp-join-start-btn').disabled = false;
+    $('#cdp-join-status').textContent = `Could not start CDP join: ${friendlyError(error)}`;
+  }
+}
+
+async function stopCdpJoin() {
+  $('#cdp-join-stop-btn').disabled = true;
+  try {
+    const result = parseJson(await invoke('cdp_join_stop'));
+    renderCdpJoin(result);
+  } catch (error) {
+    $('#cdp-join-status').textContent = `Stop CDP join failed: ${friendlyError(error)}`;
+  }
+}
+
 async function pasteInvite() {
   try {
     const text = await invoke('clipboard_read');
@@ -572,6 +662,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('#verify-stop-btn').addEventListener('click', stopVerify);
   $('#join-start-btn').addEventListener('click', startJoin);
   $('#join-stop-btn').addEventListener('click', stopJoin);
+  $('#cdp-join-start-btn').addEventListener('click', startCdpJoin);
+  $('#cdp-join-stop-btn').addEventListener('click', stopCdpJoin);
   $('#toggle-log-btn').addEventListener('click', async () => {
     state.joinLogHidden = !state.joinLogHidden;
     $('#toggle-log-btn').textContent = state.joinLogHidden ? 'Show log' : 'Hide log';
@@ -598,4 +690,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (currentJoin?.running) ensureJoinPolling();
   const currentVerify = await refreshVerify();
   if (currentVerify?.running) ensureVerifyPolling();
+  const currentCdpJoin = await refreshCdpJoin();
+  if (currentCdpJoin?.running) ensureCdpJoinPolling();
 });

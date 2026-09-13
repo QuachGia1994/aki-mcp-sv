@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ownership = require('../scripts/aki-pmcontrol/scripts/postman-ownership.js');
+const { PostmanSession, browserIdentity } = require('../scripts/aki-pmcontrol/scripts/postman-session.js');
 const eligible = (url) => /^https:\/\/desktop\.postman\.com\//.test(url || '');
 
 test('Postman ownership chooses one deterministic owner and opens exactly one created window', async () => {
@@ -31,6 +32,20 @@ test('Postman ownership chooses one deterministic owner and opens exactly one cr
   });
   assert.equal(evaluateCalls, 1);
   assert.equal(target.id, 'c');
+});
+
+test('Postman session returns the structured control contract expected by the ownership controller', async () => {
+  const cdp = {
+    List: async ({ port }) => [{ id: 'target-a', type: 'page', url: `https://desktop.postman.com/${port}` }],
+    Version: async ({ port }) => ({ webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/browser-a` }),
+  };
+  const session = await PostmanSession.ensureRunning({ port: 9333, cdp });
+  assert.equal(session.port, 9333);
+  assert.equal(session.launched, false);
+  assert.equal(session.launchProcessPid, null);
+  assert.equal(session.targets[0].id, 'target-a');
+  assert.deepEqual(session.browserIdentity, { kind: 'browser-websocket', browserId: 'browser-a' });
+  assert.deepEqual(browserIdentity(null, 9333), { kind: 'endpoint-fallback', endpoint: 'http://127.0.0.1:9333' });
 });
 
 test('Postman prompt is bundled SSoT and keeps OpenCode vision instructions', () => {

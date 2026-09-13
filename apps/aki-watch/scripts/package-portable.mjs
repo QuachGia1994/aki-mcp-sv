@@ -16,6 +16,7 @@ const portableDir = path.join(portableRoot, 'Aki-Watch-portable');
 const executable = path.join(releaseDir, 'aki-watch.exe');
 const configPath = path.join(tauriDir, 'tauri.conf.json');
 const packagePath = path.join(appDir, 'package.json');
+const configGuidePath = path.join(appDir, 'config.md');
 
 function removeGeneratedDir(directory) {
   try {
@@ -45,6 +46,10 @@ for (const legacyDir of [path.join(releaseDir, 'portable'), path.join(releaseDir
 removeGeneratedDir(portableDir);
 mkdirSync(portableDir, { recursive: true });
 cpSync(executable, path.join(portableDir, 'aki-watch.exe'));
+if (!existsSync(configGuidePath)) {
+  throw new Error(`configuration guide not found: ${configGuidePath}`);
+}
+cpSync(configGuidePath, path.join(portableDir, 'config.md'));
 
 for (const [sourceSpec, destinationSpec] of Object.entries(resources)) {
   const source = path.resolve(tauriDir, sourceSpec);
@@ -69,6 +74,7 @@ writeFileSync(
     'Keep aki-watch.exe and aki-watch-runtime together in the same folder.',
     'Host prerequisites are still required: Node.js, Python 3 with telethon + selenium, and LibreWolf with signed-in Postman profiles.',
     'User configuration remains outside this folder under ~/.aki/mcpsv/postman-pool.json.',
+    'See config.md for the full Windows configuration guide.',
     '',
   ].join('\r\n'),
   'utf8',
