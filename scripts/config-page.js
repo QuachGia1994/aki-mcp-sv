@@ -90,6 +90,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const mcpVer = mcpUpd.current || '?';
   const ruleVer = ruleUpd.current || '?';
   const selectiveBaseline = mcpUpd.updateMode === 'selective' && mcpUpd.upstreamReviewed ? String(mcpUpd.upstreamReviewed) : null;
+  const mcpPromptVersion = selectiveBaseline ? `selective-v${selectiveBaseline}` : mcpVer;
   const mcpUpdateLabel = selectiveBaseline ? `selective ${selectiveBaseline} → upstream ${String(mcpUpd.latest)}` : `${String(mcpUpd.current)} → ${String(mcpUpd.latest)}`;
   const forkStatus = selectiveBaseline ? ` · Fork upstream baseline: <span class="mono">selective ${esc(selectiveBaseline)}</span>` : '';
   const mcpUpdateAction = selectiveBaseline
@@ -424,7 +425,7 @@ const USER_DIR = ${JSON.stringify(userDir)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
 const LOCKED_RULES = ${JSON.stringify(LOCKED_RULES)};
-const MCP_VERSION = ${JSON.stringify(mcpVer)};
+const MCP_VERSION = ${JSON.stringify(mcpPromptVersion)};
 const RULE_VERSION = ${JSON.stringify(ruleVer)};
 const SAVED_INGRESS = ${JSON.stringify(savedIngress)};
 </script>

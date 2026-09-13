@@ -231,6 +231,25 @@ test('generated workflow is lean, reuses evidence, and keeps routed context out 
   assert.match(client, /browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix/);
 });
 
+test('selective fork prompt header uses reviewed upstream baseline instead of internal package version', () => {
+  const html = renderPanel({
+    origin: 'https://aki.example.test',
+    client: { clientId: 'client-id', clientSecret: 'client-secret' },
+    passphrase: 'passphrase',
+    token: 'panel-token',
+    accessToken: 'b'.repeat(64),
+    repoRoot: 'D:\\repo',
+    rulesDir: 'C:\\Users\\User\\.aki\\akidevrule',
+    userDir: 'C:\\Users\\User\\.aki\\mcpsv',
+    updateInfo: {
+      mcp: { current: '1.15.0', latest: '2.0.0', upstreamReviewed: '2.0.0', updateMode: 'selective', updateAvailable: false },
+      rule: { current: '2.8.0', latest: '2.8.0', updateAvailable: false },
+    },
+  });
+  assert.match(html, /const MCP_VERSION = "selective-v2\.0\.0";/);
+  assert.doesNotMatch(html, /const MCP_VERSION = "1\.15\.0";/);
+});
+
 test('default locked prompt stays safely below ChatGPT 1500-character cap', () => {
   const { prompt } = runBuildPrompt();
   assert.ok(prompt.length <= 1400, `default prompt should leave safety margin under 1500, got ${prompt.length}`);
