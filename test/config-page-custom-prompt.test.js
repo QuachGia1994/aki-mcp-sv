@@ -87,8 +87,9 @@ test('fork workflow instructions are checked and locked in section 3', () => {
 test('Postman prompt uses the same durable long-chat protocol as the controller', () => {
   const html = render();
   const source = readFileSync(new URL('../scripts/config-page.js', import.meta.url), 'utf8');
-  const instruction = readFileSync(new URL('../scripts/aki-pmcontrol/data/aki-postman-instruction.md', import.meta.url), 'utf8');
-  assert.match(source, /aki-pmcontrol\/data\/aki-postman-instruction\.md/);
+  const instruction = readFileSync(new URL('../scripts/aki-pmcontrol/assets/prompts/postman.md', import.meta.url), 'utf8');
+  assert.match(source, /aki-pmcontrol\/assets\/prompts\/postman\.md/);
+  assert.doesNotMatch(source, /aki-pmcontrol\/data\/aki-postman-instruction\.md/);
   assert.match(instruction, /ONE shared plan \+ stable taskKey/);
   assert.match(instruction, /context_packet/);
   assert.match(instruction, /task_checkpoint_save\/recover/);
@@ -128,8 +129,8 @@ test('retired OpenCode controls and routes stay absent from the panel', () => {
 test('Astra 6 panel guidance names native Luna delegation and truthful fallback', () => {
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
   const { prompt } = runBuildPrompt();
-  assert.match(client, /Astra6\(any\):review\/plan/);
-  assert.match(prompt, /gpt-5\.6-luna@high ~90% implementation\/tests/);
+  assert.match(client, /Astra6:any review\/plan/);
+  assert.match(prompt, /gpt-5\.6-luna@high ~90% impl\/tests/);
   assert.match(prompt, /unavailable=>report\+fallback/);
   const html = render();
   assert.match(html, /Astra 6 \(any variant\/effort\).*gpt-5\.6-luna/);
@@ -213,14 +214,20 @@ test('generated workflow is lean, reuses evidence, and keeps routed context out 
   const realRepo = client.indexOf('Repo: Aki MCP path');
   assert.ok(plan >= 0 && lean >= 0 && context >= 0 && realRepo >= 0);
   assert.ok(plan < lean && lean < context && context < realRepo);
-  assert.match(client, /reuse confirmed facts unless stale\/ambiguous/);
-  assert.match(client, /scope authorized=no reconfirm/);
+  assert.match(client, /reuse facts unless stale/);
+  assert.match(client, /authorized scope=no reconfirm/);
   assert.match(client, /verify by risk/);
-  assert.match(client, /delegate if ROI>coordination/);
+  assert.match(client, /delegate if ROI>cost/);
   assert.match(client, /AGENTS\/HANDOFF 30-100 lines/);
   assert.match(client, /no sandbox\/temp unless asked/);
-     assert.match(client, /agent_read auto-compress \(taskKey\);context_packet \(taskKey\);edit_file\/write_file;run_cmd/);
-    assert.match(client, /deep=agent_read;code=edit_file\/write_file;tests=run_cmd cwd=repo/);
+  assert.match(client, /git_status\|git_diff\|git_log/);
+  assert.match(client, /sqlite_schema\|sqlite_query RO/);
+  assert.match(client, /task_start\|task_manage/);
+  assert.match(client, /port_status\|kill_port/);
+  assert.match(client, /vision_analyze/);
+  assert.match(client, /agent_read auto\(taskKey\);context_packet\(taskKey\);edit\/write;run_cmd fallback/);
+  assert.match(client, /deep=agent_read;edit\/write;run_cmd fallback cwd=repo/);
+  assert.match(client, /dev=npm run dev isolated/);
   assert.match(client, /browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix/);
 });
 

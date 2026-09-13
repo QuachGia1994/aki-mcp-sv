@@ -70,7 +70,7 @@ document.addEventListener('click', (e) => {
 });
 
 function buildPrompt() {
-  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] SHORT. DON\'T YAPPING. Claim=evidence; search=citation.'];
+  const lines = ['[akimcp ' + MCP_VERSION + ' · akidevrule ' + RULE_VERSION + '] SHORT. Claim=evidence; search=citation.'];
   const picked = document.getElementById('loadRules').checked
     ? [...document.querySelectorAll('#ruleChecks input:checked')].map((i) => i.value)
     : [];
@@ -85,13 +85,13 @@ function buildPrompt() {
   if (rulesOn && !hasIndex) {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
-  lines.push('Plan: nontrivial=>research GitHub/upstream; reuse confirmed facts unless stale/ambiguous; ONE plan=path|~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint; Q&A:no plan.');
-  lines.push('Lean: conclusion first; no restating; stop at enough evidence; scope authorized=no reconfirm; verify by risk; CI trigger/no poll unless asked; done=deliverable+checks+limits; delegate if ROI>coordination.');
+  lines.push('Plan: nontrivial=>research GitHub/upstream; reuse facts unless stale; ONE plan=~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint; Q&A=no plan.');
+  lines.push('Lean: conclusion first; no restating; authorized scope=no reconfirm; verify by risk; CI trigger/no poll; done=deliverable+checks+limits; delegate if ROI>cost.');
   lines.push('Context: AGENTS/HANDOFF 30-100 lines; no routed/global duplication; detail=plan/checkpoint');
-  lines.push('Repo: Aki MCP path; keep dirty; no sandbox/temp unless asked; read back writes/diffs');
-  lines.push('Astra6(any):review/plan->native gpt-5.6-luna@high ~90% implementation/tests->review; code override; unavailable=>report+fallback.');
-  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: find_path/search_content;agent_read auto-compress (taskKey);context_packet (taskKey);edit_file/write_file;run_cmd;2fail/high=>escalate;no cd/-C.');
-  else lines.push('Tools: unknown=find_path;text=search_content;deep=agent_read;code=edit_file/write_file;tests=run_cmd cwd=repo;risk=review;2fail/high=>escalate;no cd/-C.');
+  lines.push('Repo: Aki MCP path; keep dirty; no sandbox/temp unless asked; read back writes/diffs; dev=npm run dev isolated.');
+  lines.push('Astra6:any review/plan->native gpt-5.6-luna@high ~90% impl/tests->review; unavailable=>report+fallback.');
+  if (document.getElementById('contextOptimizerEnabled')?.checked !== false) lines.push('Tools: find/search;git_status|git_diff|git_log;sqlite_schema|sqlite_query RO;task_start|task_manage;port_status|kill_port;vision_analyze;agent_read auto(taskKey);context_packet(taskKey);edit/write;run_cmd fallback;2fail/high=>escalate.');
+  else lines.push('Tools: find/search;git_status|git_diff|git_log;sqlite_schema|sqlite_query RO;task_start|task_manage;port_status|kill_port;vision_analyze;deep=agent_read;edit/write;run_cmd fallback cwd=repo;2fail/high=>escalate.');
   lines.push('Skills ' + REPO_ROOT + '/skills: browser,imagegen,anti-vibecoding,mobile-native,postman-remote,strix; read target SKILL.md.');
   lines.push('First: intro.json absent=>read ' + REPO_ROOT + '/docs/ref/mcp-intro.md; mismatch=>tell user update+re-paste.');
   const value = lines.join('\n');

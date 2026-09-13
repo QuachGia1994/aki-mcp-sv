@@ -114,7 +114,7 @@ export function validateAllowedCommandArgs(bin, args, cwd, { roots = getRoots() 
   for (const raw of args) validatePathArgument(candidateArgValue(raw), cwd, roots);
 }
 
-class Shell {
+export class Shell {
   // Backslash is escape/chaining on Unix but the normal path separator on Windows — only treat it as dangerous off-Windows.
   // No backslash: `execFile` never spawns a shell, so it is an inert literal everywhere and a path separator on Windows.
   static DANGEROUS_CHARS = /[;&|`$<>\n]/;

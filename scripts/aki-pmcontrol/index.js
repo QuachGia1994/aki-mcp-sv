@@ -10,7 +10,8 @@ const os = require('os');
 const { execFile } = require('child_process');
 const { fetchAllUsage } = require('./scripts/cdp-usage');
 const { PostmanSession } = require('./scripts/postman-session');
-const { loadInstruction, saveInstruction, copyDefaultIfMissing } = require('./scripts/instruction-store');
+const { attachmentTargets, deterministicOwnerTargetId, waitForEligibleTargets, openOwnedWindow } = require('./scripts/postman-ownership');
+const { loadInstruction, copyDefaultIfMissing } = require('./scripts/instruction-store');
 const daemonPid = require('./scripts/daemon-pid');
 const {
   checkForUpdate,
@@ -25,19 +26,21 @@ const PROMPTS_DIR = path.join(AKI_DATA_DIR, 'prompts');
 const ASSETS_PROMPTS_DIR = path.join(__dirname, 'assets', 'prompts');
 const PROVIDER = 'postman';
 const SUM_PROMPT_NAME = 'aki-prompt-sum-to-new-chat.md';
-const USER_PROMPT_PATH = path.join(PROMPTS_DIR, `${PROVIDER}.md`);
 const DEFAULT_PROMPT_PATH = path.join(ASSETS_PROMPTS_DIR, `${PROVIDER}.md`);
 const SHARED_PROMPT_USER_PATH = path.join(PROMPTS_DIR, SUM_PROMPT_NAME);
 const SHARED_PROMPT_DEFAULT_PATH = path.join(ASSETS_PROMPTS_DIR, SUM_PROMPT_NAME);
 const LEGACY_CDP_DIR = path.join(os.homedir(), '.aki', 'cdp-postman');
 const DATA_JSON_PATH = path.join(LEGACY_CDP_DIR, 'data.json');
-const LEGACY_INSTRUCTION_PATH = path.join(LEGACY_CDP_DIR, 'aki-postman-instruction.md');
-const LEGACY_REPO_INSTRUCTION_PATH = path.join(__dirname, 'data', 'aki-postman-instruction.md');
+const OWNERSHIP_STATUS_PATH = path.join(LEGACY_CDP_DIR, 'ownership-status.json');
 const RULES_SOURCE_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
 
 const clients = new Map();
+const attachedTargetIds = new Set();
+let controlSession = null;
+let ownerTargetId = null;
+let ownershipMode = null;
 let cachedUsageData = null;
 let cachedUpdateInfo = localSnapshot();
 let akiConfig = null;
@@ -225,12 +228,20 @@ const FORCED_ON_KEYS = ['autoApprove', 'autoContinue', 'autoRun', 'autoRetry', '
 // only reader/deleter, and it rides discover()'s existing 1s tick instead of a new interval.
 const NEW_WINDOW_FLAG_PATH = path.join(LEGACY_CDP_DIR, 'new-window.flag');
 
-function consumePendingNewWindow() {
+async function consumePendingNewWindow() {
   if (!fs.existsSync(NEW_WINDOW_FLAG_PATH)) return;
   try { fs.unlinkSync(NEW_WINDOW_FLAG_PATH); } catch (e) {}
-  for (const client of clients.values()) {
-    client.Runtime.evaluate({ expression: "window.pm && window.pm.mediator.trigger('newRequesterWindow')" }).catch(() => {});
-  }
+  const ownerClient = ownerTargetId && clients.get(ownerTargetId);
+  if (!ownerClient || !controlSession) return;
+  const target = await openOwnedWindow({
+    ownerClient,
+    listTargets: () => CDP.List({ port: controlSession.port }),
+    isEligible: isKnownPostmanSurface,
+  });
+  if (!target) return;
+  attachedTargetIds.add(target.id);
+  await setupCDP(target, controlSession.port);
+  writeOwnershipStatus();
 }
 
 function loadAkiData() {
@@ -254,20 +265,7 @@ function loadAkiData() {
 }
 
 function loadInstructionFile() {
-  return loadInstruction([
-    USER_PROMPT_PATH,
-    LEGACY_INSTRUCTION_PATH,
-    LEGACY_REPO_INSTRUCTION_PATH,
-    DEFAULT_PROMPT_PATH,
-  ]);
-}
-
-function saveInstructionFile(text) {
-  try {
-    saveInstruction(USER_PROMPT_PATH, text);
-  } catch (e) {
-    console.error('❌ Lỗi ghi file prompts/postman.md:', e.message);
-  }
+  return loadInstruction([DEFAULT_PROMPT_PATH]);
 }
 
 function loadSummarizePromptFile() {
@@ -276,11 +274,6 @@ function loadSummarizePromptFile() {
 
 function init() {
   fs.mkdirSync(PROMPTS_DIR, { recursive: true });
-  if (!loadInstruction([USER_PROMPT_PATH])) {
-    const legacyInstruction = loadInstruction([LEGACY_INSTRUCTION_PATH, LEGACY_REPO_INSTRUCTION_PATH]);
-    if (legacyInstruction) saveInstruction(USER_PROMPT_PATH, legacyInstruction);
-    else copyDefaultIfMissing(USER_PROMPT_PATH, DEFAULT_PROMPT_PATH);
-  }
   copyDefaultIfMissing(SHARED_PROMPT_USER_PATH, SHARED_PROMPT_DEFAULT_PATH);
 }
 
@@ -379,6 +372,7 @@ function getScriptBundle() {
     window.__pmUsageData = ${JSON.stringify(cachedUsageData)};
     window.__pmUpdateInfo = ${JSON.stringify(cachedUpdateInfo)};
     window.__pmInitialInstruction = ${JSON.stringify(loadInstructionFile())};
+    window.__pmRuntime = ${JSON.stringify({ cdpPort: controlSession ? controlSession.port : null, daemonPid: process.pid })};
   `;
 
   return configInjection + '\n' + scriptContent;
@@ -425,11 +419,6 @@ async function setupCDP(target, port) {
       await client.Runtime.addBinding({ name: '__cdpInstallAkiRule' });
     } catch (e) {}
 
-    // 3c. Binding save instruction text.
-    try {
-      await client.Runtime.addBinding({ name: '__cdpSaveInstruction' });
-    } catch (e) {}
-
     try {
       await client.Runtime.addBinding({ name: '__cdpRequestSummarize' });
     } catch (e) {}
@@ -461,8 +450,6 @@ async function setupCDP(target, port) {
         }
         await refreshUsageData(tokenToUse);
         pushUsageToPage(client);
-      } else if (event.name === '__cdpSaveInstruction') {
-        saveInstructionFile(event.payload);
       } else if (event.name === '__cdpRequestSummarize') {
         const summarizePrompt = loadSummarizePromptFile();
         client.Runtime.evaluate({
@@ -487,6 +474,9 @@ async function setupCDP(target, port) {
 
     client.on('disconnect', () => {
       clients.delete(target.id);
+      attachedTargetIds.delete(target.id);
+      if (ownerTargetId === target.id) ownerTargetId = null;
+      writeOwnershipStatus();
     });
 
     console.log(`✅ [CDP] Đã kết nối & nạp sẵn Aki Controller: "${target.title || target.url}"`);
@@ -517,16 +507,47 @@ function isKnownPostmanSurface(url) {
   }
 }
 
-async function discover() {
-  consumePendingNewWindow();
-  const port = PostmanSession.getDevToolsPort();
+function writeOwnershipStatus() {
+  if (!controlSession) return;
+  const status = {
+    daemonPid: process.pid,
+    attached: !!ownerTargetId && clients.has(ownerTargetId),
+    endpoint: { host: '127.0.0.1', port: controlSession.port, browserIdentity: controlSession.browserIdentity },
+    ownerTargetId,
+    attachedWindowCount: attachedTargetIds.size,
+    mode: ownershipMode,
+    launchProcessPid: controlSession.launchProcessPid,
+  };
   try {
-    const targets = await CDP.List({ port });
-    for (const target of targets) {
-      if (target.type === 'page' && isKnownPostmanSurface(target.url)) {
-        await setupCDP(target, port);
-      }
+    fs.mkdirSync(LEGACY_CDP_DIR, { recursive: true });
+    const temporary = `${OWNERSHIP_STATUS_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify(status, null, 2));
+    fs.renameSync(temporary, OWNERSHIP_STATUS_PATH);
+  } catch {}
+}
+
+async function discover() {
+  await consumePendingNewWindow();
+  if (!controlSession) return;
+  try {
+    const targets = await CDP.List({ port: controlSession.port });
+    const currentIds = new Set(targets.map((target) => target.id));
+    for (const targetId of [...attachedTargetIds]) {
+      if (currentIds.has(targetId)) continue;
+      attachedTargetIds.delete(targetId);
+      const client = clients.get(targetId);
+      if (client) try { client.close(); } catch {}
+      clients.delete(targetId);
     }
+    const validTargets = attachmentTargets(targets, isKnownPostmanSurface);
+    for (const target of validTargets) {
+      attachedTargetIds.add(target.id);
+      await setupCDP(target, controlSession.port);
+    }
+    if (!ownerTargetId || !attachedTargetIds.has(ownerTargetId)) {
+      ownerTargetId = deterministicOwnerTargetId(validTargets, isKnownPostmanSurface);
+    }
+    writeOwnershipStatus();
   } catch (e) {}
 }
 
@@ -556,12 +577,17 @@ async function shutdown() {
     try { client.close(); } catch { /* already gone */ }
   }
   clients.clear();
+  attachedTargetIds.clear();
+  try { fs.unlinkSync(OWNERSHIP_STATUS_PATH); } catch {}
   daemonPid.release();
   process.exit(0);
 }
 process.on('SIGINT', () => { shutdown(); });
 process.on('SIGTERM', () => { shutdown(); });
-process.on('exit', () => daemonPid.release());
+process.on('exit', () => {
+  try { fs.unlinkSync(OWNERSHIP_STATUS_PATH); } catch {}
+  daemonPid.release();
+});
 
 async function main() {
   daemonPid.claim();
@@ -576,7 +602,21 @@ async function main() {
     pushUpdateInfoToAll();
   }).catch(() => {});
 
-  await PostmanSession.ensureRunning();
+  controlSession = await PostmanSession.ensureRunning();
+  ownershipMode = controlSession.launched ? 'launched' : 'adopted';
+  if (controlSession.launched) {
+    const initialTargets = await waitForEligibleTargets({
+      listTargets: () => CDP.List({ port: controlSession.port }),
+      isEligible: isKnownPostmanSurface,
+      timeoutMs: 15000,
+    });
+    if (initialTargets) controlSession.targets = initialTargets;
+  }
+  const targets = attachmentTargets(controlSession.targets || [], isKnownPostmanSurface);
+  for (const target of targets) attachedTargetIds.add(target.id);
+  ownerTargetId = deterministicOwnerTargetId(targets, isKnownPostmanSurface);
+  for (const target of targets) await setupCDP(target, controlSession.port);
+  writeOwnershipStatus();
   await refreshUsageData();
 
   setInterval(discover, 1000);

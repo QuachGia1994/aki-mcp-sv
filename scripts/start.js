@@ -18,14 +18,18 @@ import { startPanel } from './panel.js';
 import { startD1Bridge } from './d1-bridge.js';
 import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
-import { USER_DIR, readIngressConfig } from './userdata.js';
+import { USER_DIR, IS_DEV, readIngressConfig } from './userdata.js';
 import { killPostmanDaemon } from './postman-mcp.js';
 
-const gatePort = process.env.GATEKEEPER_PORT || '9999';
-const panelPort = process.env.PANEL_PORT || '9998';
+const gatePort = process.env.GATEKEEPER_PORT || (IS_DEV ? '9997' : '9999');
+const panelPort = process.env.PANEL_PORT || (IS_DEV ? '9996' : '9998');
+const loopbackPort = process.env.LOOPBACK_MCP_PORT || (IS_DEV ? '19998' : '19999');
+process.env.GATEKEEPER_PORT = gatePort;
+process.env.PANEL_PORT = panelPort;
+process.env.LOOPBACK_MCP_PORT = loopbackPort;
 const panelToken = randomBytes(16).toString('hex');
 
-console.log(`[start] config & keys: ${USER_DIR}`);
+console.log(`[start] ${IS_DEV ? 'development' : 'production'} data: ${USER_DIR}`);
 
 const client = loadOrCreateClient();
 const passphrase = loadOrCreatePassphrase();

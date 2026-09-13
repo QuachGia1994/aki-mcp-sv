@@ -14,7 +14,6 @@ const COPIED = [
   'scripts/postman-paths.js',
   'scripts/postman-session.js',
   'scripts/update-check.js',
-  'data/aki-postman-instruction.md',
 ];
 if (existsSync(labRoot)) {
   for (const rel of COPIED) {
@@ -41,11 +40,7 @@ assert.match(sharedSummaryPrompt, /target 30–100 non-empty lines and never exc
 assert.match(sharedSummaryPrompt, /do not pad/);
 assert.match(sharedSummaryPrompt, /intentional dirty files/);
 assert.match(sharedSummaryPrompt, /last-green verification/);
-assert.equal(
-  readFileSync(path.join(mcpRoot, 'assets/prompts/postman.md'), 'utf8'),
-  readFileSync(path.join(mcpRoot, 'data/aki-postman-instruction.md'), 'utf8'),
-  'bundled and panel Postman prompts must stay byte-identical',
-);
+assert.equal(defaultPromptPath, path.join(mcpRoot, 'assets/prompts/postman.md'));
 
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'aki-pmcontrol-instruction-'));
 try {
@@ -72,6 +67,8 @@ assert.match(indexSrc, /const PROMPTS_DIR = path\.join\(AKI_DATA_DIR, 'prompts'\
 assert.match(indexSrc, /const PROVIDER = 'postman'/);
 assert.match(indexSrc, /function init\(\)/);
 assert.match(indexSrc, /copyDefaultIfMissing/);
+assert.match(indexSrc, /loadInstruction\(\[DEFAULT_PROMPT_PATH\]\)/);
+assert.doesNotMatch(indexSrc, /USER_PROMPT_PATH|LEGACY_INSTRUCTION_PATH|LEGACY_REPO_INSTRUCTION_PATH|__cdpSaveInstruction/);
 assert.match(indexSrc, /__cdpRequestSummarize/);
 assert.match(indexSrc, /usage-turns\.jsonl/);
 assert.match(indexSrc, /deltaMilli/);

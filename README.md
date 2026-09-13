@@ -73,6 +73,8 @@ cp .env.example .env   # optional: only if you need PUBLIC_ORIGIN or another non
 npm start
 ```
 
+For development beside a live production instance, run `npm run dev`: it uses `~/.aki/mcpsv-dev` with gatekeeper/panel/loopback defaults `9997`/`9996`/`19998`, leaving production data and `9999`/`9998`/`19999` untouched.
+
 Nothing needs preparing beforehand; `npm start` handles it:
 - **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
@@ -97,7 +99,7 @@ The generated section-3 Instructions route Aki's skill pack automatically: `skil
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__repo_snapshot`, local visual context through `local__vision_analyze` (OpenCode vision -> MCP text) with raw inbox compatibility via `local__image_inbox`; free-first orchestration (`local__context_packet`, `local__context_optimizer_status`, `local__budget_router_read`, `local__budget_router_status`, `local__graph_query|sync|status`, `local__task_checkpoint_save|get|list|recover`, `local__aki_doctor`); `local__run_cmd`, `local__agy_run`, optional `local__xkiro_read` / `local__xkiro_status`, optional read-only claude-mem lookup (`local__claude_mem_search`, `local__claude_mem_timeline`, `local__claude_mem_get_observations`), plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
+claude.ai connects and calls the in-house `local__*` tool suite: `local__find_path`, `local__search_content`, `local__repo_snapshot`, structured Git (`local__git_status|git_diff|git_log`), read-only SQLite (`local__sqlite_schema|sqlite_query`), background tasks (`local__task_start|task_manage`), port inspection/control (`local__port_status|kill_port`), local visual context through `local__vision_analyze` (OpenCode vision -> MCP text) with raw inbox compatibility via `local__image_inbox`; free-first orchestration (`local__context_packet`, `local__context_optimizer_status`, `local__budget_router_read`, `local__budget_router_status`, `local__graph_query|sync|status`, `local__task_checkpoint_save|get|list|recover`, `local__aki_doctor`); `local__run_cmd`, `local__agy_run`, optional `local__xkiro_read` / `local__xkiro_status`, optional read-only claude-mem lookup (`local__claude_mem_search`, `local__claude_mem_timeline`, `local__claude_mem_get_observations`), plus native file read/write/edit (`local__read_text_file`, `local__write_file`, `local__edit_file`, `local__create_directory`, `local__move_file`, `local__get_file_info`, `local__list_allowed_directories`).
 
 **Note on the connector icon:** claude.ai doesn't read the icon from the MCP server. It queries Google's favicon service with the tailnet's **apex domain**, not your host: `https://t2.gstatic.com/faviconV2?...&url=http://<tailnet>.ts.net&size=32`. `<tailnet>.ts.net` has no public DNS record, so Google returns 404 and claude.ai falls back to a default letter icon. This server serves `/favicon.ico` publicly, but no file placed here can change that result: your subdomain never appears in the query Google receives.
 

@@ -18,6 +18,10 @@ import { register as registerProjectGraph } from './project-graph.js';
 import { register as registerTaskCheckpoint } from './task-checkpoint.js';
 import { register as registerAkiDoctor } from './aki-doctor.js';
 import { register as registerImageInbox } from './image-inbox.js';
+import { register as registerGit } from './git-mcp.js';
+import { register as registerSqlite } from './sqlite-mcp.js';
+import { register as registerTask } from './task-mcp.js';
+import { register as registerPort } from './port-mcp.js';
 
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
@@ -50,6 +54,12 @@ const LOCAL_READ_ONLY_TOOLS = new Set([
   'task_checkpoint_list',
   'task_checkpoint_recover',
   'image_inbox',
+  'git_status',
+  'git_diff',
+  'git_log',
+  'sqlite_schema',
+  'sqlite_query',
+  'port_status',
 ]);
 
 const REMOTE_READ_ONLY_TOOLS = new Set(['xkiro_read', 'xkiro_status', 'budget_router_status', 'aki_doctor']);
@@ -71,6 +81,9 @@ const MUTATING_TOOL_ANNOTATIONS = new Map([
   ['context_packet', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }],
   ['graph_sync', { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }],
   ['task_checkpoint_save', { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }],
+  ['task_start', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
+  ['task_manage', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }],
+  ['kill_port', { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }],
 ]);
 
 function annotationsForTool(name) {
@@ -110,7 +123,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
+  for (const register of [registerShell, registerAgy, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerGit, registerSqlite, registerTask, registerPort, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on

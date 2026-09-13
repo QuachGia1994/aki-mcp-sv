@@ -8,7 +8,7 @@ const CHATGPT_SETTINGS_URL = 'https://chatgpt.com/#settings/Personalization';
 const CHATGPT_DEVMODE_URL = 'https://chatgpt.com/#settings/Security';
 const GEMINI_SETTINGS_URL = 'https://gemini.google.com/saved-info';
 const POSTMAN_SETTINGS_URL = 'https://go.postman.co/settings/me/connected-accounts';
-const POSTMAN_PROMPT = readFileSync(new URL('./aki-pmcontrol/data/aki-postman-instruction.md', import.meta.url), 'utf8').trim();
+const POSTMAN_PROMPT = readFileSync(new URL('./aki-pmcontrol/assets/prompts/postman.md', import.meta.url), 'utf8').trim();
 const CONNECTOR_URL = 'https://claude.ai/new?modal=add-custom-connector#settings/customize-connectors';
 const CHATGPT_CONNECTOR_URL = 'https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins';
 const GEMINI_CONNECTOR_URL = 'https://support.google.com/g/answer/17106276';

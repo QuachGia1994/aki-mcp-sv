@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-09-12 · v1.15.0
+> updated 2026-09-13 · v1.15.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini / Postman) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -12,6 +12,10 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `search` | `find_path`, `search_content` | Fast index-backed path + content lookup (no per-call `find`/`grep` spawn) | The remote model, directly |
 > The third-party `@modelcontextprotocol/server-filesystem` package this replaced also exposed `list_directory`/`directory_tree`/`search_files`/`read_multiple_files`/`read_media_file` — dropped outright rather than prompt-banned, since `find_path`/`search_content` already supersede the listing/search family in practice and the rest had no evidence of real use (`docs/plan/done/2.0.0-improve.md` §7). Cheap to re-add if a real need shows up.
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
+| `git` (`scripts/git-mcp.js`) | `git_status`, `git_diff`, `git_log` | Structured root-contained Git inspection with bounded diff output; diffs force `--no-ext-diff --no-textconv` so repo config cannot execute an external helper | The remote model, directly — read-only |
+| `sqlite` (`scripts/sqlite-mcp.js`) | `sqlite_schema`, `sqlite_query` | Symlink-safe read-only SQLite inspection via Node's native `node:sqlite`; queries are limited to SELECT / EXPLAIN SELECT / read-only WITH plus an inspection-PRAGMA whitelist, with 100-row output cap | The remote model, directly — read-only |
+| `task` (`scripts/task-mcp.js`) | `task_start`, `task_manage` | Run a shell-policy-approved command detached with logs streamed to disk; management can list/status/tail/stop/delete, and stop fails closed unless the current PID still matches the captured process creation identity | The remote model, directly — mutating/execution surface |
+| `port` (`scripts/port-mcp.js`) | `port_status`, `kill_port` | Inspect TCP listeners and free a selected port while refusing the running Aki process and all configured Aki service ports, including loopback MCP | The remote model, directly; `kill_port` is destructive |
 | `agy` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-high` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `xkiro` | `xkiro_read`, `xkiro_status` | Use xKiro's free-tier API as a bounded read-only worker. The remote xKiro model receives only five scoped Aki read primitives inside the requested `cwd`; model selection is checked against the live catalog and must remain `access_tier=free`. | The remote model delegates; xKiro reasons and calls Aki's read-only primitives |
 | `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is the private lab `aiobox/labs/aki-pmcontrol`; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |

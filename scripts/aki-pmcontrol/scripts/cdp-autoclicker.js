@@ -1355,7 +1355,7 @@
               <span>Auto-inject into each new chat</span>
             </label>
           </div>
-          <textarea id="aki-instruction-textarea" class="aki-textarea">${escapeHtml(config.instruction)}</textarea>
+          <textarea id="aki-instruction-textarea" class="aki-textarea" readonly>${escapeHtml(config.instruction)}</textarea>
           <div class="aki-row">
             <span class="aki-section-label">SUMMARIZE FOR HANDOFF<span class="aki-help" title="Summarize this chat into a compact message for a fresh chat without replacing the durable HANDOFF flow.">?</span></span>
             <button type="button" id="aki-btn-summarize-chat" class="aki-btn">SUMMARIZE THIS CHAT</button>
@@ -1388,13 +1388,6 @@
         };
       }
 
-      const instructionTextarea = panel.querySelector('#aki-instruction-textarea');
-      if (instructionTextarea) {
-        instructionTextarea.onchange = (e) => {
-          config.instruction = e.target.value;
-          if (typeof window.__cdpSaveInstruction === 'function') window.__cdpSaveInstruction(config.instruction);
-        };
-      }
       const autoInjectCb = panel.querySelector('#aki-opt-auto-inject');
       if (autoInjectCb) {
         autoInjectCb.onchange = (e) => {
