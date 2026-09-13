@@ -12,7 +12,7 @@ import { getRoots, overlaps } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
-import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
+import { getLocalVersions, getLocalMcpUpdateState, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
 import { readXKiroConfig, writeXKiroConfig, getXKiroUsage, ensureFreeXKiroModel } from './xkiro-mcp.js';
 import { getContextOptimizerStatus, writeContextOptimizerConfig } from './context-optimizer.js';
@@ -207,10 +207,9 @@ function trustedDirStatus() {
 // A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
 function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
-  for (const key of ['mcp', 'rule']) {
-    updateInfo[key].current = local[key];
-    updateInfo[key].updateAvailable = cmpSemver(local[key], updateInfo[key].latest) < 0;
-  }
+  updateInfo.mcp = getLocalMcpUpdateState(updateInfo.mcp.latest);
+  updateInfo.rule.current = local.rule;
+  updateInfo.rule.updateAvailable = cmpSemver(local.rule, updateInfo.rule.latest) < 0;
   writeStatusFile(updateInfo);
 }
 

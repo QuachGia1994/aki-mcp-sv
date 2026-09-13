@@ -89,9 +89,15 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const ruleUpd = updateInfo.rule || {};
   const mcpVer = mcpUpd.current || '?';
   const ruleVer = ruleUpd.current || '?';
+  const selectiveBaseline = mcpUpd.updateMode === 'selective' && mcpUpd.upstreamReviewed ? String(mcpUpd.upstreamReviewed) : null;
+  const mcpUpdateLabel = selectiveBaseline ? `selective ${selectiveBaseline} → upstream ${String(mcpUpd.latest)}` : `${String(mcpUpd.current)} → ${String(mcpUpd.latest)}`;
+  const forkStatus = selectiveBaseline ? ` · Fork upstream baseline: <span class="mono">selective ${esc(selectiveBaseline)}</span>` : '';
+  const mcpUpdateAction = selectiveBaseline
+    ? `<a class="btnlink" href="${MCP_REPO_URL}" target="_blank" rel="noopener">Review upstream ↗</a>`
+    : hasGit ? '<button class="primary" data-act="pullUpdate">Pull &amp; restart</button>' : `<a class="btnlink" href="${MCP_REPO_URL}" target="_blank" rel="noopener">Download ↗</a>`;
   // "Own update on top, rule update below" per the request; the rule row carries the re-paste warning because updating the corpus makes every pasted instruction stale.
   const updateBanner = (mcpUpd.updateAvailable || ruleUpd.updateAvailable) ? `<div class="updbar">
-  ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>aki-mcp-sv</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> ${hasGit ? '<button class="primary" data-act="pullUpdate">Pull &amp; restart</button>' : `<a class="btnlink" href="${MCP_REPO_URL}" target="_blank" rel="noopener">Download ↗</a>`}<span class="msg" id="msgUpd"></span></div>` : ''}
+  ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>aki-mcp-sv</strong> <span class="mono">${esc(mcpUpdateLabel)}</span> ${mcpUpdateAction}<span class="msg" id="msgUpd"></span></div>` : ''}
   ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span><div class="updwarn">⚠ After updating, RE-PASTE the section-3 Instructions into the custom-instructions setting of EACH AI: Claude / Grok / ChatGPT / Gemini.</div></div>` : ''}
 </div>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -101,7 +107,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
 <a class="gh-top" href="${MCP_REPO_URL}" target="_blank" rel="noopener" aria-label="View on GitHub" title="View on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${SVG.github}"/></svg></a>
 <h1>Aki MCP Server</h1>
 <p class="sub">Gives Claude, ChatGPT, Grok, Gemini, and Postman read/edit access to files and a whitelisted shell on this machine, over Tailscale Funnel (or your own HTTPS edge / Cloudflare tunnel), gated by OAuth 2.1 or an issued bearer token. Local panel only (127.0.0.1), never reachable through Funnel.</p>
-<p class="helptext">Running repo: <span class="mono">${esc(repoRoot)}</span> · Config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
+<p class="helptext">Running repo: <span class="mono">${esc(repoRoot)}</span> · Config &amp; keys: <span class="mono">${esc(userDir)}</span>${forkStatus}</p>
 ${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
 <ol class="steps-nav">

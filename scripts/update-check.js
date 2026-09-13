@@ -27,9 +27,21 @@ export function parseChangelogVersion(text) {
   return m ? m[1] : null;
 }
 
+function readLocalMcpMeta() {
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+    return {
+      current: pkg.version || null,
+      upstreamReviewed: pkg.aki?.upstreamReviewed || null,
+      updateMode: pkg.aki?.updateMode || null,
+    };
+  } catch {
+    return { current: null, upstreamReviewed: null, updateMode: null };
+  }
+}
+
 function readLocalMcp() {
-  try { return JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).version || null; }
-  catch { return null; }
+  return readLocalMcpMeta().current;
 }
 
 function readLocalRule() {
@@ -77,7 +89,22 @@ function fetchText(url, timeoutMs, redirectsLeft = 3) {
   });
 }
 
-// { mcp:{current,latest,updateAvailable}, rule:{...} }. current is local (always attempted); latest is null on any network/parse failure; updateAvailable is only true when latest > current.
+export function buildMcpUpdateState({ current, upstreamReviewed, updateMode }, latest) {
+  const comparisonVersion = upstreamReviewed || current;
+  return {
+    current,
+    latest,
+    upstreamReviewed,
+    updateMode,
+    updateAvailable: cmpSemver(comparisonVersion, latest) < 0,
+  };
+}
+
+export function getLocalMcpUpdateState(latest = null) {
+  return buildMcpUpdateState(readLocalMcpMeta(), latest);
+}
+
+// { mcp:{current,latest,upstreamReviewed,updateMode,updateAvailable}, rule:{...} }. For a selective fork, upstreamReviewed is the last upstream release already audited/ported; only a newer upstream release re-opens the update banner.
 export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
   const local = getLocalVersions();
   const [mcpPkg, ruleLog] = await Promise.all([
@@ -87,7 +114,7 @@ export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
   let mcpLatest = null;
   try { mcpLatest = mcpPkg ? (JSON.parse(mcpPkg).version || null) : null; } catch { mcpLatest = null; }
   const branch = (current, latest) => ({ current, latest, updateAvailable: cmpSemver(current, latest) < 0 });
-  return { mcp: branch(local.mcp, mcpLatest), rule: branch(local.rule, parseChangelogVersion(ruleLog)) };
+  return { mcp: getLocalMcpUpdateState(mcpLatest), rule: branch(local.rule, parseChangelogVersion(ruleLog)) };
 }
 
 // A convenience mirror the pasted instruction may read at session start when the owner has granted this user-data path. Never fatal — the console/panel banners stand alone.

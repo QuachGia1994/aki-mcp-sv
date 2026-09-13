@@ -93,7 +93,10 @@ if (origin) {
 const updateInfo = await checkForUpdate();
 writeStatusFile(updateInfo);
 const bar = (s) => console.log(`\x1b[43m\x1b[30m ${s} \x1b[0m`);
-if (updateInfo.mcp.updateAvailable) bar(`[update] aki-mcp-sv ${updateInfo.mcp.current} → ${updateInfo.mcp.latest} — open the panel to pull & restart`);
+if (updateInfo.mcp.updateAvailable) {
+  const from = updateInfo.mcp.updateMode === 'selective' && updateInfo.mcp.upstreamReviewed ? `selective ${updateInfo.mcp.upstreamReviewed}` : updateInfo.mcp.current;
+  bar(`[update] aki-mcp-sv ${from} → upstream ${updateInfo.mcp.latest} — review selectively before pulling/reconciling`);
+}
 if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel, then re-paste the Instructions (panel section 3) into the custom-instructions setting of each AI`);
 
 let panel;
