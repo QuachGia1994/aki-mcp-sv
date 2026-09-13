@@ -146,7 +146,10 @@ export async function ensureFreeXKiroModel(model, { fetchImpl = fetch } = {}) {
 }
 
 function scopedPath(dir, requested) {
-  const abs = path.resolve(dir, requested || '.');
+  const value = String(requested || '.');
+  const segments = value.replaceAll(path.win32.sep, path.posix.sep).split(path.posix.sep);
+  if (segments.includes('..')) throw new Error(`path escapes worker cwd: ${requested}`);
+  const abs = path.resolve(dir, value);
   if (!containedIn(abs, dir)) throw new Error(`path escapes worker cwd: ${requested}`);
   return abs;
 }

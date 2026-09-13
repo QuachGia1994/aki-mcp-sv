@@ -39,7 +39,7 @@ function sniffMime(buffer) {
 
 function safeBasename(name) {
   const value = String(name || '').trim();
-  if (!value || value !== path.basename(value) || value === '.' || value === '..') throw new Error('image name must be one direct-child basename');
+  if (!value || value === '.' || value === '..' || value.includes('/') || value.includes('\\')) throw new Error('image name must be one direct-child basename');
   return value;
 }
 

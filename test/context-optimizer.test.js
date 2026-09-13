@@ -73,7 +73,7 @@ test('hot refresh preserves stable prefix byte-for-byte and cold refresh rebuild
     checkpointSave: (entry) => { checkpoints.push(entry); return entry; },
     recordSavings: () => {},
   };
-  const cwd = 'D:\\LacViet\\aki-mcp-sv';
+  const cwd = process.cwd();
   const first = await runContextPacket({ prompt: 'first', cwd, taskKey: 'task-1' }, deps);
   assert.match(resultText(first), /Aki Context COLD · stable rebuilt/);
   const firstEntry = Object.values(state.entries)[0];
@@ -124,7 +124,7 @@ test('HOT contradiction of a stable fact forces an immediate COLD rebuild', asyn
     checkpointSave: () => ({}),
     recordSavings: () => {},
   };
-  const cwd = 'D:\\LacViet\\aki-mcp-sv';
+  const cwd = process.cwd();
   await runContextPacket({ prompt: 'first', cwd, taskKey: 'contradiction' }, deps);
   now += 60_000;
   const result = await runContextPacket({ prompt: 'changed', cwd, taskKey: 'contradiction' }, deps);
@@ -137,7 +137,7 @@ test('disabled optimizer fails closed before invoking a worker', async () => {
   let called = false;
   let state = { version: 1, entries: {} };
   const result = await runContextPacket(
-    { prompt: 'task', cwd: 'D:\\LacViet\\aki-mcp-sv' },
+    { prompt: 'task', cwd: process.cwd() },
     { worker: async () => { called = true; return workerResult({}); }, config: { ...config, enabled: false }, loadState: () => state, saveState: (next) => { state = structuredClone(next); }, checkpointSave: () => {}, recordSavings: () => {} },
   );
   assert.equal(result.isError, true);
@@ -150,7 +150,7 @@ test('disabled optimizer fails closed before invoking a worker', async () => {
 test('activity telemetry migrates legacy state and records invalid packet failures', async () => {
   let state = { version: 1, entries: {} };
   const result = await runContextPacket(
-    { prompt: 'bad packet', cwd: 'D:\\LacViet\\aki-mcp-sv', taskKey: 'activity-test' },
+    { prompt: 'bad packet', cwd: process.cwd(), taskKey: 'activity-test' },
     {
       config,
       loadState: () => state,

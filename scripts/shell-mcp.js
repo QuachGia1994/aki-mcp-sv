@@ -25,9 +25,10 @@ const NODE_CMD_SHIMS = new Map([
 
 export function resolveExecFileTarget(bin, args, { platform = process.platform, execPath = process.execPath, exists = fs.existsSync } = {}) {
   if (platform !== 'win32') return { file: bin, args };
-  const shim = NODE_CMD_SHIMS.get(path.basename(bin).toLowerCase());
+  const pathApi = path.win32;
+  const shim = NODE_CMD_SHIMS.get(pathApi.basename(bin).toLowerCase());
   if (!shim) return { file: bin, args };
-  const script = path.join(path.dirname(execPath), 'node_modules', 'npm', 'bin', shim);
+  const script = pathApi.join(pathApi.dirname(execPath), 'node_modules', 'npm', 'bin', shim);
   return exists(script) ? { file: execPath, args: [script, ...args] } : { file: bin, args };
 }
 
