@@ -1,12 +1,12 @@
 # aki-mcp-sv (`@akinet/akimcp`)
 
-Give Claude on the **web** (claude.ai), **ChatGPT**, and **Grok** read/edit access to files and a whitelisted shell on your local machine. Operates over HTTPS through a swappable public edge (Tailscale Funnel by default, or your own Cloudflare tunnel / any stable HTTPS edge), gated by OAuth 2.1. *(Experimental support for Gemini — see [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini). Also connectable from Postman's AI Agent — see [Connecting from Postman](#connecting-from-postman).)*
+Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 39 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
 
-No desktop app. No device lock-in. One command to run.
+One command opens a much larger operating surface: build and edit projects from the browser, inspect databases and local APIs, drive browser workflows, manage long-running jobs, debug through DevTools, and control Postman without giving every client unrestricted shell access.
 
-<img width="1190" height="1062" alt="aki-mcp-sv control panel" src="https://github.com/user-attachments/assets/760a7202-ad61-4f5d-86e3-973e90c74bd3" />
+<img width="1672" height="941" alt="AKIMCP v2 control panel" src="public/img/akimcp-v2.jpg" />
 
-[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![npm version](https://img.shields.io/npm/v/@akinet/akimcp.svg)](https://www.npmjs.com/package/@akinet/akimcp) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install)
+[![Version](https://img.shields.io/badge/version-2.0.2-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![npm version](https://img.shields.io/npm/v/@akinet/akimcp.svg)](https://www.npmjs.com/package/@akinet/akimcp) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install--run)
 
 **Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install & Run](#install--run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
@@ -69,9 +69,9 @@ npm start
 ```
 
 Nothing needs preparing beforehand; `npm start` handles it:
-- **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
+- **OAuth and passphrase state** in `~/.aki/mcpsv/`: generated once and reused on later runs.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
-- Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
+- Prints the **Remote MCP server URL** and **Passphrase** used on the confirmation page when a client connects.
 - Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
 
 The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for every tool — shell, find, search, and file read/write/edit alike — no restart. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
@@ -85,9 +85,10 @@ Beyond `$MCP_DATA_DIR`, the filesystem tools are also granted `~/.aki` (where ak
 ## Connecting from Claude web
 
 1. Go to **claude.ai → Settings → Connectors → Add custom connector**
-2. **Remote MCP server URL**: paste `https://your-machine.your-tailnet.ts.net/mcp` (printed by `npm start`)
-3. **Advanced settings → OAuth Client ID / OAuth Client Secret**: paste the two values `npm start` printed
-4. Click **Connect**: a local confirmation page opens; enter the **passphrase** shown in the control panel (section 1 · Connectors) to approve — or read it straight from `~/.aki/mcpsv/passphrase.txt`
+2. Enter any **Name**, then paste the **Remote MCP server URL** printed by `npm start`
+3. Click **Connect** and enter the **Passphrase** when AKIMCP opens its confirmation page
+
+Claude discovers OAuth automatically. No Client ID or Client Secret is needed.
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
@@ -115,7 +116,7 @@ Needs ChatGPT Plus/Pro (or Business/Enterprise/Edu) with **Developer mode** for 
 2. Create a custom connector / app → paste the same MCP URL (`https://your-machine.your-tailnet.ts.net/mcp`)
 3. Enter the same **passphrase** on the confirmation page
 
-ChatGPT self-registers via DCR (RFC 7591, PKCE, no secret) from `/.well-known/openid-configuration`. Do not paste Claude's Client ID or Secret. Same folder allowlist and shell allowlist as Claude.
+ChatGPT self-registers via DCR (RFC 7591, PKCE, no secret) from `/.well-known/openid-configuration`. It uses the same folder allowlist and shell allowlist as Claude.
 
 ## Connecting from Grok and Gemini
 

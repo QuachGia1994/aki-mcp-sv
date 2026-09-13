@@ -32,7 +32,7 @@ function prefixedServer(server, prefix) {
 
 export function createToolsServer() {
   const server = new McpServer(
-    { name: 'aki-mcp', version: '2.0.1', title: 'Aki MCP' },
+    { name: 'aki-mcp', version: '2.0.2', title: 'Aki MCP' },
     { instructions: RULE_CONTEXT_INSTRUCTIONS },
   );
   const prefixed = prefixedServer(server, 'aki__');

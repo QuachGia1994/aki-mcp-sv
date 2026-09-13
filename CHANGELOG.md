@@ -4,6 +4,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-09-13
+
+### Changed
+- **Setup and connector onboarding now match the current v2 flow**: completed ingress setup collapses into a clear ready state, Claude setup only asks for a name and URL before OAuth confirmation, and the control panel better explains the governed v2 tool surface.
+- **README now presents the full AKIMCP v2 capability set and current setup**: refreshed the product overview, removed stale Claude client-credential steps, and replaced the legacy screenshot with the v2 control-panel image.
+
 ## [2.0.1] - 2026-09-13
 
 ### Fixed

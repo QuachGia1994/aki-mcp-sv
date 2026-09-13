@@ -23,11 +23,11 @@ async function testCli() {
   // Test --version and -v
   const vLong = await runCli(['--version']);
   assert.equal(vLong.code, 0);
-  assert.equal(vLong.stdout.trim(), '2.0.0');
+  assert.equal(vLong.stdout.trim(), '2.0.2');
 
   const vShort = await runCli(['-v']);
   assert.equal(vShort.code, 0);
-  assert.equal(vShort.stdout.trim(), '2.0.0');
+  assert.equal(vShort.stdout.trim(), '2.0.2');
 
   // Test --help and -h
   const hLong = await runCli(['--help']);

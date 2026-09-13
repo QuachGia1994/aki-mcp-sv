@@ -48,7 +48,7 @@ async function run() {
     assert.equal(firstBody.id, 1);
     assert.match(firstBody.result.instructions, /aki__akidevrule_context/);
     assert.equal(firstBody.result.serverInfo?.name, 'aki-mcp');
-    assert.equal(firstBody.result.serverInfo?.version, '2.0.0');
+    assert.equal(firstBody.result.serverInfo?.version, '2.0.2');
     assert.ok(firstBody.result.capabilities);
 
     const secondInitialize = await initialize(baseUrl, 2);

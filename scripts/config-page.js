@@ -73,7 +73,6 @@ const ecoLink =([name, url, icon]) =>
 const socialLink = ([label, url, path]) =>
   `<a class="social" href="${esc(url.startsWith('mailto:') ? url : withUtm(url))}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="${path}"/></svg></a>`;
 
-// The one copyable-code primitive (ui.A1 Tier-2 pattern class): every command/value/inline code renders as `.copy` and click-copies. `.mono` is plain monospace text, never a copy chip — the two roles stay visually distinct so nothing masquerades as copyable.
 const copyEl = (value, hl = false, id) => `<code class="copy${hl ? ' hl' : ''}"${id ? ` id="${esc(id)}"` : ''} title="click to copy"><span class="txt">${esc(value)}</span></code>`;
 
 function field(label, value, hl = false) {
@@ -102,10 +101,22 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
 <title>${esc(MCP_NAME)} · panel${isDev ? ' (dev)' : ''}</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
 <link rel="stylesheet" href="/panel.css"></head><body><main>
-<a class="gh-top" href="${MCP_REPO_URL}" target="_blank" rel="noopener" aria-label="View on GitHub" title="View on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${SVG.github}"/></svg></a>
-<h1>Aki MCP Server${isDev ? ' <span class="dev-tag">dev</span>' : ''}</h1>
-<p class="sub">Gives Claude, ChatGPT, Grok, and Gemini read/edit access to files and a whitelisted shell on this machine, over Tailscale Funnel (or your own HTTPS edge / Cloudflare tunnel), gated by OAuth 2.1. Local panel only (127.0.0.1), never reachable through Funnel.</p>
-<p class="helptext">Running repo: <span class="mono">${esc(repoRoot)}</span> · Config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
+<header class="panel-hero">
+  <img class="panel-hero-art" src="/img/akimcp-v2.jpg" alt="" aria-hidden="true">
+  <div class="panel-hero-body">
+    <div class="panel-brand-row">
+      <div>
+        <div class="panel-eyebrow">Local AI control plane</div>
+        <h1>AKIMCP${isDev ? ' <span class="dev-tag">dev</span>' : ''}</h1>
+      </div>
+      <span class="version-badge" aria-label="AKIMCP version ${esc(String(mcpVer))}">v${esc(String(mcpVer))}</span>
+    </div>
+    <p class="sub">Secure local files and shell access for Claude, ChatGPT, Grok, and Gemini through OAuth 2.1.</p>
+    <p class="panel-meta"><span>Local panel</span><span>127.0.0.1</span><span>${esc(ingressLabel)}</span></p>
+  </div>
+  <a class="gh-top" href="${MCP_REPO_URL}" target="_blank" rel="noopener" aria-label="View AKIMCP on GitHub" title="View on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${SVG.github}"/></svg></a>
+</header>
+<p class="helptext panel-paths">Running repo: <span class="mono">${esc(repoRoot)}</span> · Config &amp; keys: <span class="mono">${esc(userDir)}</span></p>
 ${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
 <ol class="steps-nav">
@@ -117,8 +128,10 @@ ${updateBanner}
 </ol>
 </section>
 
-<section id="s0"><h2>0 · Setup${origin ? ' <span class="done-tag">done</span>' : ''}</h2>
-<p class="helptext">Currently serving at ${copyEl(origin || '(origin not resolved)')} via <strong>${esc(ingressLabel)}</strong>. Ingress is decided when ${copyEl('npm start')} boots, not switchable live; restart after picking a different tab below. The Hosted domain tab has nothing to pick or restart, it's a contact link.</p>
+<section id="s0" class="collapsible-card${origin ? ' is-complete' : ''}"><details class="collapsible"${origin ? '' : ' open'}>
+<summary><span class="collapse-heading">0 · Setup</span>${origin ? '<span class="done-tag">ready</span>' : '<span class="collapse-state">action required</span>'}<span class="collapse-icon" aria-hidden="true"></span></summary>
+<div class="collapse-body">
+<p class="helptext">${origin ? `AKIMCP is live at ${copyEl(origin)} through <strong>${esc(ingressLabel)}</strong>. Expand this card only when you need to change ingress.` : `Choose how AKIMCP reaches your AI clients. The default path is Tailscale Funnel; restart after switching ingress.`}</p>
 
 <nav class="tabs" role="tablist">
   <button class="tab${activeIngressTab === 'tailscale' ? ' active' : ''}" data-tab="tailscale">Tailscale + Funnel</button>
@@ -169,10 +182,12 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </div></div>
 <div class="acts"><button class="primary" data-act="registerDomain">Request via Messenger ↗</button><span class="msg" id="msgDomain"></span></div>
 </div>
+</div>
+</details>
 </section>
 
 <section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini, Postman</h2>
-<p class="helptext">Same Funnel URL for every client. Folders / shell allowlist apply to whoever connects. Fill the three common values below, then open your client's tab.</p>
+<p class="helptext">One AKIMCP endpoint gives every supported AI the same governed access to the full v2 tool surface. Open a client tab for its exact connection flow.</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
@@ -187,9 +202,12 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane active" id="tab-claude">
   <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
-  <p class="helptext">Paste the three common values above, plus these two Claude-only credentials, into the connector dialog.</p>
-  ${field('OAuth Client ID', client.clientId)}
-  ${field('OAuth Client Secret', client.clientSecret)}
+  <ol class="steps">
+    <li>Enter <strong>Name</strong> = MCP Name above.</li>
+    <li>Enter <strong>URL</strong> = MCP URL above, then connect.</li>
+    <li>Enter the <strong>Passphrase</strong> when AKIMCP opens the confirmation page.</li>
+  </ol>
+  <p class="helptext">Claude now discovers OAuth automatically. No Client ID or Client Secret is needed.</p>
 </div>
 
 <div class="tabpane" id="tab-grok">
