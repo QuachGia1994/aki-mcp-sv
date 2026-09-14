@@ -77,7 +77,7 @@ The new dialog:
 
 The first read of this dialog (before 2026-08-07) assumed "no header field → the token has to go in the URL." **Wrong in practice**: even with OAuth Client ID/Secret left blank, claude.ai still automatically attempts Dynamic Client Registration (DCR) before connecting, and fails immediately if the server doesn't answer the OAuth handshake correctly — token-in-URL doesn't dodge this step. Confirmed with a real test plus Anthropic's public GitHub issue (`anthropics/claude-ai-mcp#457`) — full detail: `docs/research/claude-ai-oauth-connector.md`.
 
-**Current decision**: use self-issued OAuth Client ID/Secret for Claude (select "Use your own OAuth client" in the new dialog) against a minimal self-hosted authorization server. `registration_endpoint` is now advertised: DCR is live, but only to onboard ChatGPT as a public client; Claude still authenticates via the pre-issued confidential client, never DCR. See `scripts/oauth.js`, `docs/ref/security-model.md`.
+**Current decision (2026-09-14)**: use Claude's detected DCR path. Enter only a name and the Aki MCP URL; Claude discovers the authorization metadata and `registration_endpoint`, registers a public client, then completes PKCE + Aki's passphrase consent. The older static confidential client remains in `oauth-client.json` only as a compatibility fallback for clients such as Gemini; Claude no longer needs its Client ID/Secret in normal setup. See `scripts/oauth.js`, `docs/ref/security-model.md`.
 
 ---
 

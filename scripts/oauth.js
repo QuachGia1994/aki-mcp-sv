@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Minimal OAuth 2.1 authorization server.
-// Claude: pre-registered confidential client (paste Client ID/Secret), or DCR if it self-registers.
-// ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
-// Gemini/Grok: also RFC 7591 DCR; their redirect hosts are added to the whitelist below.
+// Claude/ChatGPT/Grok: RFC 7591 DCR + public clients (token_endpoint_auth_method: none) + PKCE.
+// A static confidential client remains as a compatibility fallback for clients such as Gemini.
+// All supported redirect hosts are constrained by the allowlist below.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -108,14 +108,14 @@ function saveDcrClients(map) {
   writePrivateFileAtomic(DCR_FILE, JSON.stringify(map, null, 2));
 }
 
-/** Static Claude client + any clients ChatGPT (or Claude) registered via /register. */
+/** Static compatibility client + any public clients registered via /register. */
 function resolveClient(clientId) {
   if (!clientId) return null;
   const staticClient = loadOrCreateClient();
   if (clientId === staticClient.clientId) {
-    // The confidential client's ID/secret are deliberately pasted into more than one provider (Claude,
-    // and Gemini which reuses the same paste flow). Each provider sends its own redirect_uri, so this
-    // client accepts any allowlisted callback (isStatic below), not just CLAUDE_CALLBACK — the allowlist
+    // The confidential client is a compatibility fallback for providers that cannot complete DCR
+    // (currently surfaced for Gemini). Such providers send their own redirect_uri, so this client accepts
+    // any allowlisted callback (isStatic below), not just CLAUDE_CALLBACK — the allowlist
     // (isAllowedRedirect) is the security boundary, the same one /register enforces for public clients.
     return {
       clientId: staticClient.clientId,

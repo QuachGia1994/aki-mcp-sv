@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildMcpUpdateState, buildRuleUpdateState } from '../scripts/update-check.js';
 import { renderPanel } from '../scripts/config-page.js';
 
@@ -41,6 +42,12 @@ test('selective fork warns again only when upstream moves past reviewed baseline
 test('non-selective installs keep ordinary version comparison', () => {
   assert.equal(buildMcpUpdateState({ current: '1.15.0', upstreamReviewed: null, updateMode: null }, '2.0.0').updateAvailable, true);
   assert.equal(buildMcpUpdateState({ current: '2.0.0', upstreamReviewed: null, updateMode: null }, '2.0.0').updateAvailable, false);
+});
+
+test('selective fork records upstream 2.0.2 as reviewed after the onboarding port', () => {
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(pkg.aki?.updateMode, 'selective');
+  assert.equal(pkg.aki?.upstreamReviewed, '2.0.2');
 });
 
 test('akidevrule selective baseline suppresses reviewed upstream and reopens only on newer release', () => {

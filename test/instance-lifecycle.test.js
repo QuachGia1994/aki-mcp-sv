@@ -128,9 +128,9 @@ test('start lifecycle prepares an existing instance before binding and persists 
   assert.match(source, /onInstanceHandoff/);
 });
 
-test('reviewed upstream baseline advances to 2.0.1 with the selective port', () => {
+test('reviewed upstream baseline advances to 2.0.2 with the selective port', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.equal(pkg.aki.upstreamReviewed, '2.0.1');
+  assert.equal(pkg.aki.upstreamReviewed, '2.0.2');
 });
 
 test('instance state clears only when the caller owns the recorded instance id', async () => {

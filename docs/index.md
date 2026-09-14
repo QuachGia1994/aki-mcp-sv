@@ -40,7 +40,7 @@
 - [ref/postman-pool-autojoin.md](ref/postman-pool-autojoin.md) — Aki Watch Postman Team Auto-Joiner: LibreWolf/geckodriver Account Chooser session switching, optional Telegram user-session watcher, readiness/preflight controls, bounded automatic challenge failure/retry, and outbound result reporting without reading browser secrets
 - [ref/KIMI-WEB-LIVE-TEST.md](ref/KIMI-WEB-LIVE-TEST.md) — portable Kimi K3 browser bootstrap for the custom-domain Worker -> D1 -> local Aki route; placeholders only, no runtime credentials
 - [ref/QWEN-WEB-LIVE-TEST.md](ref/QWEN-WEB-LIVE-TEST.md) — portable Qwen browser bootstrap using the custom domain, idempotent task creation, polling, and real Windows project access
-- [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)
+- [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude/ChatGPT/Grok DCR + PKCE by default; static confidential fallback retained for compatibility)
 - [ref/harness-fact.md](ref/harness-fact.md) — current AGY CLI facts the local arm depends on, split by evidence tier; retired OpenCode/Kiro facts remain historical only
 - [research/claude-ai-oauth-connector.md](research/claude-ai-oauth-connector.md) — research behind the switch from token-in-URL to OAuth, with dates and sources
 - [research/chrome-cdp-default-profile-block.md](research/chrome-cdp-default-profile-block.md) — why `scripts/chrome.js` is being removed: Chrome 136 blocks remote debugging on the default profile

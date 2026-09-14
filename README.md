@@ -76,9 +76,9 @@ npm start
 For development beside a live production instance, run `npm run dev`: it uses `~/.aki/mcpsv-dev` with gatekeeper/panel/loopback defaults `9997`/`9996`/`19998`, leaving production data and `9999`/`9998`/`19999` untouched.
 
 Nothing needs preparing beforehand; `npm start` handles it:
-- **Passphrase** and **OAuth client ID/secret** in `~/.aki/mcpsv/`: generated once, reused on every later run.
+- **Passphrase and OAuth state** in `~/.aki/mcpsv/`: generated once and reused on every later run. A static Client ID/Secret is retained only as a compatibility fallback for clients such as Gemini that cannot use automatic registration.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
-- Prints the 4 values you need: **Remote MCP server URL**, **OAuth Client ID**, **OAuth Client Secret** (paste into claude.ai), and **Passphrase** (enter on the confirmation page when you hit Connect).
+- Prints the **Remote MCP server URL**, **Passphrase**, and the static fallback Client ID/Secret. Claude, ChatGPT, and Grok normally self-register from the server's OAuth metadata and do not need the static credentials.
 - Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Setup · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Setup (a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist.
 - Starts a **loopback-only Streamable HTTP MCP endpoint** at `http://127.0.0.1:19999/mcp` for local desktop MCP clients. It requires an issued Aki Bearer token, sends no CORS headers, rejects browser-origin requests, and accepts POST bodies only as `application/json`. The ready-to-copy `Authorization: Bearer …` value in panel section 1 → Postman is the same token local HTTP MCP clients can use.
 
@@ -92,10 +92,10 @@ The generated section-3 Instructions route Aki's skill pack automatically: `skil
 
 ## Connecting from Claude web
 
-1. Go to **claude.ai → Settings → Connectors → Add custom connector**
-2. **Remote MCP server URL**: paste `https://your-machine.your-tailnet.ts.net/mcp` (printed by `npm start`)
-3. **Advanced settings → OAuth Client ID / OAuth Client Secret**: paste the two values `npm start` printed
-4. Click **Connect**: a local confirmation page opens; enter the **passphrase** shown in the control panel (section 1 · Connectors) to approve — or read it straight from `~/.aki/mcpsv/passphrase.txt`
+1. Go to **claude.ai → Settings → Connectors → Add custom connector**.
+2. Enter any **Name**, then paste the **Remote MCP server URL** (`https://your-machine.your-tailnet.ts.net/mcp`, printed by `npm start`).
+3. Click **Connect**. Claude discovers OAuth metadata and registers a public client automatically; no Client ID or Client Secret is required.
+4. On Aki's confirmation page, enter the **passphrase** shown in panel section 1 (or read it from `~/.aki/mcpsv/passphrase.txt`).
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
@@ -114,7 +114,7 @@ ChatGPT custom connectors use the MCP server URL directly and auto-discover OAut
 5. Tick **I understand and want to continue**, then create the connector.
 6. On connect, enter the same **passphrase** on the confirmation page.
 
-ChatGPT self-registers via DCR with PKCE and no client secret, using the `registration_endpoint` advertised by the server. Do **not** paste Claude's Client ID or Secret. Same folder scope and shell policy as Claude applies, including the optional `shell.allowAll` mode from panel section 6. Full current flow: [`docs/ref/chatgpt-connector.md`](docs/ref/chatgpt-connector.md).
+ChatGPT self-registers via DCR with PKCE and no client secret, using the `registration_endpoint` advertised by the server. Do **not** use the static Gemini-fallback Client ID/Secret here. Same folder scope and shell policy as Claude applies, including the optional `shell.allowAll` mode from panel section 6. Full current flow: [`docs/ref/chatgpt-connector.md`](docs/ref/chatgpt-connector.md).
 
 ## Connecting from Grok, Gemini Spark, and Antigravity 2.0
 
@@ -202,7 +202,7 @@ After that, `npm start` enables Funnel on port 9999 automatically every run.
 
 ```
 Claude web / ChatGPT
-      │  HTTPS + OAuth 2.1 (Claude: paste client ID/secret; ChatGPT: DCR self-register)
+      │  HTTPS + OAuth 2.1 (DCR/public-client registration + PKCE)
       ▼
 Tailscale Funnel        (https://your-machine.your-tailnet.ts.net)
       │
@@ -245,7 +245,7 @@ The ingress layer is swappable: Tailscale Funnel is the zero-config default, but
 
 Kimi Web K3 and Qwen Coder Web share the same optional Worker + D1 transport because neither product exposes the same custom-MCP connection flow as Claude/ChatGPT. `scripts/d1-bridge.js` polls the D1 mailbox from inside `start.js` and routes each task through the same shared in-process tools session and existing policy. Qwen Coder can use the Worker host directly; Kimi uses the custom domain `aki-bridge.oakgatekeeper.uk` because its sandbox timed out on `*.workers.dev`. Each client has a separate bearer secret. Qwen Chat is currently not supported by this path because its Python sandbox cannot reach the Worker. D1 is transport only; it does not create a second filesystem or shell implementation.
 
-OAuth (not token-in-URL) is used because claude.ai always attempts Dynamic Client Registration regardless of configuration (`docs/research/claude-ai-oauth-connector.md`). ChatGPT also expects OAuth; this server advertises `/register` (RFC 7591 DCR) so ChatGPT can self-register while Claude can keep using the pre-issued Client ID/Secret.
+OAuth (not token-in-URL) is used because claude.ai performs OAuth client discovery/registration when adding a connector (`docs/research/claude-ai-oauth-connector.md`). The server advertises `/register` (RFC 7591 DCR), so Claude, ChatGPT, and Grok can use public clients with PKCE. The older static confidential client remains only as a compatibility fallback for clients such as Gemini.
 
 ## Directory layout
 
@@ -292,8 +292,8 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs l
 ```
 ~/.aki/mcpsv/
 ├── setting.json          # allowed folders + shell allowlist, edited from the panel
-├── oauth-client.json     # pre-issued client ID + secret, for Claude (0600)
-├── oauth-dcr-clients.json # clients that self-registered via /register, one per ChatGPT connector (0600)
+├── oauth-client.json     # static confidential client fallback for clients such as Gemini (0600)
+├── oauth-dcr-clients.json # public clients self-registered via /register (Claude/ChatGPT/Grok etc., 0600)
 ├── passphrase.txt        # passphrase for the /authorize consent screen (0600)
 └── tokens.json           # access/refresh tokens (0600)
 ```
@@ -366,14 +366,14 @@ Use `local__find_path` to locate a file or directory — it scans the whole tree
 
 ## Security
 
-Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; DCR/public-client flows use PKCE and a strict redirect allowlist covering ChatGPT, Grok, Google's Gemini OAuth proxy, Antigravity 2.0's `https://antigravity.google/oauth-callback`, and Mistral's integration callback. Full writeup: `docs/ref/security-model.md`.
+Minimal OAuth 2.1: Claude, ChatGPT, and Grok normally use DCR/public clients with PKCE; a static confidential client remains as a compatibility fallback for clients such as Gemini. All public-client and static-client redirects share a strict allowlist covering Claude, ChatGPT, Grok, Google's Gemini OAuth proxy, Antigravity 2.0's `https://antigravity.google/oauth-callback`, and Mistral's integration callback. Full writeup: `docs/ref/security-model.md`.
 
 - Fresh installs default file/shell scope to `process.cwd()` (or explicit `MCP_DATA_DIR`) plus only narrow rule surfaces: `~/.aki/akidevrule`, `~/.claude/CLAUDE.md`, `~/.claude/CLAUDE.local.md`, and `~/.claude/skills/akirule` when present. The whole home directory, `~/.aki`, and `~/.claude` are not auto-granted. `~/.aki/mcpsv` OAuth state and `.claude` session/history therefore stay outside the default filesystem boundary. A saved folder list in `~/.aki/mcpsv/setting.json` is authoritative, read fresh on every call, and every panel row is removable. Existing saved lists are intentionally not rewritten during upgrade; review section 5 once if an older install explicitly stored `$HOME`, `~/.aki`, or `~/.claude`.
 - The shell MCP is hand-written (`shell-mcp.js`) and uses `execFile`, never an implicit shell; direct chaining/redirection syntax such as `;`, `&`, `|`, and backticks is rejected before execution. The default mode enforces the read-only allowlist from `allowlist.js`, with panel edits stored at `~/.aki/mcpsv/setting.json` → `shell.allowlist`. Section 6 also exposes an explicit **Allow all shell commands** switch (`shell.allowAll=true`) for owners who intentionally want every executable name accepted; that disables the executable-name allowlist but does not remove the parser's no-chaining/no-redirection boundary. Enabling it gives the connected AI the same command-level reach as the local user account, so use it only when that is the intended trust model. Flag-rich binaries whose own flags escape read-only stay out of the default set. A command can run in any directory under the allowed roots via the `cwd` parameter.
 - `gatekeeper.js` is the single public entry point; every tool and the optional D1 bridge route through the same in-process policy surface, and nothing else listens on a public port.
 - `loopback-mcp.js` binds only `127.0.0.1` for local desktop MCP clients and requires a valid issued Aki Bearer token before POST/DELETE reaches the shared MCP bridge. It also emits no CORS headers, rejects requests carrying an `Origin` header, and requires `application/json` for POST. This blocks unauthenticated local processes as well as browser-origin requests while reusing the same `streamable-bridge.js`, token store, and tool policy as the public path.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
-- `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
+- `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (static fallback client ID/secret) are mode 0600 and live outside the repo. Normal Claude/ChatGPT/Grok setup uses DCR and never needs the static secret; the panel shows it only where a compatibility fallback is needed.
 - Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
 - Each DCR connector instance self-registers one client into `~/.aki/mcpsv/oauth-dcr-clients.json` (mode 0600). Registration is open but not a way in on its own: only the explicitly allowlisted Claude/ChatGPT/Gemini/Grok/Antigravity/Mistral callback patterns are accepted, and a registered client still has to pass the passphrase consent screen and PKCE before it gets a token. Revoke those registrations by deleting that file and restarting.
 - Funnel stays enabled in the background for the whole project; `npm start` is the only thing you actively start/stop.

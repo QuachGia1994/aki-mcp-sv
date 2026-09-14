@@ -23,7 +23,7 @@ After Developer mode is enabled, ChatGPT self-registers as an OAuth client via D
 
 ## Notes
 
-- **Do not paste Claude's Client ID or Secret here.** Claude uses a pre-registered confidential client; ChatGPT uses DCR and gets its own client.
+- **Do not use the static fallback credentials here.** ChatGPT, like Claude's current default flow, uses DCR and gets its own public client; the static confidential client remains only for compatibility cases such as Gemini.
 - **Write tools may be limited** depending on OpenAI's current policy for custom connectors.
 - Requires a ChatGPT paid plan (Plus / Pro / Team / Enterprise).
 
@@ -32,6 +32,6 @@ After Developer mode is enabled, ChatGPT self-registers as an OAuth client via D
 - `scripts/config-page.js` — panel ChatGPT tab (section 1)
 - `scripts/oauth.js` — `handleRegister` (DCR endpoint), `metadataHandlers` (well-known)
 - `scripts/gatekeeper.js` — routes `/.well-known/openid-configuration` → `authorizationServer`
-- `docs/ref/security-model.md` — OAuth model (Claude pre-registered; ChatGPT DCR)
+- `docs/ref/security-model.md` — OAuth model (Claude/ChatGPT DCR by default; static fallback retained for compatibility)
 - `docs/plan/done/audit-1.1.0-todo.md` §A1–A2 — original DCR blocker and fix
 - `docs/plan/done/merge-pr1-windows-chatgpt.md` — how ChatGPT DCR was merged

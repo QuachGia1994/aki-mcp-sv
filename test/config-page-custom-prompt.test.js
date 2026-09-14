@@ -206,6 +206,17 @@ test('Gemini Spark panel documents one-call repo snapshot and unavoidable client
   assert.match(html, /Write\/shell calls may still require separate Spark confirmation/);
 });
 
+test('Claude onboarding uses OAuth discovery while Gemini keeps confidential fallback credentials', () => {
+  const html = render();
+  const claude = html.slice(html.indexOf('id="tab-claude"'), html.indexOf('id="tab-grok"'));
+  const gemini = html.slice(html.indexOf('id="tab-gemini"'), html.indexOf('id="tab-postman"'));
+  assert.match(claude, /discovers OAuth automatically/i);
+  assert.doesNotMatch(claude, /OAuth Client ID|OAuth Client Secret/);
+  assert.match(gemini, /Advanced Settings/);
+  assert.match(gemini, /OAuth Client ID/);
+  assert.match(gemini, /OAuth Client Secret/);
+});
+
 test('generated workflow is lean, reuses evidence, and keeps routed context out of every session', () => {
   const client = readFileSync(new URL('../public/panel-client.js', import.meta.url), 'utf8');
   const plan = client.indexOf('Plan: nontrivial=>research GitHub/upstream');

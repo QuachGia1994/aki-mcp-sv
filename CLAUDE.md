@@ -21,8 +21,8 @@ Signature: `npm start` is healthy, funnel status says "on", but client reports "
 ## Two client paths, one OAuth server
 
 `scripts/oauth.js` serves both without handler-level branching:
-- **Claude**: Pre-registered confidential client in `oauth-client.json` (`client_secret_post`).
-- **ChatGPT**: Public client via RFC 7591 DCR (`POST /register`), PKCE only, stored in `oauth-dcr-clients.json`.
+- **DCR/public default**: Claude, ChatGPT, and Grok register through RFC 7591 `POST /register`, use PKCE, and persist in `oauth-dcr-clients.json`.
+- **Static confidential fallback**: `oauth-client.json` (`client_secret_post`) remains for clients that cannot auto-register, currently surfaced for Gemini fallback; normal Claude setup does not use it.
 - **Invariants**: `resolveClient()` is the single SSoT lookup for both. Redirect URIs are strictly allowlisted in `isAllowedRedirect` (`claude.ai`, `chatgpt.com`, `googleusercontent.com`, `grok.com`). Auth codes and refresh tokens are bound to their issuing client ID.
 
 ## OS-agnostic by decision, not by accident

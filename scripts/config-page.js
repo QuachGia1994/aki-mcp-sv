@@ -194,9 +194,12 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane active" id="tab-claude">
   <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
-  <p class="helptext">Paste the three common values above, plus these two Claude-only credentials, into the connector dialog.</p>
-  ${field('OAuth Client ID', client.clientId)}
-  ${field('OAuth Client Secret', client.clientSecret)}
+  <ol class="steps">
+    <li>Enter <strong>Name</strong> = MCP Name above.</li>
+    <li>Enter <strong>URL</strong> = MCP URL above, then connect.</li>
+    <li>Enter the <strong>Passphrase</strong> when Aki opens the confirmation page.</li>
+  </ol>
+  <p class="helptext">Claude discovers OAuth automatically through server metadata and registers its own public client. No Client ID or Client Secret is needed.</p>
 </div>
 
 <div class="tabpane" id="tab-grok">
@@ -219,7 +222,7 @@ ${field('Passphrase', passphrase)}
     <li>Tick <strong>I understand and want to continue</strong>, then <strong>Create</strong>.</li>
     <li>On connect, enter the <strong>Passphrase</strong>.</li>
   </ol>
-  <p class="helptext">ChatGPT self-registers via DCR (PKCE, no secret). Do not paste Claude's Client ID or Secret here. Write tools may be limited depending on OpenAI's current policy.</p>
+  <p class="helptext">ChatGPT self-registers via DCR (PKCE, no secret), like Claude's current default flow. Do not use the static Gemini-fallback credentials here. Write tools may be limited depending on OpenAI's current policy.</p>
 </div>
 
 <div class="tabpane" id="tab-gemini">
@@ -228,10 +231,12 @@ ${field('Passphrase', passphrase)}
   <ol class="steps">
     <li>Open <a href="${esc(GEMINI_CONNECTOR_URL)}" target="_blank" rel="noopener">custom connected apps</a> in Gemini Spark.</li>
     <li>Set the <strong>custom app link / Server URL</strong> = MCP URL.</li>
-    <li>If automatic registration is unavailable, open <strong>Advanced Settings</strong> and paste the <strong>Client ID</strong> and <strong>Client secret</strong> from the Claude tab.</li>
+    <li>If automatic registration is unavailable, open <strong>Advanced Settings</strong> and use the fallback OAuth credentials shown below.</li>
     <li>On <strong>Continue</strong>, enter the <strong>Passphrase</strong>.</li>
     <li>For codebase analysis, ask <span class="mono">@Local Tools</span> to use <span class="mono">local__repo_snapshot</span> once with the project path.</li>
   </ol>
+  ${field('OAuth Client ID (Gemini fallback)', client.clientId)}
+  ${field('OAuth Client Secret (Gemini fallback)', client.clientSecret)}
 </div>
 
 <div class="tabpane" id="tab-postman">

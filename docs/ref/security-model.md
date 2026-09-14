@@ -1,6 +1,6 @@
 # Security model — minimal OAuth 2.1 (multi-client)
 
-Updated 2026-09-07 — Claude keeps a pre-issued confidential client; public/DCR clients share one strict redirect allowlist and PKCE flow on the same in-process server; operator remote-desktop access is a separate Cloudflare One private-app plane.
+Updated 2026-09-14 — Claude, ChatGPT, and Grok use public/DCR clients with PKCE by default; a static confidential client remains only as a compatibility fallback for clients such as Gemini. Both paths share one strict redirect allowlist on the same in-process server; operator remote-desktop access is a separate Cloudflare One private-app plane.
 
 ## Current auth architecture
 
@@ -8,7 +8,7 @@ Updated 2026-09-07 — Claude keeps a pre-issued confidential client; public/DCR
 claude.ai / ChatGPT
    │  GET /.well-known/oauth-protected-resource, /.well-known/oauth-authorization-server
    │      (/.well-known/openid-configuration is served as an alias of the latter, so ChatGPT can auto-discover registration_endpoint)
-   │  ChatGPT (and optionally Claude): POST /register  (DCR)
+   │  Claude / ChatGPT / Grok: POST /register  (DCR)
    ▼
 gatekeeper.js  ── /register  → RFC 7591 (strict allowlist: Claude, ChatGPT, Gemini proxy, Grok, Mistral callbacks)
                ── /authorize → confirmation page, requires passphrase (~/.aki/mcpsv/passphrase.txt)
@@ -16,7 +16,7 @@ gatekeeper.js  ── /register  → RFC 7591 (strict allowlist: Claude, ChatGPT
                ── /mcp       → Bearer access token required, else 401 + WWW-Authenticate → tools server (in-process)
 ```
 
-Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clients (ChatGPT) persist in `~/.aki/mcpsv/oauth-dcr-clients.json`. Access/refresh tokens persist in `~/.aki/mcpsv/tokens.json`.
+Static fallback credentials live in `~/.aki/mcpsv/oauth-client.json`. Public clients self-registered by Claude, ChatGPT, Grok, and other allowed DCR-capable connectors persist in `~/.aki/mcpsv/oauth-dcr-clients.json`. Access/refresh tokens persist in `~/.aki/mcpsv/tokens.json`.
 
 The local Streamable HTTP endpoint at `127.0.0.1:19999/mcp` does not run a browser OAuth flow, but it does require one of those issued Aki Bearer access tokens before POST/DELETE reaches `streamable-bridge.js`. It still binds only to loopback, rejects any request carrying `Origin`, emits no CORS headers, and requires `application/json` for POST. The panel's ready-to-copy Postman Authorization value is a valid local-client Bearer value too.
 
@@ -24,8 +24,8 @@ Fresh filesystem scope is narrow by default: with no saved `folders`, `scripts/r
 
 ## Client registration
 
-- **Claude (pre-registered)**: Client ID/Secret printed by `npm start`, pasted into Advanced settings. Redirect URI fixed to `https://claude.ai/api/mcp/auth_callback`. Auth method: `client_secret_post`.
-- **DCR/public clients**: ChatGPT and Grok self-register through `POST /register`; the allowlist also accepts Google's Gemini OAuth proxy prefixes and Mistral's fixed integration callback. Auth method: `none` (PKCE only). Arbitrary third-party redirect URIs are rejected. OAuth request bodies are capped at 64 KiB, and persistent DCR storage is capped at 128 clients so unauthenticated registration cannot grow memory/disk without bound.
+- **DCR/public clients (default)**: Claude, ChatGPT, and Grok self-register through `POST /register`. Auth method: `none` with PKCE S256. The same allowlist also accepts Google's Gemini OAuth proxy prefixes, Antigravity, and Mistral callbacks. Arbitrary third-party redirect URIs are rejected. OAuth request bodies are capped at 64 KiB, and persistent DCR storage is capped at 128 clients so unauthenticated registration cannot grow memory/disk without bound.
+- **Static confidential fallback**: `oauth-client.json` remains available for clients that cannot complete automatic registration, currently surfaced in the panel for Gemini fallback. It uses `client_secret_post` and the same redirect allowlist; normal Claude setup no longer requires it.
 
 ## The 2 layers that actually block unauthorized public OAuth access
 
@@ -40,12 +40,12 @@ Postman pool auto-join is another opt-in local automation plane, not MCP authent
 
 ## Real limitations
 
-- **No refresh token rotation** for the pre-registered confidential Claude client; DCR/public clients rotate their refresh token on every refresh grant.
-- **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible; request bodies are still bounded before passphrase validation.
+- **No refresh token rotation** for the static confidential fallback client; DCR/public clients rotate their refresh token on every refresh grant.
+- **`/authorize` wrong-passphrase attempts are source-scoped**: 5 failures within 5 minutes place only that source into a 10-minute cooldown and return `429` with `Retry-After`. Forwarded client addresses are trusted only from loopback ingress; loopback fallback keys isolate connector client IDs rather than creating a global lockout.
 - **DCR creates one stored client per connector instance, capped at 128** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations or clear the cap.
 
 ## Cross-references
-- `docs/research/claude-ai-oauth-connector.md` — research that drove the Claude pre-registered path
+- `docs/research/claude-ai-oauth-connector.md` — historical research that drove the original static Claude path; current default is DCR
 - `docs/ref/claude-connector.md` — fields on claude.ai's dialog
 - `docs/ref/postman-desktop-remote.md` — Cloudflare One private-RDP operator plane for iPhone → Windows → Postman Desktop → Aki
 - `docs/ref/postman-pool-autojoin.md` — Telegram allowlist, invite handling, LibreWolf session-copy boundary, Account Chooser session switching, bounded challenge failure/retry, and join/report behavior

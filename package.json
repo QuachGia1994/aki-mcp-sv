@@ -2,7 +2,7 @@
   "name": "mcp-local",
   "version": "1.15.0",
   "aki": {
-    "upstreamReviewed": "2.0.1",
+    "upstreamReviewed": "2.0.2",
     "updateMode": "selective"
   },
   "private": true,
