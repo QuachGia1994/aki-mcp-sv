@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { USER_DIR } from './userdata.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const RULE_CHANGELOG = path.join(os.homedir(), '.aki', 'akidevrule', 'CHANGELOG.md');
+const RULE_ROOT = path.join(os.homedir(), '.aki', 'akidevrule');
+const RULE_CHANGELOG = path.join(RULE_ROOT, 'CHANGELOG.md');
+const RULE_VERSION_FILE = path.join(RULE_ROOT, '.version');
 
 // Lives under this app's own USER_DIR (pattern.A1 SSoT), not the shared ~/.aki root — akidevrule's CHANGELOG above is a different product's data and stays under ~/.aki directly.
 export const STATUS_PATH = path.join(USER_DIR, 'aki-mcp-status.json');
@@ -44,9 +46,27 @@ function readLocalMcp() {
   return readLocalMcpMeta().current;
 }
 
+function readVersionField(file, key) {
+  try {
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      if (line.startsWith(`${key}=`)) return line.slice(key.length + 1).trim() || null;
+    }
+  } catch { /* absent install metadata is normal */ }
+  return null;
+}
+
+function readLocalRuleMeta() {
+  let current = null;
+  try { current = parseChangelogVersion(readFileSync(RULE_CHANGELOG, 'utf8')); }
+  catch { /* not installed */ }
+  return {
+    current,
+    upstreamReviewed: readVersionField(RULE_VERSION_FILE, 'upstreamReviewed'),
+  };
+}
+
 function readLocalRule() {
-  try { return parseChangelogVersion(readFileSync(RULE_CHANGELOG, 'utf8')); }
-  catch { return null; }
+  return readLocalRuleMeta().current;
 }
 
 // Local versions only — no network. rule is null when akidevrule isn't installed.
@@ -100,21 +120,34 @@ export function buildMcpUpdateState({ current, upstreamReviewed, updateMode }, l
   };
 }
 
+export function buildRuleUpdateState({ current, upstreamReviewed }, latest) {
+  const comparisonVersion = upstreamReviewed || current;
+  return {
+    current,
+    latest,
+    upstreamReviewed,
+    updateAvailable: cmpSemver(comparisonVersion, latest) < 0,
+  };
+}
+
 export function getLocalMcpUpdateState(latest = null) {
   return buildMcpUpdateState(readLocalMcpMeta(), latest);
 }
 
-// { mcp:{current,latest,upstreamReviewed,updateMode,updateAvailable}, rule:{...} }. For a selective fork, upstreamReviewed is the last upstream release already audited/ported; only a newer upstream release re-opens the update banner.
+export function getLocalRuleUpdateState(latest = null) {
+  return buildRuleUpdateState(readLocalRuleMeta(), latest);
+}
+
+// { mcp:{current,latest,upstreamReviewed,updateMode,updateAvailable}, rule:{current,latest,upstreamReviewed,updateAvailable} }. For selective forks, upstreamReviewed is the last upstream release already audited/ported; only a newer upstream release re-opens the update banner.
 export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
-  const local = getLocalVersions();
   const [mcpPkg, ruleLog] = await Promise.all([
     fetchText(MCP_PKG_URL, timeoutMs),
     fetchText(RULE_CHANGELOG_URL, timeoutMs),
   ]);
   let mcpLatest = null;
   try { mcpLatest = mcpPkg ? (JSON.parse(mcpPkg).version || null) : null; } catch { mcpLatest = null; }
-  const branch = (current, latest) => ({ current, latest, updateAvailable: cmpSemver(current, latest) < 0 });
-  return { mcp: getLocalMcpUpdateState(mcpLatest), rule: branch(local.rule, parseChangelogVersion(ruleLog)) };
+  const ruleLatest = parseChangelogVersion(ruleLog);
+  return { mcp: getLocalMcpUpdateState(mcpLatest), rule: getLocalRuleUpdateState(ruleLatest) };
 }
 
 // A convenience mirror the pasted instruction may read at session start when the owner has granted this user-data path. Never fatal — the console/panel banners stand alone.

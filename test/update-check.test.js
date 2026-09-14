@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMcpUpdateState } from '../scripts/update-check.js';
+import { buildMcpUpdateState, buildRuleUpdateState } from '../scripts/update-check.js';
 import { renderPanel } from '../scripts/config-page.js';
 
 function panel(updateInfo) {
@@ -41,4 +41,20 @@ test('selective fork warns again only when upstream moves past reviewed baseline
 test('non-selective installs keep ordinary version comparison', () => {
   assert.equal(buildMcpUpdateState({ current: '1.15.0', upstreamReviewed: null, updateMode: null }, '2.0.0').updateAvailable, true);
   assert.equal(buildMcpUpdateState({ current: '2.0.0', upstreamReviewed: null, updateMode: null }, '2.0.0').updateAvailable, false);
+});
+
+test('akidevrule selective baseline suppresses reviewed upstream and reopens only on newer release', () => {
+  const reviewed = buildRuleUpdateState({ current: '2.8.0', upstreamReviewed: '3.0.0' }, '3.0.0');
+  assert.equal(reviewed.updateAvailable, false);
+  assert.equal(reviewed.current, '2.8.0');
+  assert.equal(reviewed.upstreamReviewed, '3.0.0');
+
+  const newer = buildRuleUpdateState({ current: '2.8.0', upstreamReviewed: '3.0.0' }, '3.1.0');
+  assert.equal(newer.updateAvailable, true);
+  assert.equal(newer.upstreamReviewed, '3.0.0');
+});
+
+test('akidevrule without reviewed baseline keeps ordinary version comparison', () => {
+  assert.equal(buildRuleUpdateState({ current: '2.8.0', upstreamReviewed: null }, '3.0.0').updateAvailable, true);
+  assert.equal(buildRuleUpdateState({ current: '3.0.0', upstreamReviewed: null }, '3.0.0').updateAvailable, false);
 });

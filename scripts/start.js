@@ -6,10 +6,11 @@
 try { process.loadEnvFile?.(); } catch {}
 if (existsSync('.env')) console.log('[start] loaded environment from .env');
 
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { funnelStatus, enableFunnel, bringUp } from './tailscale.js';
 import { randomBytes } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { openBrowser } from './open-browser.js';
 import { loadOrCreateClient, loadOrCreatePassphrase } from './oauth.js';
 import { startGatekeeper } from './gatekeeper.js';
@@ -20,6 +21,38 @@ import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { USER_DIR, IS_DEV, readIngressConfig } from './userdata.js';
 import { killPostmanDaemon } from './postman-mcp.js';
+import { readInstanceState, writeInstanceState, clearInstanceState, prepareExistingInstance } from './instance-state.js';
+
+function readVersion() {
+  try {
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+  } catch {
+    return '1.15.0';
+  }
+}
+
+function readRuntimeId(version) {
+  try {
+    const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+    const revision = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true, timeout: 3000 }).trim();
+    return revision ? `${version}:${revision}` : version;
+  } catch {
+    return version;
+  }
+}
+
+const version = readVersion();
+const runtimeId = readRuntimeId(version);
+const existingState = readInstanceState();
+const existingDecision = await prepareExistingInstance(existingState, runtimeId);
+if (existingDecision.action === 'reuse') {
+  const existingUrl = `http://127.0.0.1:${existingState.panelPort}/?t=${existingState.token}`;
+  console.log(`[start] akimcp ${version} is already running with this revision — reusing its panel`);
+  if (process.env.MCP_SKIP_BROWSER_OPEN) console.log(`[start] panel: ${existingUrl}`);
+  else await openBrowser(existingUrl);
+  process.exit(0);
+}
+if (existingState) clearInstanceState(existingState.instanceId);
 
 const gatePort = process.env.GATEKEEPER_PORT || (IS_DEV ? '9997' : '9999');
 const panelPort = process.env.PANEL_PORT || (IS_DEV ? '9996' : '9998');
@@ -28,6 +61,7 @@ process.env.GATEKEEPER_PORT = gatePort;
 process.env.PANEL_PORT = panelPort;
 process.env.LOOPBACK_MCP_PORT = loopbackPort;
 const panelToken = randomBytes(16).toString('hex');
+const instanceId = randomBytes(16).toString('hex');
 
 console.log(`[start] ${IS_DEV ? 'development' : 'production'} data: ${USER_DIR}`);
 
@@ -145,8 +179,53 @@ try {
   shutdown();
 }
 
-panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, updateInfo });
-const panelUrl = `http://127.0.0.1:${panelPort}/?t=${panelToken}`;
+const instance = { instanceId, pid: process.pid, version, runtimeId };
+panel = startPanel({
+  port: Number(panelPort),
+  token: panelToken,
+  origin,
+  ingress: ingressMode,
+  client,
+  passphrase,
+  updateInfo,
+  instance,
+  onInstanceHandoff: () => shutdown(),
+  onFatal: () => shutdown(),
+});
+
+function waitForListening(server, label, timeoutMs = 5000) {
+  if (!server || server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`${label} did not start listening within ${timeoutMs}ms`));
+    }, timeoutMs);
+    const onListening = () => {
+      cleanup();
+      resolve();
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error(`${label} closed before it started listening`));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      server.off('listening', onListening);
+      server.off('close', onClose);
+    };
+    server.once('listening', onListening);
+    server.once('close', onClose);
+  });
+}
+
+await Promise.all([
+  gateServer ? waitForListening(gateServer, 'gatekeeper') : Promise.resolve(),
+  waitForListening(panel, 'panel'),
+]);
+
+const actualPanelPort = panel.actualPort ?? panel.address()?.port ?? Number(panelPort);
+writeInstanceState({ ...instance, panelPort: actualPanelPort, token: panelToken, startedAt: new Date().toISOString() });
+const panelUrl = `http://127.0.0.1:${actualPanelPort}/?t=${panelToken}`;
 // Escape hatch for automated runs (bootstrap smoke tests) that must not pop a browser window — off by default, normal `npm start` is unaffected.
 if (process.env.MCP_SKIP_BROWSER_OPEN) {
   console.log(`[start] MCP_SKIP_BROWSER_OPEN set — not opening a browser (panel: ${panelUrl})`);
@@ -161,6 +240,7 @@ if (process.env.MCP_SKIP_BROWSER_OPEN) {
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInstanceState(instanceId);
   d1Bridge?.close();
   loopbackMcp?.close();
   cloudflared?.kill();
@@ -170,4 +250,8 @@ function shutdown() {
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-process.on('exit', () => { cloudflared?.kill(); killPostmanDaemon(); }); // safety net: never leave a child orphaned if this process exits abruptly
+process.on('exit', () => {
+  clearInstanceState(instanceId);
+  cloudflared?.kill();
+  killPostmanDaemon();
+}); // safety net: never leave a child orphaned if this process exits abruptly

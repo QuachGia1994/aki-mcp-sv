@@ -26,7 +26,7 @@ const REPO_ROOT = process.cwd();
 const RULES_DIR = path.join(os.homedir(), '.aki', 'akidevrule');
 const SOURCE_REPO_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
-const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
+const RULES_REPO_URL = 'https://github.com/QuachGia1994/akidevrule.git';
 const PANEL_BODY_MAX_BYTES = 1024 * 1024;
 
 function writeJsonAtomic(file, data) {
@@ -147,7 +147,7 @@ async function runNpm(args) {
 // Three states, one button: already cloned locally, cloned by us before, or never seen on this machine.
 async function installRules() {
   const recorded = existsSync(SOURCE_REPO_FILE) ? readFileSync(SOURCE_REPO_FILE, 'utf8').trim() : null;
-  let repo = recorded && existsSync(path.join(recorded, 'install.sh')) ? recorded : null;
+  let repo = recorded && existsSync(path.join(recorded, 'install.mjs')) ? recorded : null;
 
   if (!repo) {
     if (existsSync(path.join(RULES_CLONE_DIR, '.git'))) {
@@ -158,17 +158,8 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  try {
-    const log = IS_WIN
-      ? await run('py', ['-3', path.join(repo, 'install.py')], repo)
-      : await run('bash', [path.join(repo, 'install.sh')], repo);
-    return `${log.trim().split('\n').pop()} (source: ${repo})`;
-  } catch (e) {
-    if (IS_WIN && /ENOENT|not found|not recognized/i.test(e.message)) {
-      throw new Error('Python launcher `py` not found — install Python 3 or run `py -3 install.py` from the akidevrule source repo');
-    }
-    throw e;
-  }
+  const log = await run(process.execPath, [path.join(repo, 'install.mjs')], repo);
+  return `${log.trim().split('\n').pop()} (source: ${repo})`;
 }
 
 // Pull this repo, but only when the tree is clean — an unattended pull over local edits can conflict or lose work (agent.B3). Checked at click-time, not page-load, since the tree can change in between.
@@ -281,7 +272,7 @@ export const ROUTES = {
   },
 };
 
-export function startPanel({ port, token, origin, ingress, client, passphrase, updateInfo }) {
+export function startPanel({ port, token, origin, ingress, client, passphrase, updateInfo, instance = null, onInstanceHandoff = null, onFatal = null }) {
   const server = http.createServer(async (req, res) => {
     const [urlPath, query] = (req.url || '').split('?');
     const route = `${req.method} ${urlPath}`;
@@ -297,6 +288,15 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
 
     if (req.method === 'GET' && await serveStatic(res, urlPath)) return;
 
+    if (route === 'GET /api/instance' || route === 'POST /api/instance-handoff') {
+      if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
+      if (!instance) return json(res, 404, { error: 'instance metadata unavailable' });
+      if (route === 'GET /api/instance') return json(res, 200, instance);
+      json(res, 200, { ok: true });
+      setImmediate(() => onInstanceHandoff?.());
+      return;
+    }
+
     const handler = ROUTES[route];
     if (!handler) return json(res, 404, { error: 'not found' });
     if (req.headers['x-panel-token'] !== token) return json(res, 403, { error: 'sai token' });
@@ -308,6 +308,21 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
     }
   });
 
-  server.listen(port, '127.0.0.1', () => console.log(`[panel] http://127.0.0.1:${port}/?t=${token}`));
+  const maxPortAttempts = 20;
+  let portOffset = 0;
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE' && portOffset < maxPortAttempts) {
+      portOffset += 1;
+      server.listen(port + portOffset, '127.0.0.1');
+      return;
+    }
+    console.error(`[panel] failed to listen on :${port + portOffset}: ${error.message}`);
+    onFatal?.(error);
+  });
+  server.on('listening', () => {
+    server.actualPort = server.address().port;
+    console.log(`[panel] http://127.0.0.1:${server.actualPort}/?t=${token}`);
+  });
+  server.listen(port, '127.0.0.1');
   return server;
 }

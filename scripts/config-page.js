@@ -15,9 +15,9 @@ const GEMINI_CONNECTOR_URL = 'https://support.google.com/g/answer/17106276';
 const GROK_CONNECTOR_URL = 'https://grok.com/connectors';
 const TOKENIZER_URL = 'https://chromewebstore.google.com/detail/claude-token-counter/bioobpobpbeohjoefndgkiaakboimpch';
 const GROK_USAGE_URL = 'https://chromewebstore.google.com/detail/grok-usage-watch-%E2%80%93-rate-l/bmpboaihdkpkjehbceegdmndkonlpdge';
-const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule';
+const RULES_REPO_URL = 'https://github.com/QuachGia1994/akidevrule';
 const MCP_REPO_URL = 'https://github.com/lacvietanh/aki-mcp-sv';
-const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvietanh/akidevrule/master/install.sh | bash';
+const RULES_INSTALL_CMD = 'git clone https://github.com/QuachGia1994/akidevrule.git && cd akidevrule && ./install.sh';
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
@@ -309,7 +309,7 @@ ${field('Passphrase', passphrase)}
 <section id="s2"><h2>2 · Install AkiDevRule (optional)</h2>
 <p class="helptext">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Choose which files load in section 3 below.</p>
 ${field('Install command', RULES_INSTALL_CMD)}
-<p class="helptext">Mac/Linux: the curl command above, or <span class="mono">bash install.sh</span> from a local clone. Windows (PowerShell): <span class="mono">git clone https://github.com/lacvietanh/akidevrule.git; cd akidevrule; .\install.ps1</span>, or <span class="mono">py -3 install.py</span>. No sudo; writes only to ~/.aki and ~/.claude, removable with rm -rf.</p>
+<p class="helptext">Mac/Linux: clone this fork and run <span class="mono">./install.sh</span> or <span class="mono">node install.mjs</span>. Windows (PowerShell): <span class="mono">git clone https://github.com/QuachGia1994/akidevrule.git; cd akidevrule; .\install.ps1</span>, or <span class="mono">node install.mjs</span>. Node.js 18+; no sudo; writes only to ~/.aki and ~/.claude.</p>
 <div class="acts">
   <button class="primary" data-act="installRules">Install / update</button>
   <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
