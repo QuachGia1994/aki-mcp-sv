@@ -4,6 +4,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-09-15
+
+### Fixed
+- **A quit-and-reopened Postman on a new DevTools port was never re-attached**, forcing a manual relaunch from the panel. `aki-pmcontrol`'s `discover()` now retries port resolution when `CDP.List` fails against the current port, instead of unconditionally re-resolving it on every tick.
+- **`npm test` hardcoded the CLI's expected `--version`/`-v` output**, so it went red on every version bump (regressed at 2.0.1 and 2.0.3). The test now reads the expected version from `package.json`.
+
+### Changed
+- Removed remaining references to the private internal lab this daemon originated from (`CLAUDE.md`, `README.md`, `docs/feat/tools.md`) — public-repo boundary cleanup, no behavior change.
+
 ## [2.0.3] - 2026-09-15
 
 ### Security
