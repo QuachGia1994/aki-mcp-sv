@@ -1,4 +1,4 @@
-// Factory for the one shared McpServer hosting every in-process tool domain (shell, agy,
+﻿// Factory for the one shared McpServer hosting every in-process tool domain (shell, agy,
 // search, claude-mem read access, filesystem). It replaces local-tools-mcp.js's separately spawned
 // stdio child now that mcp-hub is gone (docs/plan/done/2.0.0-improve.md #7, Stage 2 phase 2). Each domain's logic stays in
 // its own register(server) module behind a stable contract, unchanged from Stage 1.
@@ -22,6 +22,7 @@ import { register as registerGit } from './git-mcp.js';
 import { register as registerSqlite } from './sqlite-mcp.js';
 import { register as registerTask } from './task-mcp.js';
 import { register as registerPort } from './port-mcp.js';
+import { register as registerWorkflow } from './workflow-mcp.js';
 
 const SERVER_INSTRUCTIONS = [
   'Gemini Spark confirms every MCP tools/call client-side.',
@@ -98,8 +99,8 @@ function annotationsForTool(name) {
 
 // mcp-hub used to prefix every tool from this server's config entry (key "local") with
 // `local__` when aggregating backends. Now that the bridge talks to this server directly, that
-// prefixing layer is gone — reproduce it here as the one place doing it, so served tool names
-// (local__run_cmd, local__find_path, …) stay exactly what README.md and CLAUDE.md already tell
+// prefixing layer is gone â€” reproduce it here as the one place doing it, so served tool names
+// (local__run_cmd, local__find_path, â€¦) stay exactly what README.md and CLAUDE.md already tell
 // every connected AI to call. This seam also centralizes MCP ToolAnnotations; Spark still confirms
 // every call today, but accurate hints help other clients and future trust policies classify tools.
 function prefixedServer(server, prefix) {
@@ -123,7 +124,7 @@ export function createToolsServer() {
     { instructions: SERVER_INSTRUCTIONS },
   );
   const local = prefixedServer(server, 'local__');
-  for (const register of [registerShell, registerAgy, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerGit, registerSqlite, registerTask, registerPort, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
+  for (const register of [registerShell, registerAgy, registerXKiro, registerBudgetRouter, registerAgent, registerProjectGraph, registerTaskCheckpoint, registerContextOptimizer, registerAkiDoctor, registerImageInbox, registerGit, registerSqlite, registerTask, registerPort, registerWorkflow, registerSearch, registerRepoSnapshot, registerClaudeMem, registerFilesystem, registerPostman]) register(local);
 
   // Compatibility for pre-1.10 installs where mcp-hub exposed the separate filesystem backend as
   // `filesystem__*`. Qwen/Kimi bridge prompts in the wild use these names. Both namespaces land on
@@ -131,3 +132,4 @@ export function createToolsServer() {
   registerFilesystem(prefixedServer(server, 'filesystem__'));
   return server;
 }
+

@@ -397,3 +397,5 @@ This project targets a different scenario: exposing local access to Claude **on 
 <img width="898" height="834" alt="image" src="https://github.com/user-attachments/assets/2b64541a-aea8-4bcf-b4dc-341254895a32" />
 <img width="892" height="1032" alt="image" src="https://github.com/user-attachments/assets/69413798-5445-4277-9797-a671da6657bd" />
 <img width="651" height="701" alt="gpt-aki-mcp-setting" src="https://github.com/user-attachments/assets/c067919c-1b7f-4f49-af81-82f1193f1f17" />
+
+The local tools server also includes read-only workflow guidance tools for planning, debugging, and review; see [Tools](docs/feat/tools.md).

@@ -64,3 +64,7 @@ Agent arms are not equivalent to direct file primitives: they offload a whole in
 - Kiro was integrated historically and `kiro_write` was removed 2026-08-10; the remaining Kiro arm was retired by owner decision on 2026-09-10. Historical plans remain under `docs/plan/done/`.
 - Current AGY CLI facts by evidence tier: `docs/ref/harness-fact.md`.
 - Historical integration records: `docs/plan/done/integrate-kiro-cli.md`, `docs/plan/done/remove-kiro-write.md`, `docs/plan/done/integrate-gemini-grok.md`.
+
+### Workflow guidance tools
+
+`workflow_guide`, `debug_workflow`, and `review_workflow` return compact local guidance for planning, evidence-led debugging, and requirement-first review. They do not mutate state and are advertised as read-only MCP tools.
