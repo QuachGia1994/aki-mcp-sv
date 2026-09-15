@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN_PATH = path.join(REPO_ROOT, 'bin', 'akimcp.js');
+const { version } = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
 
 function runCli(args, env = {}) {
   return new Promise((resolve, reject) => {
@@ -23,11 +25,11 @@ async function testCli() {
   // Test --version and -v
   const vLong = await runCli(['--version']);
   assert.equal(vLong.code, 0);
-  assert.equal(vLong.stdout.trim(), '2.0.2');
+  assert.equal(vLong.stdout.trim(), version);
 
   const vShort = await runCli(['-v']);
   assert.equal(vShort.code, 0);
-  assert.equal(vShort.stdout.trim(), '2.0.2');
+  assert.equal(vShort.stdout.trim(), version);
 
   // Test --help and -h
   const hLong = await runCli(['--help']);
