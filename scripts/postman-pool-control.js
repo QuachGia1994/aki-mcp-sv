@@ -77,6 +77,7 @@ function readBrowserConfig(configPath = POSTMAN_POOL_CONFIG_PATH) {
     scratchRoot: raw.scratchRoot || '',
     headless: raw.headless === true,
     timeoutSeconds: Number.isFinite(Number(raw.timeoutSeconds)) ? Math.max(10, Math.min(120, Number(raw.timeoutSeconds))) : 45,
+    cdpChallengeTimeoutSeconds: Number.isFinite(Number(raw.cdpChallengeTimeoutSeconds)) ? Math.max(60, Math.min(1800, Number(raw.cdpChallengeTimeoutSeconds))) : 300,
   };
 }
 
@@ -385,7 +386,12 @@ function cdpJoinPaths() {
 }
 
 export function buildCdpJoinWorkerInvocation(config, inviteUrl, resultFile) {
-  return pythonCommand([JOIN_SCRIPT, '--cdp-join', '--invite', inviteUrl, '--result-file', resultFile, ...browserArgs({ ...config, headless: false })]);
+  const args = [JOIN_SCRIPT, '--cdp-join', '--invite', inviteUrl, '--result-file', resultFile, ...browserArgs({ ...config, headless: false })];
+  const challengeTimeout = Number.isFinite(Number(config.cdpChallengeTimeoutSeconds))
+    ? Math.max(60, Math.min(1800, Number(config.cdpChallengeTimeoutSeconds)))
+    : 300;
+  args.push('--cdp-challenge-timeout', String(challengeTimeout));
+  return pythonCommand(args);
 }
 
 export function cdpJoinStatus() {

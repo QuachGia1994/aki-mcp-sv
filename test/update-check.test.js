@@ -44,10 +44,10 @@ test('non-selective installs keep ordinary version comparison', () => {
   assert.equal(buildMcpUpdateState({ current: '2.0.0', upstreamReviewed: null, updateMode: null }, '2.0.0').updateAvailable, false);
 });
 
-test('selective fork records upstream 2.0.2 as reviewed after the onboarding port', () => {
+test('selective fork records upstream 2.0.3 as reviewed after the onboarding port', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(pkg.aki?.updateMode, 'selective');
-  assert.equal(pkg.aki?.upstreamReviewed, '2.0.2');
+  assert.equal(pkg.aki?.upstreamReviewed, '2.0.3');
 });
 
 test('akidevrule selective baseline suppresses reviewed upstream and reopens only on newer release', () => {

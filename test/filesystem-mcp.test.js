@@ -94,7 +94,14 @@ test('line limits reject invalid counts and allow zero without returning the ent
     await assert.rejects(readTextFile({ path: target, head: count }), /non-negative integer/);
     await assert.rejects(readTextFile({ path: target, tail: count }), /non-negative integer/);
   }
-  await assert.rejects(readTextFile({ path: target, head: 0, tail: 1 }), /both head and tail/);
+  await assert.rejects(readTextFile({ path: target, head: 1, tail: 1 }), /both head and tail/);
+});
+
+test('read_text_file tolerates a zero head sentinel alongside tail from clients', async (t) => {
+  const root = await fixture(t);
+  const target = path.join(root, 'lines.txt');
+  await writeFile(target, 'first\nlast');
+  assert.equal(await readTextFile({ path: target, tail: 1, head: 0 }), 'last');
 });
 
 test('concurrent file moves never overwrite a shared destination', async (t) => {

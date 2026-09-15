@@ -86,12 +86,17 @@ async function headFile(filePath, numLines) {
 }
 
 export async function readTextFile({ path: p, tail, head }) {
-  if (tail !== undefined && head !== undefined) throw new Error('cannot specify both head and tail');
-  const count = tail ?? head;
+  // Some MCP clients serialize omitted optional numeric fields as 0. Treat zero as an unset
+  // sentinel only when the other selector is present; preserve explicit head:0/tail:0 semantics
+  // when used alone. Non-zero head + tail remains invalid.
+  const hasTail = tail !== undefined && tail !== 0;
+  const hasHead = head !== undefined && head !== 0;
+  if (hasTail && hasHead) throw new Error('cannot specify both head and tail');
+  const count = hasTail ? tail : hasHead ? head : tail ?? head;
   if (count !== undefined && (!Number.isSafeInteger(count) || count < 0)) throw new Error('line count must be a non-negative integer');
   const real = await resolveRealUnderRoot(p);
   if (count === 0) return '';
-  return tail !== undefined ? tailFile(real, tail) : head !== undefined ? headFile(real, head) : fs.readFile(real, 'utf-8');
+  return hasTail ? tailFile(real, tail) : hasHead ? headFile(real, head) : fs.readFile(real, 'utf-8');
 }
 
 export async function getFileInfoText(p) {

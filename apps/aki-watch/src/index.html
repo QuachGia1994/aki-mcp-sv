@@ -47,7 +47,7 @@
             <button id="cdp-join-start-btn" class="button secondary" type="button">CDP Join (real profiles)</button>
             <button id="cdp-join-stop-btn" class="button danger" type="button" disabled>Stop CDP</button>
           </div>
-          <p class="field-help">CDP Join opens up to 8 real LibreWolf windows. Clear the Cloudflare check in each window by hand — once a page passes the challenge, the join continues automatically.</p>
+          <p class="field-help">CDP Join opens up to 8 real LibreWolf windows. Clear the Cloudflare check in each window by hand — once a page passes, join continues automatically. Wait time is <strong>CDP challenge timeout</strong> in Settings (default 300s).</p>
           <p id="cdp-join-status" class="status-copy" role="status" aria-live="polite">CDP Join idle.</p>
           <div id="cdp-join-progress-track" class="progress-track" role="progressbar" aria-label="CDP join progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="cdp-join-progress" class="progress-fill"></div></div>
 
@@ -170,7 +170,9 @@
             </fieldset>
             <label>Scratch root<input name="scratchRoot" /></label>
             <label>Join timeout<input name="timeoutSeconds" type="number" inputmode="numeric" min="10" max="120" /></label>
+            <label>CDP challenge timeout (s)<input name="cdpChallengeTimeoutSeconds" type="number" inputmode="numeric" min="60" max="1800" /></label>
             <label class="checkbox-field"><input name="headless" type="checkbox" /><span>Headless browser</span></label>
+            <p class="field-help wide">CDP challenge timeout is how long CDP Join waits for you to clear Cloudflare in each LibreWolf window (60–1800s, default 300). Join timeout is the normal Selenium page-load timeout.</p>
             <p class="field-help wide">Join uses Postman Account Chooser, switches each saved account, auto-confirms the invite, and verifies the final team URL. No manual verification checkpoint is part of the normal flow.</p>
             <div class="form-actions wide">
               <button class="button primary" type="submit">Save settings</button>

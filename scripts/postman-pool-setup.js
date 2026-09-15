@@ -73,6 +73,7 @@ function withDefaults(config) {
     headless: false,
     scratchRoot: '',
     timeoutSeconds: 45,
+    cdpChallengeTimeoutSeconds: 300,
     ...current,
   };
 }
@@ -110,6 +111,7 @@ function configView(configPath) {
     headless: raw.headless === true,
     scratchRoot: raw.scratchRoot || '',
     timeoutSeconds: Number(raw.timeoutSeconds) || 45,
+    cdpChallengeTimeoutSeconds: Number(raw.cdpChallengeTimeoutSeconds) || 300,
   };
 }
 

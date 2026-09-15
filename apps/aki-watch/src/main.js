@@ -484,6 +484,7 @@ async function loadConfig() {
     form.headless.checked = cfg.headless === true;
     form.scratchRoot.value = cfg.scratchRoot || '';
     form.timeoutSeconds.value = cfg.timeoutSeconds || 45;
+    form.cdpChallengeTimeoutSeconds.value = cfg.cdpChallengeTimeoutSeconds || 300;
     form.telegramApiHash.value = '';
     form.reportBotToken.value = '';
     $('#tag-apihash').textContent = cfg.hasApiHash ? 'set' : 'not set';
@@ -510,6 +511,7 @@ async function saveConfig(event) {
     headless: form.headless.checked,
     scratchRoot: form.scratchRoot.value.trim(),
     timeoutSeconds: Number(form.timeoutSeconds.value) || 45,
+    cdpChallengeTimeoutSeconds: Math.max(60, Math.min(1800, Number(form.cdpChallengeTimeoutSeconds.value) || 300)),
   };
   if (form.telegramApiHash.value.trim()) patch.telegramApiHash = form.telegramApiHash.value.trim();
   if (form.reportBotToken.value.trim()) patch.reportBotToken = form.reportBotToken.value.trim();
@@ -576,7 +578,7 @@ function renderCdpJoin(data) {
   if (data.running) {
     const current = [...(data.events || [])].reverse().find((event) => event.type === 'account_status' || event.type === 'account_start');
     const detail = current?.status ? ` · ${statusLabel(current.status)}` : '';
-    $('#cdp-join-status').textContent = `CDP join running${current?.email ? ` — ${current.email}` : current?.profile ? ` — ${current.profile}` : ''}${detail}. Clear any Cloudflare check in the LibreWolf windows.`;
+    $('#cdp-join-status').textContent = `CDP join running${current?.email ? ` — ${current.email}` : current?.profile ? ` — ${current.profile}` : ''}${detail}. Clear Cloudflare in LibreWolf windows (timeout from Settings).`;
   } else if (data.cancelled) {
     $('#cdp-join-status').textContent = 'CDP join cancelled by user.';
   } else if (data.result) {

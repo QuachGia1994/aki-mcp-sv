@@ -16,7 +16,7 @@ import struct
 import subprocess
 import sys
 import tempfile
-from threading import Lock
+from threading import Lock, local as threading_local
 import time
 import urllib.request
 from urllib.parse import parse_qs, quote, unquote, urlparse
@@ -74,10 +74,15 @@ MAX_RATE_LIMIT_REFRESHES = 6
 # clear any Cloudflare challenge by hand, then drive the join over the Firefox CDP endpoint.
 MAX_CDP_PROFILES = 8
 CDP_POLL_INTERVAL = 0.5          # seconds between URL polls while waiting for the challenge to clear
-CDP_CHALLENGE_TIMEOUT = 300      # max seconds to wait for the user to complete the Cloudflare bypass
-CDP_JOIN_TIMEOUT = 30            # max seconds for a single CDP Runtime.evaluate round-trip
+CDP_CHALLENGE_TIMEOUT = 300      # default max seconds to wait for the user to complete the Cloudflare check (overridable via --cdp-challenge-timeout)
+CDP_JOIN_TIMEOUT = 30            # max seconds for navigate / heavy CDP Runtime.evaluate
+CDP_EVAL_TIMEOUT = 8             # max seconds for lightweight poll evaluates (accept/discover)
 CDP_READY_TIMEOUT = 20           # max seconds to wait for a launched profile's CDP endpoint to answer
 CDP_JOIN_ATTEMPTS = 40           # poll attempts per account while auto-accepting the invite
+CDP_TAB_REFRESH_EVERY = 5        # re-fetch /json/list only every N attempts when ws_url is healthy
+CDP_PROGRESS_EMIT_INTERVAL = 2.0 # throttle challenge_page progress noise
+CDP_LAUNCH_STAGGER_SECONDS = 0.08  # reduce disk/CPU stampede when opening many real profiles
+CDP_POST_CLICK_POLL_SECONDS = 0.2  # faster poll right after an auto-click
 
 
 def log(message: str) -> None:
@@ -1193,7 +1198,7 @@ def launch_real_profile(binary: Path, profile_dir: Path, debug_port: int) -> sub
     return subprocess.Popen(args, **kwargs)
 
 
-def cdp_get_tabs(port: int, timeout: float = 2.0) -> list[dict]:
+def cdp_get_tabs(port: int, timeout: float = 1.0) -> list[dict]:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -1272,71 +1277,157 @@ def _ws_read_message(sock: socket.socket, recv_buf: bytearray) -> tuple[str | No
         return "", leftover
 
 
-def ws_send_recv(ws_url: str, payload: dict, timeout: float = CDP_JOIN_TIMEOUT) -> dict | None:
-    # Minimal stdlib CDP WebSocket call: open ws://, do the RFC 6455 handshake, send one JSON-RPC
-    # message, read frames until the response with a matching id arrives. Kept tiny on purpose so the
-    # target machine needs no websocket-client dependency.
-    parsed = urlparse(ws_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 80
-    path = parsed.path or "/"
-    if parsed.query:
-        path = f"{path}?{parsed.query}"
-    target_id = payload.get("id")
-    sock = None
-    try:
-        sock = socket.create_connection((host, port), timeout=timeout)
-        key = base64.b64encode(os.urandom(16)).decode()
-        handshake = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
-        )
-        sock.sendall(handshake.encode())
-        header_buf = b""
-        sock.settimeout(timeout)
-        while b"\r\n\r\n" not in header_buf:
-            chunk = sock.recv(1024)
-            if not chunk:
-                return None
-            header_buf += chunk
-        _, _, leftover = header_buf.partition(b"\r\n\r\n")
-        _ws_send_frame(sock, json.dumps(payload).encode("utf-8"))
-        recv_buf = bytearray(leftover)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            while True:
-                text, recv_buf = _ws_read_message(sock, recv_buf)
-                if text is None:
-                    break
-                try:
-                    message = json.loads(text)
-                except Exception:
-                    continue
-                if message.get("id") == target_id:
-                    return message
-            sock.settimeout(max(0.1, deadline - time.time()))
-            try:
-                chunk = sock.recv(65536)
-            except socket.timeout:
-                break
-            except Exception:
-                break
-            if not chunk:
-                break
-            recv_buf += chunk
-        return None
-    except Exception:
-        return None
-    finally:
+class CdpWsSession:
+    # Persistent stdlib WebSocket to one Firefox CDP debugger URL. Handshake once, then multiplex
+    # JSON-RPC calls with incrementing ids. Thread-safe for a single session object.
+    __slots__ = ("ws_url", "host", "port", "path", "sock", "recv_buf", "next_id", "lock")
+
+    def __init__(self, ws_url: str) -> None:
+        parsed = urlparse(ws_url)
+        self.ws_url = ws_url
+        self.host = parsed.hostname or "127.0.0.1"
+        self.port = parsed.port or 80
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        self.path = path
+        self.sock: socket.socket | None = None
+        self.recv_buf = bytearray()
+        self.next_id = 1
+        self.lock = Lock()
+
+    def close(self) -> None:
+        sock = self.sock
+        self.sock = None
+        self.recv_buf = bytearray()
         if sock is not None:
             try:
                 sock.close()
             except Exception:
                 pass
+
+    def _ensure_connected(self, timeout: float) -> bool:
+        if self.sock is not None:
+            return True
+        sock = None
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=timeout)
+            key = base64.b64encode(os.urandom(16)).decode()
+            handshake = (
+                f"GET {self.path} HTTP/1.1\r\n"
+                f"Host: {self.host}:{self.port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            )
+            sock.sendall(handshake.encode())
+            header_buf = b""
+            sock.settimeout(timeout)
+            while b"\r\n\r\n" not in header_buf:
+                chunk = sock.recv(1024)
+                if not chunk:
+                    sock.close()
+                    return False
+                header_buf += chunk
+            _, _, leftover = header_buf.partition(b"\r\n\r\n")
+            self.sock = sock
+            self.recv_buf = bytearray(leftover)
+            return True
+        except Exception:
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+            self.close()
+            return False
+
+    def send_recv(self, payload: dict, timeout: float = CDP_JOIN_TIMEOUT) -> dict | None:
+        with self.lock:
+            if not self._ensure_connected(timeout):
+                return None
+            assert self.sock is not None
+            msg = dict(payload)
+            if "id" not in msg:
+                msg["id"] = self.next_id
+                self.next_id += 1
+            else:
+                self.next_id = max(self.next_id, int(msg["id"]) + 1)
+            target_id = msg["id"]
+            try:
+                self.sock.settimeout(timeout)
+                _ws_send_frame(self.sock, json.dumps(msg, ensure_ascii=False).encode("utf-8"))
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    while True:
+                        text, self.recv_buf = _ws_read_message(self.sock, self.recv_buf)
+                        if text is None:
+                            break
+                        try:
+                            message = json.loads(text)
+                        except Exception:
+                            continue
+                        if message.get("id") == target_id:
+                            return message
+                    remaining = max(0.05, deadline - time.time())
+                    self.sock.settimeout(remaining)
+                    try:
+                        chunk = self.sock.recv(65536)
+                    except socket.timeout:
+                        break
+                    except Exception:
+                        self.close()
+                        return None
+                    if not chunk:
+                        self.close()
+                        return None
+                    self.recv_buf += chunk
+                return None
+            except Exception:
+                self.close()
+                return None
+
+
+_cdp_ws_local = threading_local()
+
+
+def _cdp_ws_map() -> dict[str, CdpWsSession]:
+    sessions = getattr(_cdp_ws_local, "sessions", None)
+    if sessions is None:
+        sessions = {}
+        _cdp_ws_local.sessions = sessions
+    return sessions
+
+
+def cdp_ws_session(ws_url: str) -> CdpWsSession:
+    sessions = _cdp_ws_map()
+    sess = sessions.get(ws_url)
+    if sess is None:
+        sess = CdpWsSession(ws_url)
+        sessions[ws_url] = sess
+    return sess
+
+
+def cdp_ws_close(ws_url: str | None = None) -> None:
+    sessions = _cdp_ws_map()
+    if ws_url is None:
+        for sess in list(sessions.values()):
+            sess.close()
+        sessions.clear()
+        return
+    sess = sessions.pop(ws_url, None)
+    if sess is not None:
+        sess.close()
+
+
+def ws_send_recv(ws_url: str, payload: dict, timeout: float = CDP_JOIN_TIMEOUT) -> dict | None:
+    # Reuses a per-thread persistent WebSocket for this debugger URL (handshake once).
+    response = cdp_ws_session(ws_url).send_recv(payload, timeout)
+    if response is None:
+        # Drop dead session so the next call opens a fresh socket.
+        cdp_ws_close(ws_url)
+    return response
 
 
 def cdp_evaluate(ws_url: str, expression: str, timeout: float = CDP_JOIN_TIMEOUT):
@@ -1344,7 +1435,6 @@ def cdp_evaluate(ws_url: str, expression: str, timeout: float = CDP_JOIN_TIMEOUT
     response = ws_send_recv(
         ws_url,
         {
-            "id": 1,
             "method": "Runtime.evaluate",
             "params": {"expression": expression, "returnByValue": True, "awaitPromise": False},
         },
@@ -1402,7 +1492,7 @@ def _cdp_read_state(ws_url: str) -> dict:
     raw = cdp_evaluate(
         ws_url,
         "JSON.stringify({url:window.location.href,body:(document.body?document.body.innerText:'').slice(0,4000),title:document.title||''})",
-        timeout=CDP_JOIN_TIMEOUT,
+        timeout=CDP_EVAL_TIMEOUT,
     )
     if isinstance(raw, str):
         try:
@@ -1435,19 +1525,36 @@ def cdp_join_account(port: int, chooser_url: str, account: dict, progress: dict)
     join_confirmation_seen = False
     rate_limit_refreshes = 0
     last_action = None
+    just_clicked = False
     for attempt in range(CDP_JOIN_ATTEMPTS):
         if attempt:
-            time.sleep(ACCOUNT_JOIN_POLL_SECONDS)
-        tab = cdp_page_tab(port)
-        ws_url = tab.get("webSocketDebuggerUrl") if tab else ws_url
-        raw = cdp_evaluate(ws_url, _CDP_ACCEPT_SCRIPT, timeout=CDP_JOIN_TIMEOUT)
+            time.sleep(CDP_POST_CLICK_POLL_SECONDS if just_clicked else ACCOUNT_JOIN_POLL_SECONDS)
+        just_clicked = False
+        # Avoid /json/list on every tick when the debugger URL is still healthy.
+        if attempt == 0 or attempt % CDP_TAB_REFRESH_EVERY == 0 or not ws_url:
+            tab = cdp_page_tab(port)
+            if tab and tab.get("webSocketDebuggerUrl"):
+                new_ws = tab.get("webSocketDebuggerUrl")
+                if ws_url and new_ws != ws_url:
+                    cdp_ws_close(ws_url)
+                ws_url = new_ws
+                final_url = tab.get("url") or final_url
+        if not ws_url:
+            continue
+        raw = cdp_evaluate(ws_url, _CDP_ACCEPT_SCRIPT, timeout=CDP_EVAL_TIMEOUT)
         step = {}
         if isinstance(raw, str):
             try:
                 step = json.loads(raw)
             except Exception:
                 step = {}
-        final_url = (tab.get("url") if tab else None) or step.get("url") or final_url
+        elif raw is None:
+            # Transport glitch: drop session and force tab refresh next iteration.
+            if ws_url:
+                cdp_ws_close(ws_url)
+            ws_url = None
+            continue
+        final_url = step.get("url") or final_url
         body = str(step.get("body") or "")
         title = str(step.get("title") or "")
 
@@ -1457,10 +1564,11 @@ def cdp_join_account(port: int, chooser_url: str, account: dict, progress: dict)
             rate_limit_refreshes += 1
             emit_progress({"type": "rate_limited", "refresh": rate_limit_refreshes, "email": email, **progress})
             time.sleep(RATE_LIMIT_WAIT_SECONDS)
-            cdp_evaluate(ws_url, "window.location.reload(); true", timeout=CDP_JOIN_TIMEOUT)
+            cdp_evaluate(ws_url, "window.location.reload(); true", timeout=CDP_EVAL_TIMEOUT)
             continue
         if step.get("clicked"):
             last_action = str(step.get("clicked"))
+            just_clicked = True
             emit_progress({"type": "account_status", "status": "auto_clicked", "clicked": last_action[:80], "email": email, **progress})
         elif transition_signal(final_url or ""):
             emit_progress({"type": "account_status", "status": "waiting_transition", "attempt": attempt + 1, "totalAttempts": CDP_JOIN_ATTEMPTS, "email": email, **progress})
@@ -1495,6 +1603,7 @@ def cdp_join_run(
     profile_directories: list[str],
     scratch_root: Path,
     timeout: int,
+    challenge_timeout: int = CDP_CHALLENGE_TIMEOUT,
 ) -> dict:
     started = time.perf_counter()
     if not valid_invite_url(invite_url):
@@ -1538,7 +1647,9 @@ def cdp_join_run(
             return max(len(batch), len(seen_emails))
 
     instances = []
-    for row in batch:
+    for index, row in enumerate(batch):
+        if index:
+            time.sleep(CDP_LAUNCH_STAGGER_SECONDS)
         port = free_port()
         proc = launch_real_profile(binary, Path(row["path"]), port)
         instances.append({"row": row, "port": port, "proc": proc})
@@ -1550,6 +1661,13 @@ def cdp_join_run(
         port = inst["port"]
         profile_name = row["profile"]
         local = {"joined": [], "skipped": [], "failed": []}
+        try:
+            return _process_instance_body(inst, local, profile_name, port, row)
+        finally:
+            cdp_ws_close()
+
+    def _process_instance_body(inst: dict, local: dict, profile_name: str, port: int, row: dict) -> dict:
+        nonlocal pool_name
 
         # 1. Wait for the profile's CDP endpoint to answer, then send it to the chooser URL.
         ready_deadline = time.time() + CDP_READY_TIMEOUT
@@ -1558,7 +1676,7 @@ def cdp_join_run(
             tab = cdp_page_tab(port)
             if tab and tab.get("webSocketDebuggerUrl"):
                 break
-            time.sleep(0.3)
+            time.sleep(0.2)
         if not tab or not tab.get("webSocketDebuggerUrl"):
             local["failed"].append({"profile": profile_name, "email": (row.get("email") or ""), "status": "failed", "error": "LibreWolf CDP endpoint did not come up for this profile"})
             return local
@@ -1566,17 +1684,21 @@ def cdp_join_run(
         emit_progress({"type": "account_status", "status": "waiting_transition", "profile": profile_name, "email": row.get("email")})
 
         # 2. Poll until the Cloudflare challenge is gone (user clears it by hand), or time out.
-        challenge_deadline = time.time() + CDP_CHALLENGE_TIMEOUT
+        challenge_deadline = time.time() + challenge_timeout
         cleared = False
+        last_progress_at = 0.0
         while time.time() < challenge_deadline:
             current_url = cdp_page_url(port) or ""
             if current_url and not security_verification_signal(current_url, "", ""):
                 cleared = True
                 break
-            emit_progress({"type": "account_status", "status": "challenge_page", "profile": profile_name, "email": row.get("email")})
+            now = time.time()
+            if now - last_progress_at >= CDP_PROGRESS_EMIT_INTERVAL:
+                emit_progress({"type": "account_status", "status": "challenge_page", "profile": profile_name, "email": row.get("email")})
+                last_progress_at = now
             time.sleep(CDP_POLL_INTERVAL)
         if not cleared:
-            local["failed"].append({"profile": profile_name, "email": (row.get("email") or ""), "status": "failed", "error": "Challenge timeout — the Cloudflare bypass was not completed in time"})
+            local["failed"].append({"profile": profile_name, "email": (row.get("email") or ""), "status": "failed", "error": "Challenge timeout — clear the Cloudflare check in that LibreWolf window and retry CDP Join"})
             return local
 
         # 3. Discover the signed-in account cards on the cleared chooser page.
@@ -1585,8 +1707,12 @@ def cdp_join_run(
         accounts: list[dict] = []
         team_name = ""
         if ws_url:
-            for _ in range(ACCOUNT_DISCOVERY_ATTEMPTS):
-                raw = cdp_evaluate(ws_url, _CDP_DISCOVER_SCRIPT, timeout=CDP_JOIN_TIMEOUT)
+            for discover_attempt in range(ACCOUNT_DISCOVERY_ATTEMPTS):
+                if discover_attempt and discover_attempt % CDP_TAB_REFRESH_EVERY == 0:
+                    tab = cdp_page_tab(port)
+                    if tab and tab.get("webSocketDebuggerUrl"):
+                        ws_url = tab.get("webSocketDebuggerUrl")
+                raw = cdp_evaluate(ws_url, _CDP_DISCOVER_SCRIPT, timeout=CDP_EVAL_TIMEOUT)
                 if isinstance(raw, str):
                     try:
                         parsed = json.loads(raw)
@@ -1594,6 +1720,13 @@ def cdp_join_run(
                         parsed = {}
                     if parsed.get("accounts"):
                         accounts = parsed["accounts"]
+                        break
+                elif raw is None:
+                    if ws_url:
+                        cdp_ws_close(ws_url)
+                    tab = cdp_page_tab(port)
+                    ws_url = tab.get("webSocketDebuggerUrl") if tab else None
+                    if not ws_url:
                         break
                 time.sleep(ACCOUNT_DISCOVERY_POLL_SECONDS)
         unique_accounts = reserve_accounts(accounts)
@@ -1703,6 +1836,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoke-browser", action="store_true")
     parser.add_argument("--verify-login", action="store_true", help="open each profile copy and report whether its Postman session is still authenticated")
     parser.add_argument("--cdp-join", action="store_true", help="open real LibreWolf profiles over CDP; the user clears any Cloudflare challenge by hand, then the join is driven automatically")
+    parser.add_argument("--cdp-challenge-timeout", type=int, default=None, help="seconds to wait for manual Cloudflare clear in CDP mode (default 300, clamp 60-1800)")
     parser.add_argument("--verify-url", default="https://go.postman.co/", help="page to load for the login check")
     parser.add_argument("--detach", action="store_true", help="run the join in a background process and return immediately")
     parser.add_argument("--result-file", help="write the final JSON result to this path")
@@ -1739,6 +1873,8 @@ def main() -> int:
         if not invite_url:
             raise RuntimeError("invite URL is required")
         if args.cdp_join:
+            cdp_challenge_timeout = args.cdp_challenge_timeout if args.cdp_challenge_timeout is not None else CDP_CHALLENGE_TIMEOUT
+            cdp_challenge_timeout = max(60, min(1800, int(cdp_challenge_timeout)))
             result = cdp_join_run(
                 invite_url,
                 profiles_root,
@@ -1746,6 +1882,7 @@ def main() -> int:
                 args.profile_directory,
                 scratch_root,
                 max(10, min(120, args.timeout)),
+                cdp_challenge_timeout,
             )
             payload = json.dumps(result, ensure_ascii=False)
             write_result_file(args.result_file, payload)
