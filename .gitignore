@@ -20,3 +20,7 @@ REPORT.html
 # Postman GUI workspace scaffolding (auto-generated when Postman opens this folder)
 .postman/
 postman/
+
+# private internal labs — never tracked in this public repo
+labs/
+aiobox/

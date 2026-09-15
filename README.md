@@ -231,7 +231,7 @@ aki-mcp-sv/
 │   ├── git-mcp.js                # aki__git_status/diff/log: scope-checked git tools
 │   ├── system-mcp.js             # aki__notify_user, clipboard_read/write
 │   ├── sqlite-mcp.js             # aki__sqlite_schema/query: read-only node:sqlite inspector
-│   ├── aki-pmcontrol/            # finished copy of the private aiobox lab: CDP-driven Postman desktop control
+│   ├── aki-pmcontrol/            # finished copy of a private internal lab: CDP-driven Postman desktop control
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call
