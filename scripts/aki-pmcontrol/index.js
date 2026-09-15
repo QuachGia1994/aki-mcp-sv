@@ -529,10 +529,15 @@ function writeOwnershipStatus() {
 async function discover() {
   await consumePendingNewWindow();
   if (!controlSession) return;
-  // Re-read each tick: a quit+reopened Postman returns on a new DevTools port; the panel and the MCP tools' endpoint (via ownership-status.json) must follow it, not the stale startup port.
-  controlSession.port = PostmanSession.getDevToolsPort(controlSession.port);
   try {
-    const targets = await CDP.List({ port: controlSession.port });
+    let targets;
+    try {
+      targets = await CDP.List({ port: controlSession.port });
+    } catch {
+      // Postman may have quit and reopened on a new DevTools port; re-resolve the port and retry once.
+      controlSession.port = PostmanSession.getDevToolsPort(controlSession.port);
+      targets = await CDP.List({ port: controlSession.port });
+    }
     const currentIds = new Set(targets.map((target) => target.id));
     for (const targetId of [...attachedTargetIds]) {
       if (currentIds.has(targetId)) continue;
