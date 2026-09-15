@@ -86,6 +86,7 @@ function buildPrompt() {
     lines.push('Rules missing: install/update akidevrule in Aki panel section 2 before starting.');
   }
   lines.push('Plan: nontrivial=>research GitHub/upstream; reuse facts unless stale; ONE plan=~/.aki/mcpsv/task/<id>/plan.md; resume checkpoint; Q&A=no plan.');
+  lines.push('Workflow: nontrivial brainstorm/plan/TDD/execute=>workflow_guide; bug/failure before patch=>debug_workflow; risky completion=>review_workflow; trivial Q&A=>skip; mutating multi-step pass stable taskKey+real cwd and reuse plan/checkpoint.');
   lines.push('Lean: conclusion first; no restating; authorized scope=no reconfirm; verify by risk; CI trigger/no poll; done=deliverable+checks+limits; delegate if ROI>cost.');
   lines.push('Context: AGENTS/HANDOFF 30-100 lines; no routed/global duplication; detail=plan/checkpoint');
   lines.push('Repo: Aki MCP path; keep dirty; no sandbox/temp unless asked; read back writes/diffs; dev=npm run dev isolated.');
