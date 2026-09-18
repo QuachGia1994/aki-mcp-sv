@@ -305,7 +305,7 @@ function runCmd(command, args, cwd) {
   });
 }
 
-// Bắt chước aki-mcp-sv panel.js installRules: .source-repo hoặc clone/pull akidevrule, rồi bash install.sh (unattended — install.py chỉ prompt khi stdin là TTY).
+// Bắt chước aki-mcp-sv panel.js installRules: .source-repo hoặc clone/pull akidevrule, rồi bash install.sh (unattended — install.sh/install.ps1 giờ là thin launcher → node install.mjs).
 async function installAkiRule() {
   const recorded = fs.existsSync(RULES_SOURCE_FILE) ? fs.readFileSync(RULES_SOURCE_FILE, 'utf8').trim() : null;
   let repo = recorded && fs.existsSync(path.join(recorded, 'install.sh')) ? recorded : null;
@@ -320,19 +320,16 @@ async function installAkiRule() {
     }
     repo = RULES_CLONE_DIR;
   }
-  // akidevrule ships install.ps1 / install.py for Windows on purpose: a bare `bash.exe` there resolves to the WSL
+  // akidevrule ships install.ps1 for Windows on purpose: a bare `bash.exe` there resolves to the WSL
   // launcher (System32\bash.exe) and dies with "execvpe(/bin/bash) failed" when no WSL distro is installed. Choose a
-  // real interpreter by platform + whichever installer this clone actually ships; never fall through to WSL bash.
+  // real interpreter by platform (PowerShell on Windows, bash otherwise); never fall through to WSL bash.
   let cmd, args;
   if (process.platform === 'win32') {
     if (fs.existsSync(path.join(repo, 'install.ps1'))) {
       cmd = 'powershell';
       args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(repo, 'install.ps1')];
-    } else if (fs.existsSync(path.join(repo, 'install.py'))) {
-      cmd = 'py';
-      args = ['-3', path.join(repo, 'install.py')];
     } else {
-      return { ok: false, msg: 'this akidevrule clone has no install.ps1 / install.py for Windows — pull the latest akidevrule and retry' };
+      return { ok: false, msg: 'this akidevrule clone has no install.ps1 for Windows — pull the latest akidevrule and retry' };
     }
   } else {
     cmd = 'bash';
@@ -340,7 +337,7 @@ async function installAkiRule() {
   }
   const install = await runCmd(cmd, args, repo);
   if (!install.ok && process.platform === 'win32' && /ENOENT|not found|execvpe|\/bin\/bash|WSL/i.test(install.msg)) {
-    return { ok: false, msg: 'Windows install failed — install.ps1/install.py could not run (do not use WSL bash): ' + install.msg };
+    return { ok: false, msg: 'Windows install failed — install.ps1 could not run (do not use WSL bash): ' + install.msg };
   }
   const last = (install.msg || '').split('\n').filter(Boolean).pop() || install.msg;
   return { ok: install.ok, msg: `${last} (source: ${repo})`, version: getLocalVersions().current };

@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Removed
+- **Dead `py -3 install.py` Windows fallback in the akidevrule installer**: akidevrule v3 no longer ships `install.py` (the installer is now `install.mjs`, with `install.sh`/`install.ps1` as thin launchers), so the `install.py` branch could never fire. `installAkiRule()` (`scripts/aki-pmcontrol/index.js`) and `installRules()` (`scripts/panel.js`) now select `install.ps1` on Windows (bash `install.sh` elsewhere) and never probe for `install.py`; comments and error/failure messages no longer reference it. No behavior change on any supported akidevrule clone.
+
 ## [2.0.4] - 2026-09-15
 
 ### Fixed

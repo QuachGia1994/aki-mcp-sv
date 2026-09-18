@@ -139,19 +139,16 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  // akidevrule ships install.ps1 / install.py for Windows on purpose: a bare `bash.exe` there resolves to the WSL
+  // akidevrule ships install.ps1 for Windows on purpose: a bare `bash.exe` there resolves to the WSL
   // launcher (C:\Windows\System32\bash.exe) and dies with "execvpe(/bin/bash) failed" when no WSL distro is installed.
-  // Pick a real interpreter by platform + whichever installer this clone actually ships; never fall through to WSL bash.
+  // Pick a real interpreter by platform (PowerShell on Windows, bash otherwise); never fall through to WSL bash.
   let cmd, args;
   if (IS_WIN) {
     if (existsSync(path.join(repo, 'install.ps1'))) {
       cmd = 'powershell';
       args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(repo, 'install.ps1')];
-    } else if (existsSync(path.join(repo, 'install.py'))) {
-      cmd = 'py';
-      args = ['-3', path.join(repo, 'install.py')];
     } else {
-      throw new Error('this akidevrule clone has no install.ps1 / install.py for Windows — pull the latest akidevrule and retry');
+      throw new Error('this akidevrule clone has no install.ps1 for Windows — pull the latest akidevrule and retry');
     }
   } else {
     cmd = 'bash';
@@ -162,7 +159,7 @@ async function installRules() {
     return `${log.trim().split('\n').pop()} (source: ${repo})`;
   } catch (e) {
     if (IS_WIN && /ENOENT|not found|not recognized|execvpe|\/bin\/bash|WSL/i.test(e.message)) {
-      throw new Error('Windows install failed — could not run install.ps1/install.py (do not use WSL bash): ' + e.message);
+      throw new Error('Windows install failed — could not run install.ps1 (do not use WSL bash): ' + e.message);
     }
     throw e;
   }
