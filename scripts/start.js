@@ -194,16 +194,20 @@ function spawnCloudflared(credPath) {
 warmToolsServer();
 if (ingressMode === 'cloudflared') cloudflared = spawnCloudflared(cloudflaredCredPath);
 // Gatekeeper runs in-process (docs/plan/done/consolidate-mcp-tool-processes.md, Part B); a fatal listen error tears the whole stack down via shutdown, so no child is ever left orphaned.
+// Local-First: the Gatekeeper always binds 127.0.0.1:<port> so local tools (Cursor, Claude Code, AGY, Codex,
+// Postman) connect immediately — with or without a public ingress. A resolved `origin` is passed in so OAuth
+// discovery is live from boot; ingress is a satellite attached to this same server, never a gate.
 let gateServer = null;
+try {
+  gateServer = startGatekeeper(origin, () => shutdown(1));
+} catch (e) {
+  console.error(`[start] gatekeeper failed to start on 127.0.0.1:${gatePort}: ${e.message}`);
+  shutdown(1);
+}
 if (origin) {
-  try {
-    gateServer = startGatekeeper(origin, () => shutdown(1));
-  } catch (e) {
-    console.error(`[start] gatekeeper failed to start: ${e.message}`);
-    shutdown(1);
-  }
+  console.log(`[start] Ingress attached — remote MCP URL: ${origin}/mcp`);
 } else {
-  console.log('[start] Gatekeeper paused (waiting for ingress setup in the web panel)');
+  console.log(`[start] Mode: Pure Local-First (http://127.0.0.1:${gatePort}/mcp) — no internet exposure`);
 }
 
 panel = startPanel({ port: Number(panelPort), token: panelToken, origin, ingress: ingressMode, client, passphrase, updateInfo, isDev, onFatal: () => shutdown(1) });

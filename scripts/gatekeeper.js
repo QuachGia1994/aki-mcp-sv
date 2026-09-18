@@ -8,13 +8,22 @@ import { serveStatic } from './http.js';
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 
-// origin: the public https origin (Tailscale MagicDNS). onFatal: called if the listen socket errors, so the orchestrator tears the whole stack down instead of leaking an orphaned hub.
-export function startGatekeeper(origin, onFatal) {
-  if (!origin) throw new Error('PUBLIC_ORIGIN (Tailscale origin) is not set');
-
+// origin: the public https origin (Tailscale MagicDNS / Cloudflare) or null. Local-First: the /mcp engine binds
+// 127.0.0.1 and serves local clients with or without a public ingress; OAuth discovery metadata only exists once
+// an ingress is attached. onFatal: called if the listen socket errors, so the orchestrator tears the whole stack
+// down instead of leaking an orphaned hub.
+export function startGatekeeper(origin = null, onFatal) {
   const port = Number(process.env.GATEKEEPER_PORT || 9999);
   const passphrase = loadOrCreatePassphrase();
-  const meta = metadataHandlers(origin);
+  let meta = origin ? metadataHandlers(origin) : null;
+
+  // Attach/refresh a public ingress after boot (Tailscale/cloudflared can connect late, or the user picks ingress
+  // in the panel) without dropping the local /mcp sessions already in flight.
+  function setPublicOrigin(newOrigin) {
+    origin = newOrigin || null;
+    meta = origin ? metadataHandlers(origin) : null;
+    log(`[gatekeeper] public ingress ${origin ? `attached: ${origin}` : 'detached'}`);
+  }
 
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0];
@@ -31,10 +40,21 @@ export function startGatekeeper(origin, onFatal) {
       return;
     }
 
-    if ((path === '/.well-known/oauth-protected-resource' || path === '/.well-known/oauth-protected-resource/mcp') && req.method === 'GET') return meta.protectedResource(req, res);
-    if ((path === '/.well-known/oauth-authorization-server' || path === '/.well-known/oauth-authorization-server/mcp' || path === '/.well-known/openid-configuration') && req.method === 'GET') return meta.authorizationServer(req, res);
+    // OAuth discovery + authorize are only meaningful with a public ingress (web clients). Local clients send the
+    // Bearer token straight to /mcp and never touch these, so return 503 (not 404) when ingress is off.
+    if ((path === '/.well-known/oauth-protected-resource' || path === '/.well-known/oauth-protected-resource/mcp') && req.method === 'GET') {
+      if (!meta) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      return meta.protectedResource(req, res);
+    }
+    if ((path === '/.well-known/oauth-authorization-server' || path === '/.well-known/oauth-authorization-server/mcp' || path === '/.well-known/openid-configuration') && req.method === 'GET') {
+      if (!meta) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      return meta.authorizationServer(req, res);
+    }
     if (path === '/register' && req.method === 'POST') return handleRegister(req, res);
-    if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) return handleAuthorize(req, res, passphrase, origin);
+    if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) {
+      if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      return handleAuthorize(req, res, passphrase, origin);
+    }
     if (path === '/token' && req.method === 'POST') return handleToken(req, res);
 
     if (path === '/mcp') {
@@ -67,9 +87,11 @@ export function startGatekeeper(origin, onFatal) {
     logErr(`[gatekeeper] failed to listen on :${port}: ${e.message}${e.code === 'EADDRINUSE' ? ' — another akimcp instance is probably still running; stop it first' : ''}`);
     onFatal?.();
   });
-  server.listen(port, () => {
-    log(`[gatekeeper] listening on :${port} (OAuth-protected /mcp)`);
+  server.listen(port, '127.0.0.1', () => {
+    log(`[gatekeeper] listening on 127.0.0.1:${port} (Local-First MCP engine active)`);
+    if (origin) log(`[gatekeeper] public ingress attached: ${origin}`);
   });
 
+  server.setPublicOrigin = setPublicOrigin;
   return server;
 }
