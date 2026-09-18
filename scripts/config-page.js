@@ -88,6 +88,9 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const postmanJson = JSON.stringify({
     mcpServers: { 'aki-mcp-sv': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } },
   });
+  const cursorJson = JSON.stringify({ mcpServers: { 'aki-mcp': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
+  const agyJson = JSON.stringify({ mcpServers: { 'aki-mcp': { httpUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
+  const claudeCodeCmd = `claude mcp add --transport http aki-mcp ${localUrl} --header "Authorization: Bearer ${accessToken}"`;
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
   const activeIngressTab = funnelMode ? 'tailscale' : 'owned';
@@ -190,8 +193,8 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 </details>
 </section>
 
-<section id="s1"><h2>1 · Connectors: Claude, Grok, ChatGPT, Gemini, Postman</h2>
-<p class="helptext">One AKIMCP endpoint gives every supported AI the same governed access to the full v2 tool surface. Open a client tab for its exact connection flow.</p>
+<section id="s1"><h2>1 · Connectors: local IDEs + web AIs</h2>
+<p class="helptext">One AKIMCP endpoint, two paths. <strong>Local tools</strong> (Postman, Cursor, Claude Code, AGY) connect directly over <span class="mono">127.0.0.1</span> — zero latency, no tunnel, works offline; each tab below carries a ready-to-paste local config. <strong>Web AIs</strong> (Claude, Grok, ChatGPT, Gemini) use the MCP URL below and ${origin ? 'are reachable now.' : 'need a public ingress — set it up in <a href="#s0">Section 0</a> first (the MCP URL fills in once ingress is active).'}</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
@@ -202,6 +205,9 @@ ${field('Passphrase', passphrase)}
   <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
   <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
   <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
+  <button class="tab" data-tab="cursor">Cursor</button>
+  <button class="tab" data-tab="claudecode">Claude Code</button>
+  <button class="tab" data-tab="agy">AGY</button>
 </nav>
 
 <div class="tabpane active" id="tab-claude">
@@ -264,6 +270,24 @@ ${field('Passphrase', passphrase)}
   ${copyEl(postmanJson, true, 'postmanJson')}
   <p class="helptext" style="margin-top:12px">Setup screenshot:</p>
   <figure><img src="/img/aki-mcp-instruct-postman.png" alt="Postman MCP setup walkthrough" loading="lazy" style="max-width:100%;border-radius:6px"></figure>
+</div>
+
+<div class="tabpane" id="tab-cursor">
+  <h3 class="subh">Connect Cursor — local, 0ms</h3>
+  <p class="helptext">Paste into <span class="mono">~/.cursor/mcp.json</span> (or Cursor → Settings → MCP Servers), then reload. Connects over <span class="mono">127.0.0.1</span> — no tunnel, works offline.</p>
+  ${copyEl(cursorJson, true, 'cursorJson')}
+</div>
+
+<div class="tabpane" id="tab-claudecode">
+  <h3 class="subh">Connect Claude Code CLI — local, 0ms</h3>
+  <p class="helptext">Run this one-liner in a terminal:</p>
+  ${copyEl(claudeCodeCmd, true, 'claudeCodeCmd')}
+</div>
+
+<div class="tabpane" id="tab-agy">
+  <h3 class="subh">Connect Antigravity (AGY) — local, 0ms</h3>
+  <p class="helptext">Paste into <span class="mono">~/.gemini/antigravity-cli/mcp_config.json</span>.</p>
+  ${copyEl(agyJson, true, 'agyJson')}
 </div>
 </section>
 

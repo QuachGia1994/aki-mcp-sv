@@ -139,7 +139,7 @@ The Postman tab also has a **Launch** button that attaches control to the Postma
 
 ## Connecting local IDEs (Cursor, Claude Code, AGY)
 
-Local tools run on the same machine as AKIMCP, so they connect **straight to the loopback engine** at `http://127.0.0.1:9999/mcp` — no tunnel, no internet, zero WAN round-trip, and they keep working fully offline. The Gatekeeper binds `127.0.0.1:9999` from the moment you run `akimcp`, whether or not a public ingress is configured. Bearer-token auth is still enforced (see [Security](#security)); grab the token from the panel at `http://127.0.0.1:9998` (the Postman tab shows the filled JSON), or copy a config below and replace `YOUR_LOCAL_ACCESS_TOKEN`.
+Local tools run on the same machine as AKIMCP, so they connect **straight to the loopback engine** at `http://127.0.0.1:9999/mcp` — no tunnel, no internet, zero WAN round-trip, and they keep working fully offline. The Gatekeeper binds `127.0.0.1:9999` from the moment you run `akimcp`, whether or not a public ingress is configured. Bearer-token auth is still enforced (see [Security](#security)); grab the token from the panel at `http://127.0.0.1:9998` (the Postman tab shows the filled JSON), or copy a config below and replace `YOUR_LOCAL_ACCESS_TOKEN`. (Ports are defaults; `--dev` mode uses `9997`/`9996` — the panel always shows the live values.)
 
 **Cursor** — `~/.cursor/mcp.json` (or Settings → MCP Servers):
 

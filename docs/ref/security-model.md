@@ -32,14 +32,14 @@ Ingress edge does not change the trust boundary. Public reachability can come fr
 
 ## Localhost security model (zero-trust loopback)
 
-Local-First (2.x): the Gatekeeper binds `127.0.0.1:9999` unconditionally at startup, so local clients (Postman Desktop, Cursor, Claude Code, AGY, Codex) connect straight to the loopback engine — with or without a public ingress. Two rules keep that loopback surface safe:
+Local-First (2.x): the Gatekeeper binds `127.0.0.1:9999` (`9997` in `--dev`) unconditionally at startup, so local clients (Postman Desktop, Cursor, Claude Code, AGY, Codex) connect straight to the loopback engine — with or without a public ingress. Two rules keep that loopback surface safe:
 
 1. **Bind `127.0.0.1`, never `0.0.0.0`.** `server.listen(port, '127.0.0.1', …)` makes the kernel refuse any packet that did not originate on this machine, so nothing else on the same Wi-Fi/LAN (a café, an office) can reach the port. Binding `0.0.0.0` would expose the whole tool surface to the local network.
 2. **The Bearer token stays mandatory even on loopback.** "It's local, so skip auth" is a real vulnerability: a browser (Chrome/Safari) runs on the same machine, and a malicious page can fire `fetch('http://127.0.0.1:9999/mcp', …)` in the background. Without a required token that would be RCE via `local__run_cmd` or theft of local files (drive-by CSRF / DNS-rebinding). AKIMCP keeps requiring `Authorization: Bearer <token>` on loopback: the long-lived local token is issued by `getOrIssueAccessToken()` and stored under `~/.aki/mcpsv/`, and a request without a valid token gets `401`. The real defense is **token secrecy** — a web page can neither read the token off disk nor guess it. Do **not** rely on CORS here: the gatekeeper returns `Access-Control-Allow-Origin: *` and allows the `Authorization` header, so a malicious page can still *issue* the request — it simply can't supply a valid token, so it gets `401`.
 
 Prefer the literal `127.0.0.1` over `localhost` everywhere (config, docs, snippets): on macOS `localhost` can resolve to IPv6 `::1` while the server listens on IPv4 only.
 
-When no ingress is attached, the OAuth discovery and `/authorize` endpoints return `503` while local `/mcp` keeps serving normally; the `server.setPublicOrigin()` hook can turn them on in-process, but the current panel save-ingress flow applies a newly-picked ingress on restart (the hook is not yet wired to it).
+When no ingress is attached, the OAuth discovery and `/authorize` endpoints return `503` while local `/mcp` keeps serving normally; attaching an ingress (via the panel's Section 0 or the `--tunnel`/`PUBLIC_ORIGIN` flags) takes effect on restart, when `origin` is resolved at boot — there is intentionally no runtime attach-after-boot path yet.
 
 ## Real limitations
 

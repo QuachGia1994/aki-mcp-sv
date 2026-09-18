@@ -8,6 +8,10 @@
 - `task-1789505230187`: *Thêm instruction connect cho agy/claude/codex/postman và chạy trực tiếp nội bộ không cần đi đường vòng ra internet*
 - `task-1789394358811`: *thêm lựa chọn connect cho provider AGY (cli) và ClaudeCode*
 
+> **Trạng thái triển khai (2026-09-18):**
+> - **ĐÃ SHIP:** Gatekeeper bind `127.0.0.1:9999` vô điều kiện; OAuth discovery + `/authorize` + `/register` + `/token` trả `503` khi chưa có ingress; `/mcp` 401 trả challenge `Bearer` trần (không lộ URL `null/…`) khi local-only; snippet Postman trỏ loopback + thêm tab **Cursor / Claude Code / AGY** trong panel; Section 0 đổi nhãn *Remote ingress — optional*; tài liệu README + `docs/ref/security-model.md`.
+> - **HOÃN LẠI (chưa build):** runtime attach-after-boot qua `setPublicOrigin` (mục 3.1 lượt 3 & mục 4.1). Ingress hiện áp dụng khi **restart** (origin resolve lúc boot); hook `setPublicOrigin` đã được lược bỏ khỏi code theo YAGNI cho tới khi luồng runtime-attach + quản lý tiến trình tunnel được xây thực sự. Việc tách Section 1 thành 2 nhóm tab (Local vs Cloud) mới làm ở mức note + tab, chưa tách nhóm trực quan hoàn chỉnh.
+
 ---
 
 ## 1. Triết Lý Cốt Lõi & Định Hướng Kiến Trúc (Core Philosophy)

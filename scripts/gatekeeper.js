@@ -15,15 +15,10 @@ const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 export function startGatekeeper(origin = null, onFatal) {
   const port = Number(process.env.GATEKEEPER_PORT || 9999);
   const passphrase = loadOrCreatePassphrase();
-  let meta = origin ? metadataHandlers(origin) : null;
-
-  // Attach/refresh a public ingress after boot (Tailscale/cloudflared can connect late, or the user picks ingress
-  // in the panel) without dropping the local /mcp sessions already in flight.
-  function setPublicOrigin(newOrigin) {
-    origin = newOrigin || null;
-    meta = origin ? metadataHandlers(origin) : null;
-    log(`[gatekeeper] public ingress ${origin ? `attached: ${origin}` : 'detached'}`);
-  }
+  // Public OAuth discovery metadata only exists when an ingress is attached; on pure loopback it stays null and the
+  // .well-known / authorize / register / token routes answer 503. A runtime attach-after-boot path (updating this)
+  // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
+  const meta = origin ? metadataHandlers(origin) : null;
 
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0];
@@ -50,18 +45,26 @@ export function startGatekeeper(origin = null, onFatal) {
       if (!meta) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
       return meta.authorizationServer(req, res);
     }
-    if (path === '/register' && req.method === 'POST') return handleRegister(req, res);
+    if (path === '/register' && req.method === 'POST') {
+      if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      return handleRegister(req, res);
+    }
     if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
       return handleAuthorize(req, res, passphrase, origin);
     }
-    if (path === '/token' && req.method === 'POST') return handleToken(req, res);
+    if (path === '/token' && req.method === 'POST') {
+      if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      return handleToken(req, res);
+    }
 
     if (path === '/mcp') {
       if (!verifyBearer(req.headers.authorization)) {
+        // Advertise the OAuth resource metadata only when an ingress is attached; on pure loopback emit a bare
+        // Bearer challenge instead of a bogus "null/.well-known/..." URL.
         res.writeHead(401, {
           'Content-Type': 'text/plain',
-          'WWW-Authenticate': `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+          'WWW-Authenticate': origin ? `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"` : 'Bearer',
         });
         res.end('unauthorized');
         return;
@@ -92,6 +95,5 @@ export function startGatekeeper(origin = null, onFatal) {
     if (origin) log(`[gatekeeper] public ingress attached: ${origin}`);
   });
 
-  server.setPublicOrigin = setPublicOrigin;
   return server;
 }
