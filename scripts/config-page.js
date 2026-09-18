@@ -89,8 +89,13 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
     mcpServers: { 'aki-mcp-sv': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } },
   });
   const cursorJson = JSON.stringify({ mcpServers: { 'aki-mcp': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
+  // AGY CLI (Gemini-CLI lineage) uses `httpUrl` for streamable HTTP; the Antigravity IDE (Windsurf lineage) uses `serverUrl`.
   const agyJson = JSON.stringify({ mcpServers: { 'aki-mcp': { httpUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
+  const agyIdeJson = JSON.stringify({ mcpServers: { 'aki-mcp': { serverUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
   const claudeCodeCmd = `claude mcp add --transport http aki-mcp ${localUrl} --header "Authorization: Bearer ${accessToken}"`;
+  // Codex CLI (~/.codex/config.toml) speaks streamable HTTP via a `url` key; `http_headers` carries a static bearer so the
+  // snippet is copy-paste-ready with no shell env var to export first (matches how every other local tab embeds the token).
+  const codexToml = `[mcp_servers.aki-mcp]\nurl = "${localUrl}"\nhttp_headers = { "Authorization" = "Bearer ${accessToken}" }`;
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
   const activeIngressTab = funnelMode ? 'tailscale' : 'owned';
@@ -200,17 +205,21 @@ ${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
 
 <nav class="tabs" role="tablist">
-  <button class="tab active" data-tab="claude"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude</button>
-  <button class="tab" data-tab="grok"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok</button>
-  <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
-  <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
-  <button class="tab" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
+  <span class="tab-group-label">Local · direct 0ms</span>
+  <button class="tab active" data-tab="postman"><img src="/img/providers/postman.png" class="provider-icon" alt="">Postman</button>
   <button class="tab" data-tab="cursor">Cursor</button>
   <button class="tab" data-tab="claudecode">Claude Code</button>
   <button class="tab" data-tab="agy">AGY</button>
+  <button class="tab" data-tab="codex">Codex</button>
+  <span class="tab-group-sep" aria-hidden="true"></span>
+  <span class="tab-group-label">Web · needs ingress</span>
+  <button class="tab" data-tab="claude"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude</button>
+  <button class="tab" data-tab="grok"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok</button>
+  <button class="tab" data-tab="chatgpt"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT</button>
+  <button class="tab" data-tab="gemini"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini</button>
 </nav>
 
-<div class="tabpane active" id="tab-claude">
+<div class="tabpane" id="tab-claude">
   <p class="lnk"><a href="${CONNECTOR_URL}" target="_blank" rel="noopener">↗ Open Add custom connector</a></p>
   <ol class="steps">
     <li>Enter <strong>Name</strong> = MCP Name above.</li>
@@ -254,7 +263,7 @@ ${field('Passphrase', passphrase)}
   </ol>
 </div>
 
-<div class="tabpane" id="tab-postman">
+<div class="tabpane active" id="tab-postman">
   <h3 class="subh">Control the Postman app</h3>
   <p class="helptext">This launch attaches control that opening Postman from the Dock/Spotlight does not: it auto-clicks Approve / Continue / Run / Try again and toggles Thinking / Auto-run inside the Postman window. If Postman is already open, this attaches to it — it does not open a second instance.</p>
   <div class="acts">
@@ -286,8 +295,16 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane" id="tab-agy">
   <h3 class="subh">Connect Antigravity (AGY) — local, 0ms</h3>
-  <p class="helptext">Paste into <span class="mono">~/.gemini/antigravity-cli/mcp_config.json</span>.</p>
+  <p class="helptext"><strong>CLI (<span class="mono">agy</span>):</strong> merge the entry below under the existing <span class="mono">mcpServers</span> key in <span class="mono">~/.gemini/antigravity-cli/settings.json</span> — don't overwrite the file, it also holds your model &amp; permissions. Uses <span class="mono">httpUrl</span> (streamable HTTP).</p>
   ${copyEl(agyJson, true, 'agyJson')}
+  <p class="helptext"><strong>IDE:</strong> paste into <span class="mono">~/.gemini/config/mcp_config.json</span> (or <span class="mono">.agents/mcp_config.json</span> per workspace). The IDE uses <span class="mono">serverUrl</span> instead of <span class="mono">httpUrl</span>.</p>
+  ${copyEl(agyIdeJson, true, 'agyIdeJson')}
+</div>
+
+<div class="tabpane" id="tab-codex">
+  <h3 class="subh">Connect Codex CLI — local, 0ms</h3>
+  <p class="helptext">Add this block to <span class="mono">~/.codex/config.toml</span> (append it — don't overwrite the file). Codex reaches the local engine over <span class="mono">127.0.0.1</span> via streamable HTTP; the bearer token is inlined so there's no shell env var to export first. Works offline, no tunnel. Restart Codex after saving.</p>
+  ${copyEl(codexToml, true, 'codexToml')}
 </div>
 </section>
 

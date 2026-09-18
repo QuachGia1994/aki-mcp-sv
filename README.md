@@ -8,7 +8,7 @@ One command opens a much larger operating surface: build and edit projects from 
 
 [![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![npm version](https://img.shields.io/npm/v/@akinet/akimcp.svg)](https://www.npmjs.com/package/@akinet/akimcp) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install--run)
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install & Run](#install--run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Connecting local IDEs](#connecting-local-ides-cursor-claude-code-agy) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install & Run](#install--run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Connecting local IDEs](#connecting-local-ides-cursor-claude-code-agy-codex) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -137,7 +137,7 @@ Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-
 
 The Postman tab also has a **Launch** button that attaches control to the Postman desktop app itself — auto-clicking Approve/Continue/Run/Try again and toggling Thinking/Auto-run inside the Postman window, on top of opening it if it isn't already running. **Quit** stops that control daemon; **New window** asks it to open another Postman window. None of this runs at `npm start` boot — it starts only when Launch is clicked. The in-app overlay it injects is the **Aki MCP for Postman** panel (opened from a status-bar button): it shows the running version and an `akimcp.top` link under the title, keeps the **New Browser Tab** control in the **ANTI-BOT** section, and opens every external link — `akimcp.top`, the AkiDevRule **Repo** button, and each team's **View** — in your OS default browser through Postman's own link handler.
 
-## Connecting local IDEs (Cursor, Claude Code, AGY)
+## Connecting local IDEs (Cursor, Claude Code, AGY, Codex)
 
 Local tools run on the same machine as AKIMCP, so they connect **straight to the loopback engine** at `http://127.0.0.1:9999/mcp` — no tunnel, no internet, zero WAN round-trip, and they keep working fully offline. The Gatekeeper binds `127.0.0.1:9999` from the moment you run `akimcp`, whether or not a public ingress is configured. Bearer-token auth is still enforced (see [Security](#security)); grab the token from the panel at `http://127.0.0.1:9998` (the Postman tab shows the filled JSON), or copy a config below and replace `YOUR_LOCAL_ACCESS_TOKEN`. (Ports are defaults; `--dev` mode uses `9997`/`9996` — the panel always shows the live values.)
 
@@ -171,6 +171,14 @@ claude mcp add --transport http aki-mcp http://127.0.0.1:9999/mcp --header "Auth
     }
   }
 }
+```
+
+**Codex CLI** — append to `~/.codex/config.toml` (don't overwrite; Codex reaches the local engine over streamable HTTP, token inlined so there's no env var to export):
+
+```toml
+[mcp_servers.aki-mcp]
+url = "http://127.0.0.1:9999/mcp"
+http_headers = { "Authorization" = "Bearer YOUR_LOCAL_ACCESS_TOKEN" }
 ```
 
 **Postman Desktop** uses the same loopback URL — see [Connecting from Postman](#connecting-from-postman).

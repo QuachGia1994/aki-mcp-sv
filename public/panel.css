@@ -67,6 +67,9 @@ textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 .tab.active { color: var(--accent); border-color: var(--accent); background: var(--card); font-weight: 600; margin-bottom: -1px; padding-bottom: 8px; }
 .tabpane { display: none; padding-top: 14px; }
 .tabpane.active { display: block; }
+.tab-group-label { flex-basis: 100%; margin: 8px 0 -1px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.tab-group-label:first-child { margin-top: 0; }
+.tab-group-sep { flex-basis: 100%; }
 .stepper h2 { margin-bottom: 10px; }
 .steps-nav { list-style: none; display: flex; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 0; }
 .steps-nav li { flex: 1 1 0; min-width: 0; }

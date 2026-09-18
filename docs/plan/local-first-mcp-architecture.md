@@ -10,7 +10,8 @@
 
 > **Trạng thái triển khai (2026-09-18):**
 > - **ĐÃ SHIP:** Gatekeeper bind `127.0.0.1:9999` vô điều kiện; OAuth discovery + `/authorize` + `/register` + `/token` trả `503` khi chưa có ingress; `/mcp` 401 trả challenge `Bearer` trần (không lộ URL `null/…`) khi local-only; snippet Postman trỏ loopback + thêm tab **Cursor / Claude Code / AGY** trong panel; Section 0 đổi nhãn *Remote ingress — optional*; tài liệu README + `docs/ref/security-model.md`.
-> - **HOÃN LẠI (chưa build):** runtime attach-after-boot qua `setPublicOrigin` (mục 3.1 lượt 3 & mục 4.1). Ingress hiện áp dụng khi **restart** (origin resolve lúc boot); hook `setPublicOrigin` đã được lược bỏ khỏi code theo YAGNI cho tới khi luồng runtime-attach + quản lý tiến trình tunnel được xây thực sự. Việc tách Section 1 thành 2 nhóm tab (Local vs Cloud) mới làm ở mức note + tab, chưa tách nhóm trực quan hoàn chỉnh.
+> - **ĐÃ SHIP (2026-09-18, đợt bổ sung):** thêm tab **Codex** (snippet `~/.codex/config.toml` streamable-HTTP, bearer inline) trong panel Section 1 + block Codex trong README; **tách trực quan Section 1 thành 2 nhóm tab** — *Local · direct 0ms* (Postman / Cursor / Claude Code / AGY / Codex, đặt trước, tab mặc định = Postman) và *Web · needs ingress* (Claude / Grok / ChatGPT / Gemini) qua `.tab-group-label` + `.tab-group-sep` trong `public/panel.css`. Đóng nốt mục 3.2 Lượt 6.
+> - **HOÃN LẠI (chưa build):** runtime attach-after-boot qua `setPublicOrigin` (mục 3.1 lượt 3 & mục 4.1). Ingress hiện áp dụng khi **restart** (origin resolve lúc boot); hook `setPublicOrigin` đã được lược bỏ khỏi code theo YAGNI cho tới khi luồng runtime-attach + quản lý tiến trình tunnel được xây thực sự.
 
 ---
 
