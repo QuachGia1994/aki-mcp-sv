@@ -27,6 +27,7 @@ const PROMPTS_DIR = path.join(AKI_DATA_DIR, 'prompts');
 const ASSETS_PROMPTS_DIR = path.join(__dirname, 'assets', 'prompts');
 const PROVIDER = 'postman';
 const SUM_PROMPT_NAME = 'aki-prompt-sum-to-new-chat.md';
+// DESIGN LOCK — postman.md is injected verbatim as the Postman AI instruction. It MUST keep two hard-lock lines: "Always use subagent shell or Aki MCP tool cmd run instead of readFile." and "Fall back to subagent shell if run_cmd is not efficient." Commit 40008be trimmed them and the AI began refusing write verbs (git commit/push, npm publish) as "no permission" instead of escalating to the subagent shell. Do not drop/soften on the next trim.
 const DEFAULT_PROMPT_PATH = path.join(ASSETS_PROMPTS_DIR, `${PROVIDER}.md`);
 const SHARED_PROMPT_USER_PATH = path.join(PROMPTS_DIR, SUM_PROMPT_NAME);
 const SHARED_PROMPT_DEFAULT_PATH = path.join(ASSETS_PROMPTS_DIR, SUM_PROMPT_NAME);
@@ -259,6 +260,7 @@ function loadAkiData() {
 
 function loadInstructionFile() {
   // Served natively read-only from the bundled repo asset — intentionally no user/home/legacy override.
+  // DESIGN LOCK: the loaded postman.md must retain its two subagent-shell hard-lock lines (see DEFAULT_PROMPT_PATH note). They authorize escalating write/non-allowlisted verbs to the subagent shell; without them the AI reports write steps "skipped".
   return loadInstruction([DEFAULT_PROMPT_PATH]);
 }
 

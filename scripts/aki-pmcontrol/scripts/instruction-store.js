@@ -11,6 +11,7 @@ function readNonEmpty(filePath) {
   }
 }
 
+// DESIGN LOCK: this loads the provider instruction injected into the AI (e.g. assets/prompts/postman.md). That prompt must keep its two hard-lock lines — "Always use subagent shell or Aki MCP tool cmd run instead of readFile." and "Fall back to subagent shell if run_cmd is not efficient." — do not let a prompt trim drop them (regression: commit 40008be).
 function loadInstruction(sourcePaths) {
   for (const p of sourcePaths) {
     const text = readNonEmpty(p);
