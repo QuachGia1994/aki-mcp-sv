@@ -8,7 +8,7 @@ One command opens a much larger operating surface: build and edit projects from 
 
 [![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)](CHANGELOG.md) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![npm version](https://img.shields.io/npm/v/@akinet/akimcp.svg)](https://www.npmjs.com/package/@akinet/akimcp) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#install--run)
 
-**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install & Run](#install--run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
+**Contents:** [Why this exists](#why-this-exists) · [When to use & Core Use-Cases](#when-to-use--core-use-cases) · [Install & Run](#install--run) · [Connecting from Claude web](#connecting-from-claude-web) · [Connecting from ChatGPT](#connecting-from-chatgpt) · [Connecting from Grok and Gemini](#connecting-from-grok-and-gemini) · [Connecting from Postman](#connecting-from-postman) · [Connecting local IDEs](#connecting-local-ides-cursor-claude-code-agy) · [Autonomous Cloud Automation](#autonomous-cloud-automation-grok--local-mcp) · [Requirements](#requirements) · [Architecture](#architecture) · [Directory layout](#directory-layout) · [Configuration](#configuration) · [Exposing to the internet](#exposing-to-the-internet) · [Finding files](#finding-files) · [Security](#security)
 
 ## Why this exists
 
@@ -19,6 +19,7 @@ The Claude Desktop app already does local file access, but ties usage to a devic
 **aki-mcp-sv** routes around both problems: run an MCP server on your machine, expose it over HTTPS through Tailscale Funnel, and connect it to claude.ai as a custom connector.
 
 **The payoff:**
+- **Local-first by default:** local tools (Cursor, Claude Code, AGY, Postman) connect straight to `127.0.0.1:9999` — zero latency and fully offline; a public ingress is only needed for remote/web AI.
 - **Use your web quota** for local file and shell access, straight from the browser.
 - **True multi-account flexibility:** switch browser profiles to instantly pick up a different account, all pointed at the same machine.
 - **Safe by default:** a strict command whitelist, not a leaky blocklist — see [Security](#security).
@@ -130,11 +131,51 @@ Both ride the same MCP URL and passphrase flow — no separate transport or auth
 
 Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-party MCP servers and no persistent system-prompt field.
 
-1. In the panel's Postman tab, click the filled JSON to copy. It has the live MCP URL and a real minted access token. It is not the passphrase.
+1. In the panel's Postman tab, click the filled JSON to copy. It targets the local loopback endpoint (`http://127.0.0.1:9999/mcp`) and carries a real minted access token — not the passphrase. Postman runs on this machine, so it connects with zero latency and needs no tunnel.
 2. In Postman, add a new MCP server (Settings → Connected Accounts) and paste the JSON.
 3. Paste the panel's prompt into each new chat, since Postman doesn't persist one across sessions.
 
 The Postman tab also has a **Launch** button that attaches control to the Postman desktop app itself — auto-clicking Approve/Continue/Run/Try again and toggling Thinking/Auto-run inside the Postman window, on top of opening it if it isn't already running. **Quit** stops that control daemon; **New window** asks it to open another Postman window. None of this runs at `npm start` boot — it starts only when Launch is clicked. The in-app overlay it injects is the **Aki MCP for Postman** panel (opened from a status-bar button): it shows the running version and an `akimcp.top` link under the title, keeps the **New Browser Tab** control in the **ANTI-BOT** section, and opens every external link — `akimcp.top`, the AkiDevRule **Repo** button, and each team's **View** — in your OS default browser through Postman's own link handler.
+
+## Connecting local IDEs (Cursor, Claude Code, AGY)
+
+Local tools run on the same machine as AKIMCP, so they connect **straight to the loopback engine** at `http://127.0.0.1:9999/mcp` — no tunnel, no internet, zero WAN round-trip, and they keep working fully offline. The Gatekeeper binds `127.0.0.1:9999` from the moment you run `akimcp`, whether or not a public ingress is configured. Bearer-token auth is still enforced (see [Security](#security)); grab the token from the panel at `http://127.0.0.1:9998` (the Postman tab shows the filled JSON), or copy a config below and replace `YOUR_LOCAL_ACCESS_TOKEN`.
+
+**Cursor** — `~/.cursor/mcp.json` (or Settings → MCP Servers):
+
+```json
+{
+  "mcpServers": {
+    "aki-mcp": {
+      "url": "http://127.0.0.1:9999/mcp",
+      "headers": { "Authorization": "Bearer YOUR_LOCAL_ACCESS_TOKEN" }
+    }
+  }
+}
+```
+
+**Claude Code CLI** — one line:
+
+```bash
+claude mcp add --transport http aki-mcp http://127.0.0.1:9999/mcp --header "Authorization: Bearer YOUR_LOCAL_ACCESS_TOKEN"
+```
+
+**Antigravity (AGY) CLI / IDE** — `~/.gemini/antigravity-cli/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "aki-mcp": {
+      "httpUrl": "http://127.0.0.1:9999/mcp",
+      "headers": { "Authorization": "Bearer YOUR_LOCAL_ACCESS_TOKEN" }
+    }
+  }
+}
+```
+
+**Postman Desktop** uses the same loopback URL — see [Connecting from Postman](#connecting-from-postman).
+
+> Use the literal `127.0.0.1`, not `localhost`: on macOS `localhost` can resolve to IPv6 `::1` while the server listens on IPv4 only.
 
 ## Autonomous Cloud Automation (Grok + Local MCP)
 

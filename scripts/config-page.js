@@ -81,8 +81,12 @@ function field(label, value, hl = false) {
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
+  // Local-First: local clients (Postman Desktop, Cursor, Claude Code, AGY, Codex) run on this machine, so they
+  // connect straight to the loopback engine — zero WAN round-trip, works with no internet and no tunnel. Only the
+  // remote web connectors (Claude.ai, ChatGPT, …) need the public `url` above.
+  const localUrl = `http://127.0.0.1:${process.env.GATEKEEPER_PORT || 9999}/mcp`;
   const postmanJson = JSON.stringify({
-    mcpServers: { 'aki-mcp-sv': { url, headers: { Authorization: `Bearer ${accessToken}` } } },
+    mcpServers: { 'aki-mcp-sv': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } },
   });
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
@@ -120,7 +124,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
 ${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
 <ol class="steps-nav">
-  <li class="step${origin ? ' done' : ''}"><a href="#s0"><span class="step-n">${origin ? '✓' : '0'}</span> Setup</a></li>
+  <li class="step${origin ? ' done' : ''}"><a href="#s0"><span class="step-n">${origin ? '✓' : '0'}</span> Ingress</a></li>
   <li class="step"><a href="#s1"><span class="step-n">1</span> Connectors</a></li>
   <li class="step"><a href="#s2"><span class="step-n">2</span> Install rules</a></li>
   <li class="step"><a href="#s3"><span class="step-n">3</span> Instructions</a></li>
@@ -129,9 +133,9 @@ ${updateBanner}
 </section>
 
 <section id="s0" class="collapsible-card${origin ? ' is-complete' : ''}"><details class="collapsible"${origin ? '' : ' open'}>
-<summary><span class="collapse-heading">0 · Setup</span>${origin ? '<span class="done-tag">ready</span>' : '<span class="collapse-state">action required</span>'}<span class="collapse-icon" aria-hidden="true"></span></summary>
+<summary><span class="collapse-heading">0 · Remote ingress (Web &amp; Mobile AI) — optional</span>${origin ? '<span class="done-tag">ingress active</span>' : '<span class="done-tag" style="color:var(--muted);border-color:var(--line)">optional · local is live</span>'}<span class="collapse-icon" aria-hidden="true"></span></summary>
 <div class="collapse-body">
-<p class="helptext">${origin ? `AKIMCP is live at ${copyEl(origin)} through <strong>${esc(ingressLabel)}</strong>. Expand this card only when you need to change ingress.` : `Choose how AKIMCP reaches your AI clients. The default path is Tailscale Funnel; restart after switching ingress.`}</p>
+<p class="helptext">${origin ? `AKIMCP is live at ${copyEl(origin)} through <strong>${esc(ingressLabel)}</strong>. Expand this card only when you need to change ingress.` : `Local clients already work with no setup — the engine is live on <span class="mono">127.0.0.1</span>. Configure ingress here <em>only</em> to also let remote/mobile web AI (Claude.ai, ChatGPT) reach this machine over the internet. Default path is Tailscale Funnel; restart after switching ingress.`}</p>
 
 <nav class="tabs" role="tablist">
   <button class="tab${activeIngressTab === 'tailscale' ? ' active' : ''}" data-tab="tailscale">Tailscale + Funnel</button>
@@ -255,7 +259,7 @@ ${field('Passphrase', passphrase)}
   </div>
 
   <h3 class="subh" style="margin-top:16px">Connect Postman to this MCP</h3>
-  <p class="helptext">Click the JSON to copy, then paste it in Postman Connected Accounts.</p>
+  <p class="helptext">Postman runs on this machine, so it connects straight to the local engine on <span class="mono">127.0.0.1</span> — zero latency, and it keeps working with no internet and no tunnel. Click the JSON to copy, then paste it in Postman Connected Accounts.</p>
   <p class="lnk"><a href="${esc(POSTMAN_SETTINGS_URL)}" target="_blank" rel="noopener">↗ Open Connected Accounts</a></p>
   ${copyEl(postmanJson, true, 'postmanJson')}
   <p class="helptext" style="margin-top:12px">Setup screenshot:</p>
