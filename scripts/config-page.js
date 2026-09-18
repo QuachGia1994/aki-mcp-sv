@@ -20,7 +20,7 @@ const TOKENIZER_URL = 'https://chromewebstore.google.com/detail/claude-token-cou
 const GROK_USAGE_URL = 'https://chromewebstore.google.com/detail/grok-usage-watch-%E2%80%93-rate-l/bmpboaihdkpkjehbceegdmndkonlpdge';
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule';
 const MCP_REPO_URL = 'https://github.com/lacvietanh/aki-mcp-sv';
-const RULES_INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/lacvietanh/akidevrule/master/install.sh | bash';
+const RULES_INSTALL_CMD = 'npx @akinet/akidevrule@latest';
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
@@ -266,7 +266,7 @@ ${field('Passphrase', passphrase)}
 <section id="s2"><h2>2 · Install AkiDevRule (optional)</h2>
 <p class="helptext">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Choose which files load in section 3 below.</p>
 ${field('Install command', RULES_INSTALL_CMD)}
-<p class="helptext">Mac/Linux: the curl command above, or <span class="mono">bash install.sh</span> from a local clone. Windows (PowerShell): <span class="mono">git clone https://github.com/lacvietanh/akidevrule.git; cd akidevrule; .\install.ps1</span>, or <span class="mono">py -3 install.py</span>. No sudo; writes only to ~/.aki and ~/.claude, removable with rm -rf.</p>
+<p class="helptext">Runs on Mac/Linux/Windows — only needs <span class="mono">Node.js 18+</span>. Re-run the command above to update, or add <span class="mono">--check</span> to print installed-vs-latest without changing anything. From a local clone: <span class="mono">node install.mjs</span> (or launchers <span class="mono">install.sh</span> / <span class="mono">install.ps1</span>). No sudo; installs into every detected <span class="mono">~/.claude*</span> profile plus <span class="mono">~/.aki</span>, removable with rm -rf.</p>
 <div class="acts">
   <button class="primary" data-act="installRules">Install / update</button>
   <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
