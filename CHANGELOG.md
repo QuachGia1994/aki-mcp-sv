@@ -4,6 +4,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ## [Unreleased]
 
+### Added
+- **Local-first MCP architecture plan** (`docs/plan/local-first-mcp-architecture.md`): proposed design (PROPOSED · Ready for Review) to start the Gatekeeper unconditionally on loopback `127.0.0.1:9999` with Bearer auth retained, and demote ingress (Cloudflare Tunnel / Tailscale Funnel) to an optional satellite reverse proxy used only by cloud/mobile web clients. Planning doc for `task-1789505230187`; no runtime change yet.
+
 ### Removed
 - **Dead `py -3 install.py` Windows fallback in the akidevrule installer**: akidevrule v3 no longer ships `install.py` (the installer is now `install.mjs`, with `install.sh`/`install.ps1` as thin launchers), so the `install.py` branch could never fire. `installAkiRule()` (`scripts/aki-pmcontrol/index.js`) and `installRules()` (`scripts/panel.js`) now select `install.ps1` on Windows (bash `install.sh` elsewhere) and never probe for `install.py`; comments and error/failure messages no longer reference it. No behavior change on any supported akidevrule clone.
 
