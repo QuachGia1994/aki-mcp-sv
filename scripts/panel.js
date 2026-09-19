@@ -197,6 +197,31 @@ function refreshLocalVersions(updateInfo) {
   writeStatusFile(updateInfo);
 }
 
+async function alibabaReviewPreview() {
+  const runOcr = (argv) => new Promise((resolve, reject) => {
+    const command = IS_WIN ? (process.env.ComSpec || 'cmd.exe') : 'ocr';
+    const args = IS_WIN
+      ? ['/c', ['ocr', ...argv.map((a) => /\s/.test(a) ? '"' + a.replace(/"/g, '\\\"') + '"' : a)].join(' ')]
+      : argv;
+    execFile(command, args, { cwd: REPO_ROOT, timeout: 180_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) return reject(new Error((stderr || err.message).trim()));
+      resolve((stdout || stderr || '').trim());
+    });
+  });
+
+  try {
+    return { mode: 'json', output: JSON.parse(await runOcr(['delegate', 'preview', '--format', 'json', '--repo', REPO_ROOT])) };
+  } catch (e) {
+    if (/unknown flag.*format/i.test(e.message)) {
+      return { mode: 'text', output: await runOcr(['delegate', 'preview', '--repo', REPO_ROOT]) };
+    }
+    if (/ENOENT|not recognized|not found/i.test(e.message)) {
+      throw new Error('Alibaba Open Code Review CLI is not installed or not on PATH — install @alibaba-group/open-code-review first');
+    }
+    throw e;
+  }
+}
+
 export const ROUTES = {
   'GET /api/state': async (body, ctx) => ({
     // Same call shell/find_path/search_content enforce with (roots.js:getRoots()), so the list can never show a set that isn't the live one.
@@ -209,6 +234,8 @@ export const ROUTES = {
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
   // Same function aki__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
   'GET /api/postman-status': async () => getDaemonStatus(),
+  // Deterministic Alibaba OCR delegation step: returns reviewable files/ref metadata only; the host agent performs the actual review.
+  'POST /api/alibaba-review': async () => alibabaReviewPreview(),
   // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".
