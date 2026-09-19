@@ -233,6 +233,9 @@ if (process.env.MCP_SKIP_BROWSER_OPEN) {
 function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
+  // Make an intentional stop distinguishable from a crash in the logs: a replacement by a newer
+  // instance arrives here as SIGTERM -> shutdown(0), which previously exited leaving no trace.
+  console.log(`[start] shutting down (exit code ${code})${code === 0 ? ' — clean stop (Ctrl+C, or replaced by a newer instance)' : ' — FATAL error path'}`);
   clearLock();
   cloudflared?.kill();
   killPostmanDaemon();
@@ -243,3 +246,14 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 process.on('exit', () => { cloudflared?.kill(); killPostmanDaemon(); }); // safety net: never leave a child orphaned if this process exits abruptly
+
+// Global safety net: a stray async error (a dropped CDP socket, a rejected fetch, a throwing request
+// handler) must NOT take the whole server down. Node >=15 exits on an unhandled rejection by default —
+// that is the intermittent "npm start crashed on its own" symptom. Log loudly and stay alive; genuine
+// fatal paths (listen errors, tunnel death) still call shutdown() explicitly.
+process.on('uncaughtException', (err) => {
+  console.error(`[start] uncaughtException — kept alive:\n${err?.stack || err}`);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(`[start] unhandledRejection — kept alive:\n${reason?.stack || reason}`);
+});
