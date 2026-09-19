@@ -7,7 +7,7 @@ const CDP = require('chrome-remote-interface');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { fetchAllUsage } = require('./scripts/cdp-usage');
 const { PostmanSession } = require('./scripts/postman-session');
 const { eligibleTargets, attachmentTargets, deterministicOwnerTargetId, waitForEligibleTargets, openOwnedWindow } = require('./scripts/postman-ownership');
@@ -296,6 +296,40 @@ function saveAkiData(data) {
   }
 }
 
+function launchAlibabaReview() {
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  const claudePm = path.join('D:\\LacViet\\claude-pm', 'clpm.cmd');
+  if (!fs.existsSync(claudePm)) return { ok: false, message: `Claude PM launcher not found: ${claudePm}` };
+  const prompt = [
+    'Perform a full Alibaba Open Code Review in DELEGATION MODE for the current repository.',
+    `Repository: ${repoRoot}`,
+    '',
+    'Mandatory workflow:',
+    `1. Run: ocr delegate preview --format json --repo "${repoRoot}"`,
+    '2. Treat every file in reviewable_files as mandatory review scope.',
+    '3. Run: ocr delegate rule --format json <every reviewable file> and review every returned rule set.',
+    '4. Review every reviewable file; batching is allowed only for context/size, never as silent omission.',
+    '5. Report Critical/High/Medium findings with precise file and line evidence.',
+    '6. Report coverage: total reviewable files, reviewed files, skipped files, and an explicit reason for every skip.',
+    '7. Do NOT run ocr review, ocr llm test, configure an OCR LLM, request API keys, or modify repository files.',
+    '',
+    'Use Claude Code as the host reviewer. Return the complete review report directly in this Claude Code session.'
+  ].join('\\n');
+  try {
+    const child = spawn(claudePm, ['-p', prompt], {
+      cwd: repoRoot,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+      shell: true,
+    });
+    child.unref();
+    return { ok: true, launched: true, pid: child.pid, message: 'Alibaba Review launched in Claude PM — review is running in the new CLPM session' };
+  } catch (error) {
+    return { ok: false, message: error.message || String(error) };
+  }
+}
+
 function runCmd(command, args, cwd) {
   return new Promise((resolve) => {
     execFile(command, args, { cwd, timeout: 180000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
@@ -425,6 +459,11 @@ async function setupCDP(target, port) {
       await client.Runtime.addBinding({ name: '__cdpRequestSummarize' });
     } catch (e) {}
 
+    // 3d. Binding Alibaba Open Code Review → launch the user's Claude PM host agent.
+    try {
+      await client.Runtime.addBinding({ name: '__cdpAlibabaReview' });
+    } catch (e) {}
+
     client.Runtime.bindingCalled(async (event) => {
       if (event.name === '__cdpSaveAkiConfig') {
         try {
@@ -452,6 +491,11 @@ async function setupCDP(target, port) {
         }
         await refreshUsageData(tokenToUse);
         pushUsageToPage(client);
+      } else if (event.name === '__cdpAlibabaReview') {
+        const result = launchAlibabaReview();
+        client.Runtime.evaluate({
+          expression: `window.__pmAlibabaReviewResult = ${JSON.stringify(result)}; if (typeof window.__pmRenderAlibabaReview === 'function') window.__pmRenderAlibabaReview();`
+        }).catch(() => {});
       } else if (event.name === '__cdpRequestSummarize') {
         const summarizePrompt = loadSummarizePromptFile();
         client.Runtime.evaluate({

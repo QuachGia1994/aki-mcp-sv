@@ -270,11 +270,7 @@ ${field('Passphrase', passphrase)}
     <button class="primary" data-act="launchPostman" id="pmBtnLaunch">Launch</button>
     <button data-act="quitPostman" id="pmBtnQuit" hidden>Quit</button>
     <button data-act="newWindowPostman" id="pmBtnNewWindow" hidden>New window</button>
-    <button data-act="alibabaReview" id="pmBtnAlibabaReview">Alibaba Review</button>
     <span class="dot" id="pmDaemonDot">…</span><span class="msg" id="msgPmDaemon"></span>
-  </div>
-  <div class="review-output" id="alibabaReviewOutput" hidden>
-    <pre id="alibabaReviewText"></pre>
   </div>
 
   <h3 class="subh" style="margin-top:16px">Connect Postman to this MCP</h3>
