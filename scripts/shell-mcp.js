@@ -133,8 +133,11 @@ export class Shell {
   }
 
   run(bin, args, cwd) {
+    const isWindowsScript = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(bin);
+    const executable = isWindowsScript ? (process.env.ComSpec || 'cmd.exe') : bin;
+    const executableArgs = isWindowsScript ? ['/d', '/s', '/c', bin, ...args] : args;
     return new Promise((resolve) => {
-      execFile(bin, args, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+      execFile(executable, executableArgs, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
         if (error) {
           resolve(err(stderr || error.message));
         } else {
