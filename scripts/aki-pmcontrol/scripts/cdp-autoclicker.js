@@ -153,13 +153,21 @@
   window.__pmAutoClicker = autoClicker;
 
   // Cancel slot of the same pending surface — only when copy is this folder dialog.
+  // bodyNeedles: Postman copy drifts; match any current "local folder" connect/choose/select prompt.
   const AUTO_REJECT_PICK_FOLDER = {
     configKey: 'autoRejectPickFolder',
     statKey: 'rejectPickFolderCount',
     badgeId: 'aki-badge-reject-folder',
     checkboxId: 'aki-opt-reject-folder',
     rowLabel: 'Auto <strong>reject</strong> "Connect a local folder"',
-    bodyNeedle: 'connect a local folder to this workspace'
+    bodyNeedles: [
+      'connect a local folder to this workspace',
+      'connect a local folder',
+      'choose a local folder',
+      'select a local folder',
+      'pick a local folder',
+      'local folder to this workspace'
+    ]
   };
   if (typeof window.__pmStats[AUTO_REJECT_PICK_FOLDER.statKey] !== 'number') {
     window.__pmStats[AUTO_REJECT_PICK_FOLDER.statKey] = 0;
@@ -295,7 +303,8 @@
       // A press is async, so a card can survive several 400ms ticks before leaving the DOM; without a per-card marker the loop re-presses it every tick, and that double-press is what freezes the chat session — mark it once pressed and skip anything already marked (flow.B6).
       if (card.dataset.akiPressed === '1') return;
       const copy = cardCopy(card);
-      const folderIntent = cfg[AUTO_REJECT_PICK_FOLDER.configKey] && copy.toLowerCase().includes(AUTO_REJECT_PICK_FOLDER.bodyNeedle);
+      const copyLc = copy.toLowerCase();
+      const folderIntent = cfg[AUTO_REJECT_PICK_FOLDER.configKey] && AUTO_REJECT_PICK_FOLDER.bodyNeedles.some((n) => copyLc.includes(n));
       if (folderIntent) {
         const decline = slotButton(card, 'decline');
         if (!decline) return;

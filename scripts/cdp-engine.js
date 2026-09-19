@@ -70,6 +70,12 @@ export async function evaluate({
   }
   if (!resolved) throw new Error(`no matching CDP target on ${host}:${port}`);
   const client = await CDP({ host, port, target: resolved.webSocketDebuggerUrl || resolved.id });
+  // Safety net: the CDP client is an EventEmitter over a WebSocket. An 'error' event with no listener
+  // (target closed, renderer reloaded, socket dropped mid-call) throws; with no process-level
+  // uncaughtException handler that would kill the whole `npm start`. Log and swallow — the pending
+  // command promise still rejects and propagates to the caller exactly as before.
+  client.on('error', (e) => console.error(`[cdp] client socket error (ignored): ${e?.message || e}`));
+  client.on('disconnect', () => {});
   try {
     await client.Runtime.enable().catch(() => {});
     const { result, exceptionDetails } = await client.Runtime.evaluate({ expression, awaitPromise, returnByValue, userGesture, includeCommandLineAPI: true });
@@ -178,6 +184,12 @@ export async function screenshot({
   }
   if (!resolved) throw new Error(`no matching CDP target on ${host}:${port}`);
   const client = await CDP({ host, port, target: resolved.webSocketDebuggerUrl || resolved.id });
+  // Safety net: the CDP client is an EventEmitter over a WebSocket. An 'error' event with no listener
+  // (target closed, renderer reloaded, socket dropped mid-call) throws; with no process-level
+  // uncaughtException handler that would kill the whole `npm start`. Log and swallow — the pending
+  // command promise still rejects and propagates to the caller exactly as before.
+  client.on('error', (e) => console.error(`[cdp] client socket error (ignored): ${e?.message || e}`));
+  client.on('disconnect', () => {});
   try {
     await client.Page.enable().catch(() => {});
     const params = { format };

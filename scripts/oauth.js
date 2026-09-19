@@ -39,9 +39,22 @@ const refreshTokens = new Map();
 function isAllowedRedirect(uri) {
   if (typeof uri !== 'string' || !uri) return false;
   if (uri === CLAUDE_CALLBACK || uri === CHATGPT_LEGACY_CALLBACK) return true;
+  if (isLoopbackRedirect(uri)) return true;
   return uri.startsWith(CHATGPT_CALLBACK_PREFIX)
     || uri.startsWith(GROK_CALLBACK_PREFIX)
     || uri.startsWith(GEMINI_CALLBACK_PREFIX);
+}
+
+function isLoopbackRedirect(uri) {
+  try {
+    const url = new URL(uri);
+    return url.protocol === 'http:'
+      && (url.hostname === 'localhost'
+        || url.hostname === '127.0.0.1'
+        || url.hostname === '[::1]');
+  } catch {
+    return false;
+  }
 }
 
 // Tokens survive restarts: the connector is a long-lived file-access grant, and losing it on every
