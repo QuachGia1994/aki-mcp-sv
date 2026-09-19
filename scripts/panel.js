@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Loopback-only, never behind the Funnel: it writes config and runs commands. Token-gated so no other browser page can POST to it.
 import http from 'node:http';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -210,7 +210,21 @@ async function alibabaReviewPreview() {
   });
 
   try {
-    return { mode: 'json', output: JSON.parse(await runOcr(['delegate', 'preview', '--format', 'json', '--repo', REPO_ROOT])) };
+    const output = JSON.parse(await runOcr(['delegate', 'preview', '--format', 'json', '--repo', REPO_ROOT]));
+    let rules = null;
+    const files = Array.isArray(output.reviewable_files) ? output.reviewable_files : [];
+    if (files.length) {
+      const paths = files.map((f) => typeof f === 'string' ? f : f.path).filter(Boolean);
+      if (paths.length) {
+        try {
+          rules = JSON.parse(await runOcr(['delegate', 'rule', '--format', 'json', ...paths]));
+        } catch (e) {
+          if (/unknown flag.*format/i.test(e.message)) rules = await runOcr(['delegate', 'rule', ...paths]);
+          else throw e;
+        }
+      }
+    }
+    return { mode: 'json', output, rules };
   } catch (e) {
     if (/unknown flag.*format/i.test(e.message)) {
       return { mode: 'text', output: await runOcr(['delegate', 'preview', '--repo', REPO_ROOT]) };
@@ -220,6 +234,45 @@ async function alibabaReviewPreview() {
     }
     throw e;
   }
+}
+
+async function launchAlibabaReview() {
+  const claudeCmd = path.join('D:', 'LacViet', 'claude-pm', 'clpm.cmd');
+  if (!existsSync(claudeCmd)) {
+    throw new Error('Claude PM launcher not found: ' + claudeCmd);
+  }
+
+  const prompt = [
+    'Perform a full Alibaba Open Code Review in DELEGATION MODE for the current repository.',
+    'Repository: ' + REPO_ROOT,
+    '',
+    'Mandatory workflow:',
+    '1. Run: ocr delegate preview --format json --repo "' + REPO_ROOT + '"',
+    '2. Put every reviewable_files entry into an explicit checklist.',
+    '3. Run: ocr delegate rule --format json <every reviewable file path>.',
+    '4. Review every reviewable file using the resolved rules. Batch only for context/size; do not silently omit files.',
+    '5. Report Critical, High, and Medium findings with precise file and line evidence.',
+    '6. Report coverage: total reviewable, reviewed, skipped, and skip reasons.',
+    '7. Do NOT run ocr review, ocr llm test, configure an OCR LLM, request API keys, or modify files.',
+    '',
+    'This is a read-only review. Return the final review report directly in this Claude Code session.'
+  ].join('\\n');
+
+  const child = spawn(claudeCmd, ['-p', prompt], {
+    cwd: REPO_ROOT,
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+    shell: true,
+  });
+  child.unref();
+
+  return {
+    ok: true,
+    launched: true,
+    pid: child.pid,
+    message: 'Alibaba Review launched in Claude PM — review is running in the new CLPM session',
+  };
 }
 
 export const ROUTES = {
@@ -235,7 +288,7 @@ export const ROUTES = {
   // Same function aki__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
   'GET /api/postman-status': async () => getDaemonStatus(),
   // Deterministic Alibaba OCR delegation step: returns reviewable files/ref metadata only; the host agent performs the actual review.
-  'POST /api/alibaba-review': async () => alibabaReviewPreview(),
+  'POST /api/alibaba-review': async () => launchAlibabaReview(),
   // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".

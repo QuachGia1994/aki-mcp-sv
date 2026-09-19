@@ -1637,6 +1637,14 @@
 
         <div class="aki-stack aki-rule">
           <div class="aki-row">
+            <span class="aki-section-label">CODE REVIEW</span>
+            <button type="button" id="aki-btn-alibaba-review" class="aki-btn">ALIBABA REVIEW → DELEGATE</button>
+          </div>
+          <div id="aki-alibaba-review-status" class="aki-muted">Claude PM host agent · read-only delegation</div>
+        </div>
+
+        <div class="aki-stack aki-rule">
+          <div class="aki-row">
             <span class="aki-section-label">ANTI-BOT<span class="aki-help" title="Sites can check navigator.webdriver to tell a browser is automated. Protected = Postman was launched with the flag that hides it. Unprotected = it wasn't (still works fine, just detectable).">?</span></span>
             <button type="button" id="aki-btn-new-browser-tab" class="aki-btn">NEW BROWSER TAB</button>
           </div>
@@ -1787,6 +1795,31 @@
       };
     }
 
+    const alibabaBtn = panel.querySelector('#aki-btn-alibaba-review');
+    if (alibabaBtn) {
+      alibabaBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (alibabaBtn.dataset.busy === '1') return;
+        alibabaBtn.dataset.busy = '1';
+        alibabaBtn.textContent = 'LAUNCHING…';
+        const status = panel.querySelector('#aki-alibaba-review-status');
+        if (status) status.textContent = 'Starting Claude PM…';
+        try {
+          if (typeof window.__cdpAlibabaReview === 'function') window.__cdpAlibabaReview('');
+          else {
+            if (status) status.textContent = 'Review binding not ready. Restart the Aki Postman daemon.';
+            alibabaBtn.dataset.busy = '';
+            alibabaBtn.textContent = 'ALIBABA REVIEW → DELEGATE';
+          }
+        } catch (err) {
+          if (status) status.textContent = 'Error: ' + ((err && err.message) || err);
+          alibabaBtn.dataset.busy = '';
+          alibabaBtn.textContent = 'ALIBABA REVIEW → DELEGATE';
+        }
+      };
+    }
+
     const installBtn = panel.querySelector('#aki-btn-install-rule');
     if (installBtn) {
       installBtn.onclick = (e) => {
@@ -1826,6 +1859,30 @@
     renderStatusBarUsage();
     renderRuleStatus();
   }
+
+  window.__pmRenderAlibabaReview = function () {
+    const panel = document.getElementById('aki-control-panel');
+    if (!panel) return;
+    const btn = panel.querySelector('#aki-btn-alibaba-review');
+    const status = panel.querySelector('#aki-alibaba-review-status');
+    const r = window.__pmAlibabaReviewResult || {};
+    if (r.ok && r.launched) {
+      if (btn) {
+        btn.dataset.busy = '';
+        btn.textContent = 'ALIBABA REVIEW → DELEGATE';
+      }
+      if (status) status.innerHTML = `<span class="aki-ok">Claude PM started</span> · PID ${escapeHtml(String(r.pid || '?'))} · review running`;
+      return;
+    }
+    if (btn) {
+      btn.dataset.busy = '';
+      btn.textContent = 'ALIBABA REVIEW → DELEGATE';
+    }
+    if (status) {
+      status.textContent = r.message || 'Unable to launch Claude PM.';
+      status.classList.add('aki-err');
+    }
+  };
 
   window.__pmRenderInstallRuleResult = function () {
     const panel = document.getElementById('aki-control-panel');
