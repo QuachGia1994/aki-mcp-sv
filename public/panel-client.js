@@ -329,6 +329,16 @@ const ACTIONS = {
     return s.message;
   }),
   newWindowPostman: (btn) => act(btn, 'msgPmDaemon', async () => (await api('POST', '/api/postman-new-window')).message),
+  alibabaReview: (btn) => act(btn, 'msgPmDaemon', async () => {
+    const result = await api('POST', '/api/alibaba-review');
+    const box = document.getElementById('alibabaReviewOutput');
+    const pre = document.getElementById('alibabaReviewText');
+    box.hidden = false;
+    pre.textContent = result.mode === 'json'
+      ? JSON.stringify(result.output, null, 2)
+      : result.output;
+    return 'Alibaba Review preview ready — pass the returned review scope to the host agent for the actual delegated review';
+  }),
   addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
