@@ -69,11 +69,21 @@ document.addEventListener('click', (e) => {
   });
 });
 
+function selectedRuleFiles() {
+  return [...document.querySelectorAll('#ruleChecks input[type="checkbox"]:checked')]
+    .map((input) => input.value)
+    .filter((file) => file && file !== 'index.md');
+}
+
 function buildPrompt() {
   const lines = ['[akimcp ' + MCP_VERSION + '] Short, dense, on-point. Zero yapping. Claim=evidence.'];
   const rulesOn = document.getElementById('loadRules').checked;
   if (rulesOn) {
     lines.push('Before first substantive action, call aki__akidevrule_context() once with workingPath; follow loaded receipt rules.');
+    const selected = selectedRuleFiles();
+    if (selected.length) {
+      lines.push('Selected defaults: ' + selected.join(',') + '. Auto-apply them when relevant; /akirule, /akithink, /akiflow are unnecessary. Before first use of any selected non-core file not already loaded, read ~/.aki/akidevrule/<file>.');
+    }
   }
   lines.push('Tools: find_path/search_content (files), run_cmd (shell allowlist), chrome_launch/chrome_interact (browser), local_fetch (localhost/LAN API).');
   lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md. Skip pure Q&A.');

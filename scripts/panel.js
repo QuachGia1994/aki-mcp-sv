@@ -236,9 +236,12 @@ async function alibabaReviewPreview() {
   }
 }
 
-async function launchAlibabaReview() {
-  const claudeCmd = path.join('D:', 'LacViet', 'claude-pm', 'clpm.cmd');
-  if (!existsSync(claudeCmd)) {
+export async function launchAlibabaReview({
+  spawnFn = spawn,
+  existsFn = existsSync,
+  claudeCmd = path.join('D:', 'LacViet', 'claude-pm', 'clpm.cmd'),
+} = {}) {
+  if (!existsFn(claudeCmd)) {
     throw new Error('Claude PM launcher not found: ' + claudeCmd);
   }
 
@@ -258,7 +261,7 @@ async function launchAlibabaReview() {
     'This is a read-only review. Return the final review report directly in this Claude Code session.'
   ].join('\\n');
 
-  const child = spawn(claudeCmd, ['-p', prompt], {
+  const child = spawnFn(claudeCmd, ['-p', prompt], {
     cwd: REPO_ROOT,
     detached: true,
     stdio: 'ignore',
