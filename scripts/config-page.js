@@ -24,7 +24,7 @@ const RULES_INSTALL_CMD = 'npx @akinet/akidevrule@latest';
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
-const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'];
+const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'METHOD-audit-flow.md', 'METHOD-deep-think.md'];
 
 // Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
@@ -320,7 +320,7 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </section>
 
 <section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
-<p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
+<p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). Checked files are encoded into the prompt; selected contextual methods auto-apply when relevant, so slash commands are not required.</p>
 <div class="acts">
   <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude ↗</a>
   <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok ↗</a>
