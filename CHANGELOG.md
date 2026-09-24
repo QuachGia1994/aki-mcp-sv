@@ -14,6 +14,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Kiro fallback resource bounds tightened**: read-only fallback calls use a shorter timeout and smaller output buffer so hung probes fail sooner and concurrent calls use less memory.
 
 ### Fixed
+- **Chrome cloned-profile launcher false timeouts on current Windows Chrome**: launcher now resolves the actually installed Chromium binary, allocates an explicit loopback CDP port, and probes `/json/version` instead of depending on `DevToolsActivePort`; legacy parsing remains for compatibility.
 - **Section 3 rule/method checkboxes were cosmetic**: checked files are now serialized into the copied AI Instructions, Audit Flow and Deep Think are selected by default, and selected contextual methods auto-apply without requiring `/akirule`, `/akithink`, or `/akiflow` in every session.
 - **Windows command-wrapper execution**: allowlisted `.cmd`/`.bat` programs are routed through `cmd.exe` instead of failing when Node tries to execute them directly.
 - **MCP/OAuth runtime resilience**: loopback OAuth redirects are accepted for local clients; dropped CDP sockets and stray async errors are logged without taking down the whole server; the Postman local-folder rejection rule recognizes current wording variants.
