@@ -16,9 +16,10 @@ import { ok, fail } from './mcp-tool.js';
 import daemonPid from './aki-pmcontrol/scripts/daemon-pid.js';
 import cdp from './cdp-engine.js';
 
-const DATA_JSON_PATH = path.join(os.homedir(), '.aki', 'cdp-postman', 'data.json');
-const NEW_WINDOW_FLAG_PATH = path.join(path.dirname(DATA_JSON_PATH), 'new-window.flag');
-const OWNERSHIP_STATUS_PATH = path.join(path.dirname(DATA_JSON_PATH), 'ownership-status.json');
+const POSTMAN_RUNTIME_DIR = process.env.AKI_POSTMAN_RUNTIME_DIR || path.join(os.homedir(), '.aki', 'cdp-postman');
+const DATA_JSON_PATH = path.join(POSTMAN_RUNTIME_DIR, 'data.json');
+const NEW_WINDOW_FLAG_PATH = path.join(POSTMAN_RUNTIME_DIR, 'new-window.flag');
+const OWNERSHIP_STATUS_PATH = path.join(POSTMAN_RUNTIME_DIR, 'ownership-status.json');
 const DAEMON_SCRIPT_PATH = fileURLToPath(new URL('./aki-pmcontrol/index.js', import.meta.url));
 
 let daemonProcess = null;
