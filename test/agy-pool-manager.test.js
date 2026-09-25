@@ -106,9 +106,9 @@ try {
   writeFileSync(credentialFile, '0'.repeat(120) + '\r\n' + '0'.repeat(120));
   const initial = await getAgyPoolStatus({ settings, fetchImpl, execFileImpl, credentialFile });
   assert.equal(initial.initialized, true);
-  assert.equal(initial.missingIdentityCount, 0);
-  assert.equal(initial.roles.executor.identityExists, true);
-  assert.equal(initial.roleCredentialReady, false, 'existing role users are not enough when the DPAPI role credential is missing');
+  assert.equal(initial.missingIdentityCount, process.platform === 'win32' ? 0 : 3);
+  assert.equal(initial.roles.executor.identityExists, process.platform === 'win32');
+  assert.equal(initial.roleCredentialReady, process.platform !== 'win32', 'only Windows checks the role credential');
   assert.equal(initial.provisionRequired, true, 'panel must offer Create role identities to repair a missing role credential');
 
   const utf16CredentialFile = path.join(tmp, 'role-utf16.clixml');
@@ -295,40 +295,42 @@ try {
     assert.equal(loggedOut.ok, true);
   }
 
-  let failedExperimentRunning = true;
-  const eligibilityFetch = async (url) => {
-    const pathname = new URL(url).pathname;
-    if (pathname === '/stop') {
-      failedExperimentRunning = false;
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    }
-    if (!failedExperimentRunning) throw new Error('offline');
-    return new Response(JSON.stringify({
-      ok: true,
-      name: 'experiment',
-      pid: 7777,
-      startedAt: '2026-09-25T00:00:00.000Z',
-      root,
-      agyAvailable: true,
-      agyReady: false,
-      agyError: 'Eligibility check failed: Your current account is not eligible for Antigravity. Verify your account: https://accounts.google.com/signin/continue?secret=should-not-leak',
-      agyPath: agyBin,
-      allowedModes: ['plan', 'accept-edits'],
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  };
-  const eligibilityResult = await startAgyPoolRole('experiment', {
-    settings,
-    secrets: { experiment: 'experiment-secret' },
-    fetchImpl: eligibilityFetch,
-    execFileImpl,
-    credentialFile,
-  });
-  assert.equal(eligibilityResult.ok, false);
-  assert.equal(failedExperimentRunning, false, 'eligibility failure must auto-stop the worker');
-  assert.equal(eligibilityResult.status.running, false);
-  assert.match(eligibilityResult.message, /not eligible for Antigravity/);
-  assert.match(eligibilityResult.message, /Logout, then Login/);
-  assert.doesNotMatch(eligibilityResult.message, /https?:\/\//, 'OAuth URLs must not leak into panel errors');
+  if (process.platform === 'win32') {
+    let failedExperimentRunning = true;
+    const eligibilityFetch = async (url) => {
+      const pathname = new URL(url).pathname;
+      if (pathname === '/stop') {
+        failedExperimentRunning = false;
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (!failedExperimentRunning) throw new Error('offline');
+      return new Response(JSON.stringify({
+        ok: true,
+        name: 'experiment',
+        pid: 7777,
+        startedAt: '2026-09-25T00:00:00.000Z',
+        root,
+        agyAvailable: true,
+        agyReady: false,
+        agyError: 'Eligibility check failed: Your current account is not eligible for Antigravity. Verify your account: https://accounts.google.com/signin/continue?secret=should-not-leak',
+        agyPath: agyBin,
+        allowedModes: ['plan', 'accept-edits'],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const eligibilityResult = await startAgyPoolRole('experiment', {
+      settings,
+      secrets: { experiment: 'experiment-secret' },
+      fetchImpl: eligibilityFetch,
+      execFileImpl,
+      credentialFile,
+    });
+    assert.equal(eligibilityResult.ok, false);
+    assert.equal(failedExperimentRunning, false, 'eligibility failure must auto-stop the worker');
+    assert.equal(eligibilityResult.status.running, false);
+    assert.match(eligibilityResult.message, /not eligible for Antigravity/);
+    assert.match(eligibilityResult.message, /Logout, then Login/);
+    assert.doesNotMatch(eligibilityResult.message, /https?:\/\//, 'OAuth URLs must not leak into panel errors');
+  }
 
   const stopped = await stopAgyPoolRole('advisor', { settings, secrets: { advisor: 'secret' }, fetchImpl });
   assert.equal(stopped.ok, true);
