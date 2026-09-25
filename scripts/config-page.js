@@ -295,6 +295,7 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane" id="tab-agy">
   <h3 class="subh">Connect Antigravity (AGY) — local, 0ms</h3>
+  <p class="helptext">Using several AGY Pro accounts at once? The <a href="#s7">AGY multi-account pool</a> below manages Advisor / Executor / Experiment / Reviewer from this same panel.</p>
   <p class="helptext"><strong>CLI (<span class="mono">agy</span>):</strong> merge the entry below under the existing <span class="mono">mcpServers</span> key in <span class="mono">~/.gemini/antigravity-cli/settings.json</span> — don't overwrite the file, it also holds your model &amp; permissions. Uses <span class="mono">httpUrl</span> (streamable HTTP).</p>
   ${copyEl(agyJson, true, 'agyJson')}
   <p class="helptext"><strong>IDE:</strong> paste into <span class="mono">~/.gemini/config/mcp_config.json</span> (or <span class="mono">.agents/mcp_config.json</span> per workspace). The IDE uses <span class="mono">serverUrl</span> instead of <span class="mono">httpUrl</span>.</p>
@@ -379,6 +380,28 @@ ${field('Widen command', WIDEN_SNIPPET)}
   <button data-act="saveTrusted">Save</button>
   <span class="msg" id="msgTrusted"></span>
 </div>
+</section>
+
+<section id="s7"><h2>7 · AGY multi-account pool</h2>
+<p class="helptext">The four-account pool currently requires Windows. On macOS or Linux, use the local AGY connection above without a named worker.</p>
+<p class="helptext">Four AGY CLI accounts. For each role, click <strong>Login</strong>, sign in directly in the visible AGY CLI, close that window, then click <strong>Start</strong>. Setup and workers run in the background.</p>
+<div class="acts">
+  <button class="primary" data-act="initAgyPool" id="agyPoolInit">Initialize</button>
+  <button data-act="provisionAgyRoles" id="agyPoolProvision">Create role identities</button>
+  <button class="primary" data-act="startAgyPool">Start all</button>
+  <button data-act="stopAgyPool">Stop all</button>
+  <button data-act="refreshAgyPool">Recheck</button>
+  <span class="dot" id="agyPoolDot">…</span><span class="msg" id="msgAgyPool"></span>
+</div>
+<h3 class="subh">Role identities</h3>
+<p class="helptext">Role identities are fixed and cannot be edited. To change an account, click <strong>Logout</strong>, then Login again. If Start reports <span class="mono">account is not eligible</span>, Logout that role and Login with another eligible personal Google account.</p>
+<div id="agyPoolRows">
+  <div class="row" data-agy-role="advisor"><label>Advisor</label><div class="acts"><span class="dot" id="agyDot-advisor">…</span><span class="mono" id="agyUser-advisor">current Windows user</span><span class="msg" id="agyMsg-advisor"></span><button data-act="loginAgyRole" data-role="advisor">Login</button><button data-act="logoutAgyRole" data-role="advisor">Logout</button><button data-act="startAgyRole" data-role="advisor">Start</button><button data-act="stopAgyRole" data-role="advisor">Stop</button></div></div>
+  <div class="row" data-agy-role="executor"><label>Executor</label><div class="acts"><span class="dot" id="agyDot-executor">…</span><span class="mono" id="agyUser-executor">agy-executor</span><span class="msg" id="agyMsg-executor"></span><button data-act="loginAgyRole" data-role="executor">Login</button><button data-act="logoutAgyRole" data-role="executor">Logout</button><button data-act="startAgyRole" data-role="executor">Start</button><button data-act="stopAgyRole" data-role="executor">Stop</button></div></div>
+  <div class="row" data-agy-role="experiment"><label>Experiment</label><div class="acts"><span class="dot" id="agyDot-experiment">…</span><span class="mono" id="agyUser-experiment">agy-experiment</span><span class="msg" id="agyMsg-experiment"></span><button data-act="loginAgyRole" data-role="experiment">Login</button><button data-act="logoutAgyRole" data-role="experiment">Logout</button><button data-act="startAgyRole" data-role="experiment">Start</button><button data-act="stopAgyRole" data-role="experiment">Stop</button></div></div>
+  <div class="row" data-agy-role="reviewer"><label>Reviewer</label><div class="acts"><span class="dot" id="agyDot-reviewer">…</span><span class="mono" id="agyUser-reviewer">agy-reviewer</span><span class="msg" id="agyMsg-reviewer"></span><button data-act="loginAgyRole" data-role="reviewer">Login</button><button data-act="logoutAgyRole" data-role="reviewer">Logout</button><button data-act="startAgyRole" data-role="reviewer">Start</button><button data-act="stopAgyRole" data-role="reviewer">Stop</button></div></div>
+</div>
+<p class="helptext">Advisor and Reviewer are plan-only. Executor and Experiment may use <span class="mono">accept-edits</span>; point those two roles at separate Git worktrees when both modify the same project.</p>
 </section>
 
 <footer>
