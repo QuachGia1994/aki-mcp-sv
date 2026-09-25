@@ -11,6 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Kiro fallback resource bounds tightened**: read-only fallback calls use a shorter timeout and smaller output buffer so hung probes fail sooner and concurrent calls use less memory.
 
 ### Fixed
+- **Postman diagnostic token handling**: the optional `--enable-mcp` probe now requires `AKI_MCP_ACCESS_TOKEN` instead of embedding a bearer token in tracked source.
 - **Chrome cloned-profile launcher false timeouts on current Windows Chrome**: launcher now resolves the actually installed Chromium binary, allocates an explicit loopback CDP port, and probes `/json/version` instead of depending on `DevToolsActivePort`; legacy parsing remains for compatibility.
 - **Windows command-wrapper execution**: allowlisted `.cmd`/`.bat` programs are routed through `cmd.exe` instead of failing when Node tries to execute them directly.
 - **MCP/OAuth runtime resilience**: loopback OAuth redirects are accepted for local clients; dropped CDP sockets and stray async errors are logged without taking down the whole server; the Postman local-folder rejection rule recognizes current wording variants.
