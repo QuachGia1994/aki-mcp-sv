@@ -84,6 +84,7 @@ try {
       root,
       allowedModes: ['plan'],
       token: 'test-secret',
+      agyBin: process.execPath,
       verifyAgy: false,
     },
     {
