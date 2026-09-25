@@ -14,6 +14,7 @@ import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, re
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
+import { getAgyPoolStatus, initializeAgyPool, provisionAgyRoleUsers, loginAgyPoolRole, logoutAgyPoolRole, startAgyPool, stopAgyPool, startAgyPoolRole, stopAgyPoolRole } from './agy-pool-manager.js';
 import { fileURLToPath } from 'node:url';
 
 const IS_WIN = process.platform === 'win32';
@@ -298,6 +299,15 @@ export const ROUTES = {
   'POST /api/postman-quit': async () => killPostmanDaemon(),
   // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman-mcp.js).
   'POST /api/postman-new-window': async () => requestNewWindow(),
+  'GET /api/agy-pool': async () => getAgyPoolStatus(),
+  'POST /api/agy-pool/init': async () => initializeAgyPool(),
+  'POST /api/agy-pool/provision': async () => provisionAgyRoleUsers(),
+  'POST /api/agy-pool/login-role': async (body) => loginAgyPoolRole(body.role),
+  'POST /api/agy-pool/logout-role': async (body) => logoutAgyPoolRole(body.role),
+  'POST /api/agy-pool/start': async () => startAgyPool(),
+  'POST /api/agy-pool/stop': async () => stopAgyPool(),
+  'POST /api/agy-pool/start-role': async (body) => startAgyPoolRole(body.role),
+  'POST /api/agy-pool/stop-role': async (body) => stopAgyPoolRole(body.role),
   // No hub restart: setFolders writes setting.json, and roots.js reads it fresh per call — a save takes effect on the next shell/find_path/search_content call, same as the allowlist.
   'POST /api/paths': async (body) => {
     setFolders(validatePaths(body.paths));

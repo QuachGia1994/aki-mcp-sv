@@ -325,6 +325,69 @@ async function loadPostmanDaemon() {
   say('msgPmDaemon', postmanStatusMessage(s), s.attached);
 }
 
+const AGY_ROLES = ['advisor', 'executor', 'experiment', 'reviewer'];
+
+function renderAgyPool(status) {
+  const initialized = Boolean(status.initialized);
+  const runningCount = Number(status.runningCount) || 0;
+  const readyCount = Number(status.readyCount) || 0;
+  const poolDot = document.getElementById('agyPoolDot');
+  poolDot.textContent = initialized ? (readyCount === AGY_ROLES.length ? '✓' : '✕') : '…';
+  poolDot.className = 'dot' + (initialized ? (readyCount === AGY_ROLES.length ? ' ok' : ' err') : '');
+  document.getElementById('agyPoolInit').hidden = initialized;
+  document.getElementById('agyPoolProvision').hidden = !status.provisionRequired;
+  const startAll = document.querySelector('[data-act="startAgyPool"]');
+  if (startAll) startAll.disabled = Boolean(status.provisionRequired);
+  const poolMsg = !initialized
+    ? 'not initialized — click Initialize'
+    : status.missingIdentityCount
+      ? status.missingIdentityCount + ' role identities missing — click Create role identities'
+      : !status.roleCredentialReady
+        ? 'role credential missing — click Create role identities'
+        : readyCount + '/4 ready · ' + runningCount + '/4 workers running · controller ' + status.currentUser;
+  say('msgAgyPool', poolMsg, initialized && !status.provisionRequired && readyCount === AGY_ROLES.length);
+
+  for (const role of AGY_ROLES) {
+    const item = status.roles?.[role];
+    if (!item) continue;
+    document.getElementById('agyUser-' + role).textContent = item.user;
+    const dot = document.getElementById('agyDot-' + role);
+    const ready = item.identityExists && item.running && item.agyReady === true;
+    dot.textContent = ready ? '✓' : '✕';
+    dot.className = 'dot ' + (ready ? 'ok' : 'err');
+    const detail = !item.identityExists
+      ? 'Windows identity missing — click Create role identities'
+      : !item.running
+        ? 'stopped · after Login, close the AGY CLI window, then click Start'
+        : item.agyAvailable === false
+          ? 'worker PID ' + item.pid + ' · shared AGY executable unavailable'
+          : item.agyError
+            ? 'AGY login/eligibility failed · ' + item.agyError
+            : item.checking
+              ? 'PID ' + item.pid + ' · checking AGY login/eligibility…'
+              : item.agyReady
+                ? 'PID ' + item.pid + (item.busy ? ' · busy' : ' · ready') + ' · ' + item.allowedModes.join(',')
+                : 'PID ' + item.pid + ' · not ready';
+    say('agyMsg-' + role, detail, ready);
+    const row = document.querySelector('[data-agy-role="' + role + '"]');
+    const login = row?.querySelector('[data-act="loginAgyRole"]');
+    const logout = row?.querySelector('[data-act="logoutAgyRole"]');
+    const start = row?.querySelector('[data-act="startAgyRole"]');
+    const stop = row?.querySelector('[data-act="stopAgyRole"]');
+    const roleCredentialReady = item.usesCurrentUser || status.roleCredentialReady;
+    if (login) login.disabled = !item.identityExists || !roleCredentialReady || item.running;
+    if (logout) logout.disabled = !item.identityExists || !roleCredentialReady;
+    if (start) { start.hidden = item.running; start.disabled = !item.identityExists || !roleCredentialReady; }
+    if (stop) stop.hidden = !item.running;
+  }
+}
+
+async function loadAgyPool() {
+  const status = await api('GET', '/api/agy-pool');
+  renderAgyPool(status);
+  return status;
+}
+
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
@@ -339,6 +402,62 @@ const ACTIONS = {
     return s.message;
   }),
   newWindowPostman: (btn) => act(btn, 'msgPmDaemon', async () => (await api('POST', '/api/postman-new-window')).message),
+  initAgyPool: (btn) => act(btn, 'msgAgyPool', async () => {
+    const result = await api('POST', '/api/agy-pool/init');
+    await loadAgyPool();
+    return result.message;
+  }),
+  refreshAgyPool: (btn) => act(btn, 'msgAgyPool', async () => {
+    const status = await loadAgyPool();
+    return status.readyCount + '/4 ready';
+  }),
+  provisionAgyRoles: (btn) => act(btn, 'msgAgyPool', async () => {
+    await api('POST', '/api/agy-pool/init');
+    const result = await api('POST', '/api/agy-pool/provision');
+    await loadAgyPool();
+    return result.message;
+  }),
+  loginAgyRole: (btn) => act(btn, 'agyMsg-' + btn.dataset.role, async () => {
+    await api('POST', '/api/agy-pool/init');
+    const result = await api('POST', '/api/agy-pool/login-role', { role: btn.dataset.role });
+    return result.message;
+  }),
+  logoutAgyRole: (btn) => act(btn, 'agyMsg-' + btn.dataset.role, async () => {
+    const result = await api('POST', '/api/agy-pool/logout-role', { role: btn.dataset.role });
+    await loadAgyPool();
+    return result.message;
+  }),
+  startAgyPool: (btn) => act(btn, 'msgAgyPool', async () => {
+    const timer = setInterval(() => loadAgyPool().catch(() => {}), 750);
+    try {
+      const result = await api('POST', '/api/agy-pool/start');
+      renderAgyPool(result.status);
+      for (const [role, item] of Object.entries(result.results || {})) {
+        if (!item.ok) say('agyMsg-' + role, item.message || 'launch failed', false);
+      }
+      const failed = Object.values(result.results || {}).filter((item) => !item.ok).length;
+      return failed ? failed + ' role(s) need Login or account eligibility fix' : 'all four workers ready';
+    } finally {
+      clearInterval(timer);
+    }
+  }),
+  stopAgyPool: (btn) => act(btn, 'msgAgyPool', async () => {
+    const result = await api('POST', '/api/agy-pool/stop');
+    renderAgyPool(result.status);
+    return result.ok ? 'all workers stopped' : 'stop completed with errors; Recheck';
+  }),
+  startAgyRole: (btn) => act(btn, 'agyMsg-' + btn.dataset.role, async () => {
+    await api('POST', '/api/agy-pool/init');
+    const result = await api('POST', '/api/agy-pool/start-role', { role: btn.dataset.role });
+    await loadAgyPool();
+    if (!result.ok) throw new Error(result.message || 'AGY role failed to start');
+    return result.message;
+  }),
+  stopAgyRole: (btn) => act(btn, 'agyMsg-' + btn.dataset.role, async () => {
+    const result = await api('POST', '/api/agy-pool/stop-role', { role: btn.dataset.role });
+    await loadAgyPool();
+    return result.message;
+  }),
   addFolder: (btn) => { addPath('', true); document.querySelector('#paths input:last-of-type')?.focus(); },
   savePaths: (btn) => act(btn, 'msgPaths', async () => {
     const paths = [...document.querySelectorAll('#paths input')].map((i) => i.value.trim()).filter(Boolean);
@@ -447,8 +566,8 @@ document.querySelectorAll('.qr-tab').forEach((btn) => (btn.onclick = () => {
 }));
 
 renderSavedIngress(SAVED_INGRESS);
-
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });
+loadAgyPool().catch((e) => say('msgAgyPool', e.message, false));
