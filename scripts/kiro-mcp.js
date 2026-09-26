@@ -15,8 +15,7 @@ function run(trustTools, { prompt, effort, cwd }) {
   const args = ['chat', '--no-interactive', '--model', MODEL, `--trust-tools=${trustTools}`];
   if (effort) args.push('--effort', effort);
   args.push(prompt);
-  // Fallback path: tighter than agy (120s/4MB). Read-only probes rarely need >60s or >1MB;
-  // lower bounds fail faster on hang and cap memory when concurrent.
+  // Fallback probes use 60s/1MiB limits to fail faster and bound memory under concurrency (AGY uses 120s/4MiB).
   return new Promise((resolve) => {
     execFile('kiro-cli', args, { cwd: dir, timeout: 60_000, maxBuffer: 1 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {

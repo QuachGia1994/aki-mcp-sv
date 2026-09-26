@@ -1,49 +1,6 @@
 #!/usr/bin/env node
-// drop-rate.mjs — ingress drop-rate benchmark for the akimcp gatekeeper.
-//
-// Purpose: put a hard number on the deferred reliability question in
-// docs/plan/done/cloudflare-tunnel-ingress.md — "does a Cloudflare Tunnel
-// actually remove the intermittent per-request drops that Tailscale Funnel
-// introduces?". Run one pass against each ingress and `compare` the results.
-//
-// It never touches OAuth/gatekeeper/bridge code — it is a black-box HTTP client
-// that only exercises the public edge, exactly like a connector would.
-//
-// Node >=22, ESM, zero dependencies. Not shipped (bench/ is outside package `files`).
-//
-// Usage:
-//   node bench/drop-rate.mjs run --origin https://your-host [options]
-//   node bench/drop-rate.mjs compare <baseline.summary.json> <candidate.summary.json>
-//
-// Options for `run`:
-//   --origin <url>       Public origin to probe (required), e.g. https://oakgatekeeper.uk
-//   --label <name>       Label for this run (default: derived from origin host)
-//   --mode <mode>        preflight | wellknown | mcp   (default: preflight)
-//   --minutes <n>        Duration in minutes (default: 30 — matches the plan's ">=30 min")
-//   --concurrency <n>    Parallel keep-alive workers (default: 4)
-//   --gap-ms <n>         Idle gap between a worker's own requests (default: 500)
-//   --timeout-ms <n>     Per-request timeout (default: 15000)
-//   --token <bearer>     OAuth bearer (mode=mcp only) — grab it from a live connector session
-//   --payload-kb <n>     Pad the mcp initialize body by n KB to push bytes through the edge (mode=mcp)
-//   --out <file>         JSONL output path (default: bench/out/<label>-<ts>.jsonl)
-//   --report-sec <n>     Live progress interval (default: 30)
-//   --max-redirects <n>  Follow up to n 3xx hops, method+body preserved (default: 3; 0 = off).
-//                        Cloudflare may 308-normalize /mcp; a real connector follows it, so we do too.
-//
-// Modes:
-//   preflight  POST /mcp with no token -> expect 401. Auth-free per-request edge
-//              reliability proxy: a healthy edge answers 401 every time; a drop is
-//              a reset/timeout/no-response or an edge 5xx/52x. Does NOT stream, so it
-//              under-tests SSE-specific drops — but needs no secret and reproduces the
-//              "request never reached the origin" failure class.
-//   wellknown  GET /.well-known/oauth-protected-resource/mcp -> expect 200. Pure edge
-//              liveness control (this is the probe the plan notes "always returns 200").
-//   mcp        POST /mcp with --token, a real JSON-RPC `initialize`, Accept text/event-stream,
-//              drains the whole response -> expect 200. Closest automated reproduction of a
-//              connector request (a mid-stream reset counts as a drop). Requires a bearer token.
-//
-// The authoritative benchmark is still a real >=30 min Claude connector session
-// (see bench/README.md); this harness is the automated, repeatable approximation.
+// Ingress drop-rate benchmark for the akimcp gatekeeper; compare one public-edge run per ingress.
+// See bench/README.md for modes, options, usage, and the authoritative live-connector benchmark.
 
 import http from 'node:http';
 import https from 'node:https';
