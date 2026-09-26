@@ -81,9 +81,7 @@ function field(label, value, hl = false) {
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
-  // Local-First: local clients (Postman Desktop, Cursor, Claude Code, AGY, Codex) run on this machine, so they
-  // connect straight to the loopback engine — zero WAN round-trip, works with no internet and no tunnel. Only the
-  // remote web connectors (Claude.ai, ChatGPT, …) need the public `url` above.
+  // Local clients use loopback; web connectors use the public ingress above.
   const localUrl = `http://127.0.0.1:${process.env.GATEKEEPER_PORT || 9999}/mcp`;
   const postmanJson = JSON.stringify({
     mcpServers: { 'aki-mcp-sv': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } },
@@ -93,8 +91,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const agyJson = JSON.stringify({ mcpServers: { 'aki-mcp': { httpUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
   const agyIdeJson = JSON.stringify({ mcpServers: { 'aki-mcp': { serverUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
   const claudeCodeCmd = `claude mcp add --transport http aki-mcp ${localUrl} --header "Authorization: Bearer ${accessToken}"`;
-  // Codex CLI (~/.codex/config.toml) speaks streamable HTTP via a `url` key; `http_headers` carries a static bearer so the
-  // snippet is copy-paste-ready with no shell env var to export first (matches how every other local tab embeds the token).
+  // Codex config embeds the bearer in http_headers for a ready-to-paste local connection.
   const codexToml = `[mcp_servers.aki-mcp]\nurl = "${localUrl}"\nhttp_headers = { "Authorization" = "Bearer ${accessToken}" }`;
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.

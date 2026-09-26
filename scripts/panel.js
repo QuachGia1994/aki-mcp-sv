@@ -29,7 +29,7 @@ function writeJsonAtomic(file, data) {
   renameSync(tmp, file);
 }
 
-// Folders are a containment boundary (coding.C4): written atomically so a partial write can never transiently widen it. Mirrors setShellAllowlist below, but folders are security-load-bearing enough to warrant the extra step.
+// Write the folder containment boundary atomically to prevent a partial allowlist.
 function setFolders(paths) {
   const settings = readSettings();
   settings.folders = paths;
@@ -57,7 +57,7 @@ function validatePaths(paths) {
 const sameSubs = (a, b) =>
   a === null || b === null ? a === b : Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
 
-// Diff against DEFAULT_ALLOWLIST so a deleted default lands in `revoked`, not silently back to default. `added` is the 2-level array (string = any, [bin, ...subs] = restricted): no hand-written null.
+// Track deleted defaults in revoked so they cannot silently return.
 const entryOf = ([bin, subs]) => (subs === null ? bin : [bin, ...subs]);
 function toStored(effective) {
   const added = Object.entries(effective)
@@ -139,9 +139,7 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  // akidevrule ships install.ps1 for Windows on purpose: a bare `bash.exe` there resolves to the WSL
-  // launcher (C:\Windows\System32\bash.exe) and dies with "execvpe(/bin/bash) failed" when no WSL distro is installed.
-  // Pick a real interpreter by platform (PowerShell on Windows, bash otherwise); never fall through to WSL bash.
+  // Bare bash.exe may resolve to WSL on Windows; use install.ps1 without requiring a distro.
   let cmd, args;
   if (IS_WIN) {
     if (existsSync(path.join(repo, 'install.ps1'))) {
@@ -165,7 +163,7 @@ async function installRules() {
   }
 }
 
-// Pull this repo, but only when the tree is clean — an unattended pull over local edits can conflict or lose work (agent.B3). Checked at click-time, not page-load, since the tree can change in between.
+// Check for local edits at click-time before pulling so an intervening edit cannot be overwritten.
 async function pullUpdate() {
   if (!existsSync(path.join(REPO_ROOT, '.git'))) {
     throw new Error('installed via npm: run `npm i -g @akinet/akimcp` in your terminal to update');
@@ -178,7 +176,7 @@ async function pullUpdate() {
   return 'pulled latest — restart akimcp to load the new code';
 }
 
-// Mirror shell-mcp's classification: a zone overlapping a writable root is dropped (write+exec = RCE). Name the offending root so the panel can show why a zone is disabled.
+// Surface the writable-root conflict that disables a trusted script directory.
 function trustedDirStatus() {
   const roots = getRoots().map((p) => path.resolve(p));
   return loadAllowlistDirs().map((dir) => {
@@ -187,7 +185,7 @@ function trustedDirStatus() {
   });
 }
 
-// A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
+// Recompute the installed rule version after an install; boot-time updateInfo is stale.
 function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
   for (const key of ['mcp', 'rule']) {
@@ -292,7 +290,7 @@ export const ROUTES = {
   'GET /api/postman-status': async () => getDaemonStatus(),
   // Deterministic Alibaba OCR delegation step: returns reviewable files/ref metadata only; the host agent performs the actual review.
   'POST /api/alibaba-review': async () => launchAlibabaReview(),
-  // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
+  // launchPostmanDaemon handles repeated clicks by recognizing the running daemon.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".
   'POST /api/postman-quit': async () => killPostmanDaemon(),

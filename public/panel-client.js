@@ -201,7 +201,7 @@ function collectAllowlist() {
   return map;
 }
 
-// Editable trust zones. A zone overlapping a writable root is disabled server-side (write+exec = RCE); the panel shows it with a ✕ and names the offending folder, but still lets the user fix or remove it.
+// The server disables trusted directories overlapping writable roots; show the conflicting folder for correction.
 function markTrustedDirty() {
   document.querySelector('[data-act="saveTrusted"]').classList.add('primary');
   say('msgTrusted', 'unsaved changes', false);
@@ -263,7 +263,7 @@ function renderSavedIngress(saved) {
   box.append(p);
 }
 
-// Pure visibility toggle: hides non-matching chips/rows, never touches collectAllowlist()'s data. Position matters (above #cmdChips, below the add-input at the bottom): a filter box and an add box that looked identical would collide in the user's mental model.
+// Filter visibility only; collectAllowlist() still reads every chip and row.
 function filterCommands(q) {
   const needle = q.trim().toLowerCase();
   for (const el of document.querySelectorAll('#cmdChips .chip, #cmdRows .cmdrow')) {
