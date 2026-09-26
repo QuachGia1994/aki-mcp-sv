@@ -25,10 +25,23 @@ const PROVISION_MARKER_PATH = path.join(path.dirname(path.resolve(AGY_POOL_WORKS
 const FIXED_ROLE_USERS = Object.freeze(['agy-executor', 'agy-experiment', 'agy-reviewer']);
 const HEALTH_TIMEOUT_MS = 1_200;
 const START_WAIT_MS = 8_000;
-const READY_WAIT_MS = 50_000;
+const READY_WAIT_MS = 65_000;
 const STOP_WAIT_MS = 5_000;
+const lastObservedAgyAccounts = new Map();
+const agyAccountEpoch = new Map();
+const ineligibleAgyAccounts = new Set();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function normalizedAgyAccountHandle(value) {
+  return typeof value === 'string' && /^[a-z0-9._%+-]{1,64}$/i.test(value) ? value : null;
+}
+
+function clearObservedAgyAccount(role) {
+  agyAccountEpoch.set(role, (agyAccountEpoch.get(role) || 0) + 1);
+  lastObservedAgyAccounts.delete(role);
+  ineligibleAgyAccounts.delete(role);
+}
 
 function workerUrl(entry, pathname) {
   const base = new URL(entry.url);
@@ -185,7 +198,7 @@ async function fetchJson(url, {
   });
   let body = null;
   try { body = await response.json(); } catch {}
-  if (!response.ok) throw new Error(body?.error || `HTTP ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(body?.error || `HTTP ${response.status}`), { statusCode: response.status });
   return body;
 }
 
@@ -246,6 +259,7 @@ export async function getAgyPoolStatus({
       url: entry.url,
       allowedModes: entry.allowedModes,
       identityExists: snapshots[role].identityExists,
+      accountIneligible: !snapshots[role].health.running && ineligibleAgyAccounts.has(role),
       ...snapshots[role].health,
       root: workerRoot(entry),
     };
@@ -267,6 +281,42 @@ export async function getAgyPoolStatus({
     defaultWorkspaceReady: workspaceReady,
     provisionRequired: missingIdentityCount > 0 || !roleCredentialReady || (commonRoot !== null && !workspaceProvisioned(commonRoot)),
   };
+}
+
+export async function getAgyPoolUsage({
+  settings = readSettings(),
+  secrets = readAgyPoolSecrets(),
+  fetchImpl = globalThis.fetch,
+  fresh = false,
+} = {}) {
+  const { initialized, settings: merged } = livePoolSettings(settings);
+  const roles = Object.fromEntries(await Promise.all(AGY_POOL_ROLES.map(async (role) => {
+    if (!initialized) return [role, { state: 'uninitialized' }];
+    const accountEpoch = agyAccountEpoch.get(role) || 0;
+    const entry = merged.agy.workers[role];
+    const health = await workerHealth(entry, { fetchImpl, expectedName: role });
+    const lastAccount = lastObservedAgyAccounts.get(role) || null;
+    if (!health.running) return [role, { state: 'offline', accountHandle: lastAccount }];
+    if (health.checking) return [role, { state: 'busy', accountHandle: lastAccount }];
+    if (!health.agyReady) return [role, { state: 'unavailable', accountHandle: lastAccount }];
+    const token = resolveAgyWorkerToken(entry, { secrets });
+    if (!token) return [role, { state: 'unavailable', accountHandle: lastAccount }];
+    try {
+      const usage = await fetchJson(workerUrl(entry, fresh ? '/usage?fresh=1' : '/usage'), { token, fetchImpl, timeoutMs: 30_000 });
+      if (usage?.ok !== true || !usage.quotas || typeof usage.checkedAt !== 'string') return [role, { state: 'error' }];
+      const accountHandle = normalizedAgyAccountHandle(usage.accountHandle);
+      if (accountEpoch === (agyAccountEpoch.get(role) || 0)) {
+        if (accountHandle) lastObservedAgyAccounts.set(role, accountHandle);
+        else lastObservedAgyAccounts.delete(role);
+        ineligibleAgyAccounts.delete(role);
+      }
+      return [role, { state: 'ready', quotas: usage.quotas, accountHandle, checkedAt: usage.checkedAt, workerStartedAt: usage.workerStartedAt, stale: Boolean(usage.stale) }];
+    } catch (error) {
+      const state = error?.statusCode === 409 ? 'busy' : error?.statusCode === 503 ? 'unavailable' : error?.statusCode ? 'error' : 'offline';
+      return [role, { state, accountHandle: lastAccount }];
+    }
+  })));
+  return { roles };
 }
 
 function waitForChildClose(child) {
@@ -490,6 +540,18 @@ function summarizeAgyFailure(error) {
 
 async function stopFailedWorker(role, { settings, secrets, fetchImpl }) {
   try {
+    const entry = roleEntry(role, settings);
+    const health = await workerHealth(entry, { fetchImpl, expectedName: role });
+    if (/account is not eligible/i.test(health.agyError || '')) ineligibleAgyAccounts.add(role);
+    else ineligibleAgyAccounts.delete(role);
+    const token = health.running && resolveAgyWorkerToken(entry, { secrets });
+    if (token) {
+      const identity = await fetchJson(workerUrl(entry, '/identity'), { token, fetchImpl, timeoutMs: HEALTH_TIMEOUT_MS });
+      const accountHandle = normalizedAgyAccountHandle(identity?.accountHandle);
+      if (accountHandle) lastObservedAgyAccounts.set(role, accountHandle);
+    }
+  } catch {}
+  try {
     return await stopAgyPoolRole(role, { settings, secrets, fetchImpl });
   } catch {
     return null;
@@ -568,6 +630,7 @@ export async function loginAgyPoolRole(role, {
   const health = await workerHealth(entry, { fetchImpl, expectedName: role });
   if (health.running) throw new Error(`${role} is running — click Stop before Login`);
   const agyBinary = await resolveMainAgyBinary({ execFileImpl });
+  clearObservedAgyAccount(role);
 
   if (runsAsCurrentUser(entry.user)) {
     const child = spawnImpl('cmd.exe', ['/d', '/k', agyBinary], {
@@ -654,6 +717,7 @@ export async function logoutAgyPoolRole(role, {
       WorkingDirectory: REPO_ROOT,
     }));
   }
+  clearObservedAgyAccount(role);
   return { ok: true, role, message: `${role} AGY credential cleared in background; click Login to choose another account` };
 }
 
@@ -695,6 +759,7 @@ export async function startAgyPoolRole(role, {
   const token = resolveAgyWorkerToken(entry, { secrets });
   if (!token) throw new Error(`missing worker secret for ${role}; initialize the pool first`);
 
+  clearObservedAgyAccount(role);
   const launch = await launchWorkerProcess(role, entry, token, { spawnImpl, execFileImpl, credentialFile });
   const status = await waitForState(role, entry, true, { fetchImpl, timeoutMs: START_WAIT_MS });
   if (!status.running) {

@@ -14,7 +14,7 @@ import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, re
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
-import { getAgyPoolStatus, initializeAgyPool, provisionAgyRoleUsers, loginAgyPoolRole, logoutAgyPoolRole, startAgyPool, stopAgyPool, startAgyPoolRole, stopAgyPoolRole } from './agy-pool-manager.js';
+import { getAgyPoolStatus, getAgyPoolUsage, initializeAgyPool, provisionAgyRoleUsers, loginAgyPoolRole, logoutAgyPoolRole, startAgyPool, stopAgyPool, startAgyPoolRole, stopAgyPoolRole } from './agy-pool-manager.js';
 import { fileURLToPath } from 'node:url';
 
 const IS_WIN = process.platform === 'win32';
@@ -30,7 +30,7 @@ function writeJsonAtomic(file, data) {
   renameSync(tmp, file);
 }
 
-// Folders are a containment boundary (coding.C4): written atomically so a partial write can never transiently widen it. Mirrors setShellAllowlist below, but folders are security-load-bearing enough to warrant the extra step.
+// Keep the containment boundary atomic; a partial write could widen access.
 function setFolders(paths) {
   const settings = readSettings();
   settings.folders = paths;
@@ -140,9 +140,7 @@ async function installRules() {
     }
     repo = RULES_CLONE_DIR;
   }
-  // akidevrule ships install.ps1 for Windows on purpose: a bare `bash.exe` there resolves to the WSL
-  // launcher (C:\Windows\System32\bash.exe) and dies with "execvpe(/bin/bash) failed" when no WSL distro is installed.
-  // Pick a real interpreter by platform (PowerShell on Windows, bash otherwise); never fall through to WSL bash.
+  // Windows bash.exe may launch WSL without a distro; use PowerShell for install.ps1.
   let cmd, args;
   if (IS_WIN) {
     if (existsSync(path.join(repo, 'install.ps1'))) {
@@ -166,7 +164,7 @@ async function installRules() {
   }
 }
 
-// Pull this repo, but only when the tree is clean — an unattended pull over local edits can conflict or lose work (agent.B3). Checked at click-time, not page-load, since the tree can change in between.
+// Check cleanliness at click-time; the tree may have changed since page load.
 async function pullUpdate() {
   if (!existsSync(path.join(REPO_ROOT, '.git'))) {
     throw new Error('installed via npm: run `npm i -g @akinet/akimcp` in your terminal to update');
@@ -188,7 +186,7 @@ function trustedDirStatus() {
   });
 }
 
-// A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
+// Refresh the on-disk version after rule install so reload does not show stale updates.
 function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
   for (const key of ['mcp', 'rule']) {
@@ -293,13 +291,15 @@ export const ROUTES = {
   'GET /api/postman-status': async () => getDaemonStatus(),
   // Deterministic Alibaba OCR delegation step: returns reviewable files/ref metadata only; the host agent performs the actual review.
   'POST /api/alibaba-review': async () => launchAlibabaReview(),
-  // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
+  // launchPostmanDaemon handles repeated clicks.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".
   'POST /api/postman-quit': async () => killPostmanDaemon(),
   // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman-mcp.js).
   'POST /api/postman-new-window': async () => requestNewWindow(),
   'GET /api/agy-pool': async () => getAgyPoolStatus(),
+  'GET /api/agy-pool/usage': async () => getAgyPoolUsage(),
+  'POST /api/agy-pool/usage': async () => getAgyPoolUsage({ fresh: true }),
   'POST /api/agy-pool/init': async () => initializeAgyPool(),
   'POST /api/agy-pool/provision': async () => provisionAgyRoleUsers(),
   'POST /api/agy-pool/login-role': async (body) => loginAgyPoolRole(body.role),

@@ -9,6 +9,7 @@ process.env.AKI_MCP_DATA_DIR = tmp;
 const {
   buildWorkerArgs,
   getAgyPoolStatus,
+  getAgyPoolUsage,
   loginAgyPoolRole,
   logoutAgyPoolRole,
   provisionAgyRoleUsers,
@@ -253,6 +254,20 @@ try {
   assert.equal(spawnCall.options.stdio, 'ignore');
   assert.equal(spawnCall.options.env.AKI_AGY_WORKER_TOKEN, 'secret');
 
+  const usageQuotas = { gemini: { fiveHour: { remainingPercent: 40, resetAt: '2026-09-26T10:00:00Z' }, weekly: null }, claudeGpt: { fiveHour: null, weekly: null } };
+  const usageFetch = async (url, options) => {
+    const parsed = new URL(url);
+    if (parsed.port !== '7411') throw new Error('offline');
+    if (parsed.pathname === '/health') return fetchImpl(url);
+    assert.equal(options.headers.Authorization, 'Bearer secret');
+    assert.equal(parsed.pathname, '/usage');
+    return new Response(JSON.stringify({ ok: true, quotas: usageQuotas, accountHandle: 'advisor94', checkedAt: '2026-09-26T09:00:00Z', workerStartedAt: '2026-09-25T00:00:00Z' }), { status: 200 });
+  };
+  const usage = await getAgyPoolUsage({ settings, secrets: { advisor: 'secret' }, fetchImpl: usageFetch, fresh: true });
+  assert.equal(usage.roles.advisor.state, 'ready');
+  assert.equal(usage.roles.advisor.accountHandle, 'advisor94');
+  assert.deepEqual(usage.roles.advisor.quotas, usageQuotas);
+
   if (process.platform === 'win32') {
     let crossRunning = false;
     let stagedPath = null;
@@ -299,6 +314,7 @@ try {
     let failedExperimentRunning = true;
     const eligibilityFetch = async (url) => {
       const pathname = new URL(url).pathname;
+      if (pathname === '/identity') return new Response(JSON.stringify({ ok: true, accountHandle: 'guaanthony94' }), { status: 200 });
       if (pathname === '/stop') {
         failedExperimentRunning = false;
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -327,6 +343,8 @@ try {
     assert.equal(eligibilityResult.ok, false);
     assert.equal(failedExperimentRunning, false, 'eligibility failure must auto-stop the worker');
     assert.equal(eligibilityResult.status.running, false);
+    assert.equal((await getAgyPoolStatus({ settings, fetchImpl: eligibilityFetch, execFileImpl, credentialFile })).roles.experiment.accountIneligible, true);
+    assert.equal((await getAgyPoolUsage({ settings, secrets: { experiment: 'experiment-secret' }, fetchImpl: eligibilityFetch })).roles.experiment.accountHandle, 'guaanthony94');
     assert.match(eligibilityResult.message, /not eligible for Antigravity/);
     assert.match(eligibilityResult.message, /Logout, then Login/);
     assert.doesNotMatch(eligibilityResult.message, /https?:\/\//, 'OAuth URLs must not leak into panel errors');
@@ -334,6 +352,17 @@ try {
 
   const stopped = await stopAgyPoolRole('advisor', { settings, secrets: { advisor: 'secret' }, fetchImpl });
   assert.equal(stopped.ok, true);
+  const offlineUsage = await getAgyPoolUsage({ settings, secrets: { advisor: 'secret' }, fetchImpl });
+  assert.equal(offlineUsage.roles.advisor.state, 'offline');
+  assert.equal(offlineUsage.roles.advisor.accountHandle, 'advisor94', 'stopped role retains the last known handle');
+  if (process.platform === 'win32') {
+    await loginAgyPoolRole('advisor', {
+      settings, fetchImpl, execFileImpl, credentialFile,
+      spawnImpl: () => ({ pid: 7003, unref() {} }),
+    });
+    const changedAccount = await getAgyPoolUsage({ settings, secrets: { advisor: 'secret' }, fetchImpl });
+    assert.equal(changedAccount.roles.advisor.accountHandle, null, 'Login must clear the previous account label');
+  }
 
   console.log('agy-pool-manager.test.js: ok');
 } finally {
