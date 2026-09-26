@@ -43,7 +43,7 @@
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
 - [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)
 - [ref/harness-fact.md](ref/harness-fact.md) — the agy/kiro CLI facts the arm MCPs depend on (flags, model ids, effort enums), split by evidence tier: agy and kiro both verified live (kiro-cli 2.16.2, 2026-08-09)
-- [ref/agy-multi-account.md](ref/agy-multi-account.md) — set up four AGY roles on a dedicated default workspace, configure custom project roots before provisioning, then Login in the visible CLI and Start
+- [ref/agy-multi-account.md](ref/agy-multi-account.md) — set up four AGY roles, then track account names and 5-hour/weekly quota bars in the panel
 - [ref/postman-permission-popup-test.md](ref/postman-permission-popup-test.md) — self-debug guide for the CDP autoclicker: how to trigger and verify each auto (Approve/Run/Continue/Try again/reject-folder) plus the Thinking/Auto-run toggles, the `__pmDeliverSummarizePrompt` self-prompt hook, and `cdp-probe.js` selector-drift recovery; referenced from `cdp-autoclicker.js`
 - [research/claude-ai-oauth-connector.md](research/claude-ai-oauth-connector.md) — research behind the switch from token-in-URL to OAuth, with dates and sources
 - [research/chrome-cdp-default-profile-block.md](research/chrome-cdp-default-profile-block.md) — why `scripts/chrome.js` is being removed: Chrome 136 blocks remote debugging on the default profile
