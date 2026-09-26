@@ -2,18 +2,18 @@
 // Loopback-only, never behind the Funnel: it writes config and runs commands. Token-gated so no other browser page can POST to it.
 import http from 'node:http';
 import { execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel } from './config-page.js';
-import { getOrIssueAccessToken } from './oauth.js';
+import { getOrIssueAccessToken, rotateAccessToken } from './oauth.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
-import { getRoots, overlaps } from './roots.js';
+import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
-import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
+import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman/postman-mcp.js';
 import { fileURLToPath } from 'node:url';
 
 const IS_WIN = process.platform === 'win32';
@@ -178,15 +178,6 @@ async function pullUpdate() {
   return 'pulled latest — restart akimcp to load the new code';
 }
 
-// Mirror shell-mcp's classification: a zone overlapping a writable root is dropped (write+exec = RCE). Name the offending root so the panel can show why a zone is disabled.
-function trustedDirStatus() {
-  const roots = getRoots().map((p) => path.resolve(p));
-  return loadAllowlistDirs().map((dir) => {
-    const conflict = roots.find((root) => overlaps(dir, root)) || null;
-    return { dir, active: !conflict, conflict };
-  });
-}
-
 // A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
 function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
@@ -202,18 +193,17 @@ export const ROUTES = {
     // Same call shell/find_path/search_content enforce with (roots.js:getRoots()), so the list can never show a set that isn't the live one.
     paths: getRoots(),
     allowlist: loadAllowlist(),
-    trustedDirs: trustedDirStatus(),
-    ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
+    trustedDirs: loadAllowlistDirs(),
     ingressConfig: readIngressConfig(),
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
-  // Same function aki__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
+  // Same function aki__postman_status calls (scripts/postman/postman-mcp.js) — one status shape, two readers.
   'GET /api/postman-status': async () => getDaemonStatus(),
-  // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
+  // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".
   'POST /api/postman-quit': async () => killPostmanDaemon(),
-  // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman-mcp.js).
+  // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman/postman-mcp.js).
   'POST /api/postman-new-window': async () => requestNewWindow(),
   // No hub restart: setFolders writes setting.json, and roots.js reads it fresh per call — a save takes effect on the next shell/find_path/search_content call, same as the allowlist.
   'POST /api/paths': async (body) => {
@@ -235,6 +225,11 @@ export const ROUTES = {
     return { ok: true, message };
   },
   // No refresh: a repo pull only lands on disk; the process keeps the old version until restart, so the banner stays as a restart reminder and clears on the next boot.
+  // The page reloads after this so every server-rendered snippet carries the new token; the token itself is never returned.
+  'POST /api/roll-token': async (body) => {
+    rotateAccessToken({ revokeRefresh: body.hard === true });
+    return { ok: true, message: body.hard === true ? 'rolled — every client must re-authorize' : 'rolled — re-paste the token into local snippets' };
+  },
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
   // Ingress is decided at start.js boot, not live-switchable — saving here never restarts anything, only records the pick for the next `npm start`.
   'POST /api/ingress/cloudflared': async (body) => {

@@ -55,7 +55,7 @@ import { startPanel } from './panel.js';
 import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { USER_DIR, IS_DEV, readIngressConfig } from './userdata.js';
-import { killPostmanDaemon } from './postman-mcp.js';
+import { killPostmanDaemon } from './postman/postman-mcp.js';
 import { readLock, isPidAlive, writeLock, clearLock, killAndWait } from './instance-lock.js';
 
 const isDev = IS_DEV;
@@ -158,7 +158,7 @@ const updateInfo = await checkForUpdate();
 writeStatusFile(updateInfo);
 const bar = (s) => console.log(`\x1b[43m\x1b[30m ${s} \x1b[0m`);
 if (updateInfo.mcp.updateAvailable) bar(`[update] @akinet/akimcp ${updateInfo.mcp.current} → ${updateInfo.mcp.latest} — run \`npm i -g @akinet/akimcp\` or pull & restart`);
-if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel, then re-paste the Instructions (panel section 3) into the custom-instructions setting of each AI`);
+if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel`);
 
 let panel;
 let cloudflared = null;

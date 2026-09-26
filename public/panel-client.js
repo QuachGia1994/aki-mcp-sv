@@ -69,22 +69,6 @@ document.addEventListener('click', (e) => {
   });
 });
 
-function buildPrompt() {
-  const lines = ['[akimcp ' + MCP_VERSION + '] Short, dense, on-point. Zero yapping. Claim=evidence.'];
-  const rulesOn = document.getElementById('loadRules').checked;
-  if (rulesOn) {
-    lines.push('Before first substantive action, call aki__akidevrule_context() once with workingPath; follow loaded receipt rules.');
-  }
-  lines.push('Tools: find_path/search_content (files), run_cmd (shell allowlist), chrome_launch/chrome_interact (browser), local_fetch (localhost/LAN API).');
-  lines.push('Task (mutate/multi-step): confirm scope; plan $HOME/.aki/mcpsv/task/<id>/plan.md. Skip pure Q&A.');
-  const value = lines.join('\n');
-  document.getElementById('prompt').value = value;
-  const over = value.length > 1500;
-  const count = document.getElementById('promptCount');
-  count.textContent = value.length + ' chars' + (over ? ', over ChatGPT\'s 1500 cap' : '');
-  count.className = 'msg ' + (over ? 'err' : 'ok');
-}
-
 // Nothing about a folder row says whether it is live or merely typed, so the Save button carries the mark instead.
 function markDirty() {
   document.querySelector('[data-act="savePaths"]').classList.add('primary');
@@ -191,49 +175,26 @@ function collectAllowlist() {
   return map;
 }
 
-// Editable trust zones. A zone overlapping a writable root is disabled server-side (write+exec = RCE); the panel shows it with a ✕ and names the offending folder, but still lets the user fix or remove it.
+// Editable trust zones: scripts under them run without a command row, and the file tools cannot write into them.
 function markTrustedDirty() {
   document.querySelector('[data-act="saveTrusted"]').classList.add('primary');
   say('msgTrusted', 'unsaved changes', false);
 }
 
-function addTrustedDir(value, conflict, dirty) {
+function addTrustedDir(value, dirty) {
   const wrap = document.createElement('div');
-  const mark = document.createElement('span');
-  if (conflict) { mark.className = 'dot err'; mark.textContent = '✕'; mark.title = 'disabled: overlaps writable folder ' + conflict + ' (write + run = code execution)'; }
-  else if (value) { mark.className = 'dot ok'; mark.textContent = '✓'; mark.title = 'active'; }
-  else { mark.className = 'dot'; }
   const input = document.createElement('input');
   input.type = 'text'; input.value = value; input.oninput = markTrustedDirty;
   const del = document.createElement('button');
   del.textContent = '×'; del.onclick = () => { wrap.remove(); markTrustedDirty(); };
-  wrap.append(mark, input, del);
+  wrap.append(input, del);
   document.getElementById('trustedDirs').append(wrap);
   if (dirty) markTrustedDirty();
 }
 
 function renderTrustedDirs(dirs) {
   document.getElementById('trustedDirs').innerHTML = '';
-  for (const d of dirs) addTrustedDir(d.dir, d.conflict, false);
-}
-
-function renderRuleChecks(files) {
-  const checks = document.getElementById('ruleChecks');
-  checks.innerHTML = '';
-  if (!files.length) {
-    checks.innerHTML = '<span class="empty">akidevrule isn\'t installed yet; install it in section 2 above, or skip and use the prompt without rules.</span>';
-    return;
-  }
-  // index.md is the rule map — always first, and locked so it can't be unchecked.
-  const sorted = [...files].sort((a, b) => (a === 'index.md' ? -1 : b === 'index.md' ? 1 : 0));
-  for (const f of sorted) {
-    const label = document.createElement('label');
-    const locked = f === 'index.md';
-    const checked = locked || DEFAULT_RULES.includes(f);
-    label.innerHTML = '<input type="checkbox" value="' + f + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + '>';
-    label.append(document.createTextNode(f.replace(/^(RULE|METHOD)-/, '').replace(/\.md$/, '') + (locked ? ' 🔒' : '')));
-    checks.append(label);
-  }
+  for (const dir of dirs) addTrustedDir(dir, false);
 }
 
 // Built via DOM nodes, not innerHTML, so the user-typed origin can never be interpreted as markup.
@@ -266,12 +227,8 @@ async function loadState() {
   renderAllowlist(s.allowlist);
   renderTrustedDirs(s.trustedDirs || []);
   s.paths.forEach((p) => addPath(p));
-  renderRuleChecks(s.ruleFiles);
-  document.getElementById('ruleChecks').onchange = buildPrompt;
-  document.getElementById('loadRules').onchange = buildPrompt;
   document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
   document.getElementById('cmdFilter').oninput = (e) => filterCommands(e.target.value);
-  buildPrompt();
 }
 
 async function loadTailscale() {
@@ -315,6 +272,19 @@ async function loadPostmanDaemon() {
   say('msgPmDaemon', postmanStatusMessage(s), s.attached);
 }
 
+// Snippets and the token field are server-rendered, so a reload is what refreshes them all at once.
+function rollToken(btn, hard) {
+  const warning = hard
+    ? 'Roll the access token AND sign out every connected AI? Each must reconnect with the passphrase.'
+    : 'Roll the access token? Tokens pasted into local snippets stop working until re-pasted.';
+  if (!confirm(warning)) return;
+  return act(btn, 'msgRoll', async () => {
+    const { message } = await api('POST', '/api/roll-token', { hard });
+    setTimeout(() => location.reload(), 800);
+    return message + ' — reloading';
+  });
+}
+
 const ACTIONS = {
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
@@ -339,7 +309,7 @@ const ACTIONS = {
     btn.classList.remove('primary');
     return message;
   }),
-  addTrusted: () => { addTrustedDir('', null, true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
+  addTrusted: () => { addTrustedDir('', true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
   saveTrusted: (btn) => act(btn, 'msgTrusted', async () => {
     const dirs = [...document.querySelectorAll('#trustedDirs input')].map((i) => i.value.trim()).filter(Boolean);
     const { message } = await api('POST', '/api/trusted-dirs', { dirs });
@@ -362,10 +332,10 @@ const ACTIONS = {
   }),
   installRules: (btn) => act(btn, 'msgRules', async () => {
     const { message } = await api('POST', '/api/install-rules');
-    renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
-    buildPrompt();
     return message;
   }),
+  rollToken: (btn) => rollToken(btn, false),
+  rollTokenHard: (btn) => rollToken(btn, true),
   pullUpdate: (btn) => act(btn, 'msgUpd', async () => (await api('POST', '/api/pull-update')).message),
   saveTunnel: (btn) => act(btn, 'msgTunnel', async () => {
     const fileInput = document.getElementById('tunnelCredFile');
@@ -385,11 +355,7 @@ const ACTIONS = {
   }),
   updateRules: (btn) => act(btn, 'msgUpdRule', async () => {
     const { message } = await api('POST', '/api/install-rules');
-    renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
-    buildPrompt();
-    // The banner and section-3 warning both claimed a stale corpus; the update just cleared it.
     document.querySelector('.updrule')?.remove();
-    document.getElementById('s3warn')?.remove();
     if (!document.querySelector('.updbar .updrow')) document.querySelector('.updbar')?.remove();
     return message;
   }),

@@ -24,7 +24,11 @@ const RULES_INSTALL_CMD = 'npx @akinet/akidevrule@latest';
 const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
-const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md'];
+// The paste-in instruction is static on purpose: tool details live in each tool's description and the /akirule how-to in aki__akidevrule_context, so only the two musts stay here (a client-side instruction is the one place that can insist).
+const WEB_PROMPT = [
+  'Always use the akimcp tools (aki__*) for local files, shell and browser.',
+  'You MUST follow /akirule in every chat, in full, from your first action on. Never skip it, even for a small task.',
+].join('\n');
 
 // Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
@@ -103,11 +107,10 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const mcpUpd = updateInfo.mcp || {};
   const ruleUpd = updateInfo.rule || {};
   const mcpVer = mcpUpd.current || '?';
-  const ruleVer = ruleUpd.current || '?';
   // "Own update on top, rule update below" per the request; the rule row carries the re-paste warning because updating the corpus makes every pasted instruction stale.
   const updateBanner = (mcpUpd.updateAvailable || ruleUpd.updateAvailable) ? `<div class="updbar">
   ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>@akinet/akimcp</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> <button class="primary" data-act="pullUpdate">Pull &amp; restart</button><span class="msg" id="msgUpd"></span></div>` : ''}
-  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span><div class="updwarn">⚠ After updating, RE-PASTE the section-3 Instructions into the custom-instructions setting of EACH AI: Claude / Grok / ChatGPT / Gemini.</div></div>` : ''}
+  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span></div>` : ''}
 </div>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(MCP_NAME)} · panel${isDev ? ' (dev)' : ''}</title>
@@ -203,6 +206,9 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
 ${field('Passphrase', passphrase)}
+${field('Access token', accessToken)}
+<div class="acts"><button data-act="rollToken">Roll token</button><button data-act="rollTokenHard">Roll &amp; sign out all clients</button><span class="msg" id="msgRoll"></span></div>
+<p class="helptext">One access token serves every client. <strong>Roll token</strong> replaces it: web AIs refresh on their own, but any token pasted into a local snippet below must be re-pasted. <strong>Roll &amp; sign out all clients</strong> also revokes refresh, so every AI must reconnect with the passphrase; use it if the token may have leaked.</p>
 
 <nav class="tabs" role="tablist">
   <span class="tab-group-label">Local · direct 0ms</span>
@@ -309,7 +315,7 @@ ${field('Passphrase', passphrase)}
 </section>
 
 <section id="s2"><h2>2 · Install AkiDevRule (optional)</h2>
-<p class="helptext">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Choose which files load in section 3 below.</p>
+<p class="helptext">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session.</p>
 ${field('Install command', RULES_INSTALL_CMD)}
 <p class="helptext">Runs on Mac/Linux/Windows — only needs <span class="mono">Node.js 18+</span>. Re-run the command above to update, or add <span class="mono">--check</span> to print installed-vs-latest without changing anything. From a local clone: <span class="mono">node install.mjs</span> (or launchers <span class="mono">install.sh</span> / <span class="mono">install.ps1</span>). No sudo; installs into every detected <span class="mono">~/.claude*</span> profile plus <span class="mono">~/.aki</span>, removable with rm -rf.</p>
 <div class="acts">
@@ -319,21 +325,16 @@ ${field('Install command', RULES_INSTALL_CMD)}
 </div>
 </section>
 
-<section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
-<p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). It teaches the AI to use this server's tools and to load the rules you installed in section 2.</p>
+<section id="s3"><h2>3 · Instructions: copy the prompt</h2>
+<p class="helptext">Paste it once into the custom-instructions setting of each AI (links below). It is static: tool details and the rule context come from the server itself, so it never needs re-pasting.</p>
 <div class="acts">
   <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude ↗</a>
   <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok ↗</a>
   <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT ↗</a>
   <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini ↗</a>
 </div>
-<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
-  <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
-</label>
-${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste these Instructions into the custom-instructions setting of each AI (Claude / Grok / ChatGPT / Gemini).</div>` : ''}
-<div class="checks" id="ruleChecks"></div>
-<textarea id="prompt" readonly style="min-height:130px"></textarea>
-<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
+<textarea id="prompt" readonly style="min-height:110px;margin-top:12px">${esc(WEB_PROMPT)}</textarea>
+<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button></div>
 </section>
 
 <section id="s4"><h2>4 · Browser utilities <span class="done-tag" style="color:var(--muted);border-color:var(--line)">optional</span></h2>
@@ -372,7 +373,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </div>
 
 <h3 class="subh">Trusted script directories</h3>
-<p class="helptext">Scripts under these folders run without a command row above, for Aki-authored skills and scripts. A folder that overlaps a writable folder from section 5 is disabled (write + run = code execution).</p>
+<p class="helptext">Scripts under these folders run without a command row above, so installed Aki skills work out of the box. The file tools cannot write into them, so the AI can't plant a script and run it; keep them to folders only an installer writes.</p>
 <div class="flist" id="trustedDirs"></div>
 <div class="acts">
   <button class="primary" data-act="addTrusted">+ Add directory…</button>
@@ -418,9 +419,6 @@ const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const USER_DIR = ${JSON.stringify(userDir)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
-const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
-const MCP_VERSION = ${JSON.stringify(mcpVer)};
-const RULE_VERSION = ${JSON.stringify(ruleVer)};
 const SAVED_INGRESS = ${JSON.stringify(savedIngress)};
 </script>
 <script src="/panel-client.js"></script>

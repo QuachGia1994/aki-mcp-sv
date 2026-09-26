@@ -54,12 +54,20 @@ function loadTokens() {
     for (const [token, entry] of Object.entries(saved.refresh ?? {})) refreshTokens.set(token, entry);
   } catch (e) {
     console.error(`[oauth] skipping unreadable ${TOKENS_FILE} (${e.message}) — will need to authorize again`);
+    return;
+  }
+  // Older versions minted a fresh access token per grant and never removed the old ones; keep the first valid one (the one the panel showed, so pasted snippets survive).
+  const loaded = accessTokens.size;
+  const kept = [...accessTokens].find(([, entry]) => entry.expires >= Date.now());
+  accessTokens.clear();
+  if (kept) accessTokens.set(...kept);
+  if (accessTokens.size !== loaded) {
+    saveTokens();
+    log(`[oauth] collapsed ${loaded} access tokens into ${accessTokens.size}`);
   }
 }
 
 function saveTokens() {
-  const now = Date.now();
-  for (const [token, entry] of accessTokens) if (entry.expires < now) accessTokens.delete(token);
   const body = { access: Object.fromEntries(accessTokens), refresh: Object.fromEntries(refreshTokens) };
   writeFileSync(TOKENS_FILE, JSON.stringify(body), { mode: 0o600 });
 }
@@ -331,27 +339,36 @@ export async function handleToken(req, res) {
   return json(res, 400, { error: 'unsupported_grant_type' });
 }
 
-function mintTokens(clientId, existingRefresh, via) {
-  const accessToken = randomBytes(32).toString('hex');
-  accessTokens.set(accessToken, { expires: Date.now() + ACCESS_TTL_S * 1000 });
-  const refreshToken = existingRefresh || randomBytes(32).toString('hex');
-  refreshTokens.set(refreshToken, { clientId });
+// The one place an access token is created: every grant and the panel share it, so `accessTokens` never holds more than one entry.
+export function getOrIssueAccessToken(via = 'panel') {
+  for (const [token, entry] of accessTokens) {
+    if (entry.expires >= Date.now()) return token;
+  }
+  accessTokens.clear();
+  const token = randomBytes(32).toString('hex');
+  accessTokens.set(token, { expires: Date.now() + ACCESS_TTL_S * 1000 });
   saveTokens();
-  log(`[oauth] tokens ISSUED via ${via} (access + refresh) — client is now authorized`);
-  return { accessToken, refreshToken };
+  log(`[oauth] access token ISSUED via ${via}`);
+  return token;
+}
+
+// Soft roll leaves refresh tokens alone, so it does not evict a holder of a leaked one; `revokeRefresh` signs every client out.
+export function rotateAccessToken({ revokeRefresh = false } = {}) {
+  accessTokens.clear();
+  if (revokeRefresh) refreshTokens.clear();
+  return getOrIssueAccessToken(revokeRefresh ? 'hard roll' : 'roll');
 }
 
 function issueTokens(res, clientId, existingRefresh, via) {
-  const { accessToken, refreshToken } = mintTokens(clientId, existingRefresh, via);
-  json(res, 200, { access_token: accessToken, token_type: 'Bearer', expires_in: ACCESS_TTL_S, refresh_token: refreshToken });
-}
-
-export function getOrIssueAccessToken() {
-  const now = Date.now();
-  for (const [token, entry] of accessTokens) {
-    if (entry.expires >= now) return token;
+  const accessToken = getOrIssueAccessToken(via);
+  const refreshToken = existingRefresh || randomBytes(32).toString('hex');
+  if (!existingRefresh) {
+    refreshTokens.set(refreshToken, { clientId });
+    saveTokens();
   }
-  return mintTokens(loadOrCreateClient().clientId, undefined, 'panel').accessToken;
+  log(`[oauth] tokens returned via ${via} — client is now authorized`);
+  const expiresIn = Math.floor((accessTokens.get(accessToken).expires - Date.now()) / 1000);
+  json(res, 200, { access_token: accessToken, token_type: 'Bearer', expires_in: expiresIn, refresh_token: refreshToken });
 }
 
 export function verifyBearer(authHeader) {

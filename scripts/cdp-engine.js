@@ -2,7 +2,7 @@
 // Works against ANY Chromium/Electron target that exposes a --remote-debugging-port (Chrome,
 // Postman, VS Code, Slack, …). It knows NOTHING about Postman: app-specific selectors and named
 // actions live in the caller (see postman-mcp.js). Every call opens one short-lived connection and
-// closes it — it never adopts or holds ownership, so it coexists with the aki-pmcontrol daemon's
+// closes it — it never adopts or holds ownership, so it coexists with the Postman daemon's
 // long-lived owned session on the same endpoint (CDP permits multiple concurrent clients).
 import fs from 'node:fs';
 import os from 'node:os';

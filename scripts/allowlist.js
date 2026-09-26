@@ -69,8 +69,8 @@ export function loadFolders() {
   return [...new Set(resolved)];
 }
 
-// Second, directory-scoped trust mechanism alongside the name allowlist: any executable/script under these zones may run without a per-file entry, so new Aki skills/scripts don't need a settings edit each time. Zones Aki owns end-to-end; whitelisting individual files inside them is the wrong grain (docs/plan/done/shell-allowlist.md).
-const DEFAULT_ALLOWLIST_DIRS = ['~/.aki', '~/.claude'];
+// Second, directory-scoped trust mechanism alongside the name allowlist: any executable/script under these zones runs without a per-file entry, so installed Aki skills work on every machine with no settings edit. Zones are installer-owned (rule corpus + skills), and the file tools refuse to write into them (roots.js:resolveRealWritable), so write + run can never chain into code execution.
+const DEFAULT_ALLOWLIST_DIRS = ['~/.claude/skills', '~/.aki/akidevrule'];
 const expandTilde = (p) => (p === '~' ? os.homedir() : /^~[/\\]/.test(p) ? path.join(os.homedir(), p.slice(2)) : p);
 
 export function loadAllowlistDirs() {

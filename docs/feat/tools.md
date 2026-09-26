@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-09-05 · v1.14.0
+> updated 2026-09-26 · v2.1.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini / Postman) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -14,7 +14,21 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy_run` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
-| `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is a private internal lab; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
+| `postman` (`scripts/postman/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/postman/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is a private internal lab; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
+
+## Layout of `scripts/postman/` (Postman only)
+
+Everything that exists for Postman alone sits under `scripts/postman/` and every file name starts with `postman-`, because `scripts/` is shared by many providers. App-agnostic CDP code stays outside, in `scripts/cdp-engine.js`.
+
+| Path | Runs in | Holds |
+|---|---|---|
+| `postman-mcp.js` | main server (ESM) | the `aki__postman_*` tools, daemon launch/kill/status |
+| `postman-daemon.cjs` | own Node process (CommonJS, hence `.cjs`, no `package.json` shim) | discovers Postman windows, injects the page bundle, owns the panel↔daemon bindings |
+| `postman-{paths,session,ownership,usage,daemon-pid,instruction-store,rule-update-check}.cjs` | the daemon | Postman paths, CDP session, window ownership, credit usage, PID file, instruction store, rule-update check |
+| `page/` | Postman's renderer | `PAGE_FILES` in the daemon: matcher, DOM helpers, `postman-autoclick.js` (permission cards), `postman-page-loop.js` (500 ms task loop), `postman-panel.js` (panel UI, chat/model control; entry, last) |
+| `debug/` | a terminal, by hand | read-only DOM probe and the instruction safety-flag probe (`docs/research/postman-instruction-safety-flag.md`) |
+| `prompts/` | the daemon | bundled prompt texts (`postman.md` is the Postman panel instruction) |
+| `test/` | `npm test` | every Postman-only test; `test/postman.test.js` at the repo root is the single entry that runs them |
 
 ## Two classes — and why the second is not redundant
 

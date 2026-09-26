@@ -21,7 +21,7 @@ This document is the only Track B write in the planning pass. Code/runtime inspe
 | `scripts/streamable-bridge.js` | First initialize stores `response.result` as `shared.initResult`; every external initialize returns `{ result: s.initResult }` without field projection or reconstruction. | The bridge already preserves the complete initialize result, including future `instructions`; this must be locked by regression test rather than rewritten. |
 | `test/streamable-bridge.test.js` | Proves repeated initialize uses one internal session and that `tools/list` works; it does not assert initialize instructions or exact tool metadata. | Extend this test for Gate 0 without weakening the shared-session invariant. |
 | Tool registry | Domain modules register through the `local__` prefix proxy; no `local__akidevrule_context` implementation exists. | Add one unprefixed `akidevrule_context` registration module so the existing proxy produces the public name exactly once. |
-| PM fallback | The bundled `scripts/aki-pmcontrol/assets/prompts/postman.md` delegates multi-step bootstrap reads to the model; existing user prompt files are copied only when missing and must survive upgrades. | Replace only the bundled default during implementation; never overwrite user-edited prompt files. Keep a compact compatibility trigger until Gate 1 is proven for supported Postman versions. |
+| PM fallback | The bundled `scripts/postman/prompts/postman.md` delegates multi-step bootstrap reads to the model; existing user prompt files are copied only when missing and must survive upgrades. | Replace only the bundled default during implementation; never overwrite user-edited prompt files. Keep a compact compatibility trigger until Gate 1 is proven for supported Postman versions. |
 
 ## Delivery sequence
 
@@ -135,10 +135,10 @@ No file below changes in this planning pass. Expected later implementation files
 | `test/rule-context.test.js` | New assembler, cross-platform, cache, failure, and security fixture tests. |
 | `test/rule-context-mcp.test.js` | New exact tool contract and output/error tests. |
 | `test/streamable-bridge.test.js` | Extend initialize preservation/identity and exact `tools/list` assertions while retaining shared-session checks. |
-| `scripts/aki-pmcontrol/assets/prompts/postman.md` | Replace bundled procedural bootstrap with compact compatibility trigger. |
-| `scripts/aki-pmcontrol/scripts/cdp-autoclicker.js` | Add/use explicit compatibility-toggle behavior and once-per-new-chat fallback semantics without canary code in production. |
-| `scripts/aki-pmcontrol/index.js` | Carry the fallback setting/instruction state only if required by the existing config injection path; preserve user prompt files. |
-| `test/aki-pmcontrol-copy.test.js` | Prove compact bundled default, user-file preservation, toggle, and trigger invariants. |
+| `scripts/postman/prompts/postman.md` | Replace bundled procedural bootstrap with compact compatibility trigger. |
+| `scripts/postman/page/postman-panel.js` | Add/use explicit compatibility-toggle behavior and once-per-new-chat fallback semantics without canary code in production. |
+| `scripts/postman/postman-daemon.cjs` | Carry the fallback setting/instruction state only if required by the existing config injection path; preserve user prompt files. |
+| `scripts/postman/test/postman-daemon-copy.test.js` | Prove compact bundled default, user-file preservation, toggle, and trigger invariants. |
 | `docs/arch/rule-context-delivery.md` | Sync only facts that differ after implementation/runtime evidence; preserve Gate 0 vs Gate 1 wording. |
 | `docs/feat/tools.md` | Document the shipped indexed tool and read-only boundary. |
 | `README.md` | Update user-facing bootstrap/fallback behavior after shipment. |

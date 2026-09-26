@@ -1,5 +1,5 @@
 // aki__postman_status (read-only) plus launchPostmanDaemon, the single spawn path for the
-// Postman control daemon (scripts/aki-pmcontrol/). Launch is a panel action (POST /api/postman-launch,
+// Postman control daemon (scripts/postman/). Launch is a panel action (POST /api/postman-launch,
 // scripts/panel.js) triggered from the panel's Postman tab — never an env flag, never a boot-time
 // default. `npm start` never calls launchPostmanDaemon. No CDP, no ensureRunning here either: that
 // stays inside the daemon child, never this module.
@@ -12,14 +12,14 @@ import { fileURLToPath } from 'node:url';
 // mocking this without spawning a real process.
 import cp from 'node:child_process';
 import { z } from 'zod';
-import { ok, fail } from './mcp-tool.js';
-import daemonPid from './aki-pmcontrol/scripts/daemon-pid.js';
-import cdp from './cdp-engine.js';
+import { ok, fail } from '../mcp-tool.js';
+import daemonPid from './postman-daemon-pid.cjs';
+import cdp from '../cdp-engine.js';
 
 const DATA_JSON_PATH = path.join(os.homedir(), '.aki', 'cdp-postman', 'data.json');
 const NEW_WINDOW_FLAG_PATH = path.join(path.dirname(DATA_JSON_PATH), 'new-window.flag');
 const OWNERSHIP_STATUS_PATH = path.join(path.dirname(DATA_JSON_PATH), 'ownership-status.json');
-const DAEMON_SCRIPT_PATH = fileURLToPath(new URL('./aki-pmcontrol/index.js', import.meta.url));
+const DAEMON_SCRIPT_PATH = fileURLToPath(new URL('./postman-daemon.cjs', import.meta.url));
 
 let daemonProcess = null;
 
@@ -162,7 +162,7 @@ export async function killPostmanDaemon() {
 }
 
 // Panel → daemon IPC for the "New window" panel button: drops a flag file next to data.json
-// that the daemon's own 1s discover() loop already checks (scripts/aki-pmcontrol/index.js),
+// that the daemon's own 1s discover() loop already checks (scripts/postman/postman-daemon.cjs),
 // so no new transport is needed for a request that only needs to happen, not carry data.
 // This is the only writer of that file; the daemon is the only reader/deleter.
 export function requestNewWindow() {

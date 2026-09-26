@@ -16,7 +16,7 @@ gatekeeper.js  ── /register  → RFC 7591 (redirect URIs: Claude callback + 
                ── /mcp       → Bearer access token required, else 401 + WWW-Authenticate → tools server (in-process)
 ```
 
-Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clients (ChatGPT) persist in `~/.aki/mcpsv/oauth-dcr-clients.json`. Access/refresh tokens persist in `~/.aki/mcpsv/tokens.json`.
+Pre-issued Claude credentials live in `~/.aki/mcpsv/oauth-client.json`. DCR clients (ChatGPT) persist in `~/.aki/mcpsv/oauth-dcr-clients.json`. Access/refresh tokens persist in `~/.aki/mcpsv/tokens.json`. There is exactly one access token, shared by every client (`getOrIssueAccessToken`, `scripts/oauth.js`); refresh tokens are per authorization. Rolling: panel Section 1 → *Roll token* (new access token, refresh kept — clients refresh silently, pasted local snippets must be re-pasted) or *Roll & sign out all clients* (also clears refresh — use when a token may have leaked, since a soft roll does not evict a holder of a refresh token). Design: `docs/plan/single-access-token.md`.
 
 ## Client registration
 
@@ -41,9 +41,14 @@ Prefer the literal `127.0.0.1` over `localhost` everywhere (config, docs, snippe
 
 When no ingress is attached, the OAuth discovery and `/authorize` endpoints return `503` while local `/mcp` keeps serving normally; attaching an ingress (via the panel's Section 0 or the `--tunnel`/`PUBLIC_ORIGIN` flags) takes effect on restart, when `origin` is resolved at boot — there is intentionally no runtime attach-after-boot path yet.
 
+## Shell trust: names, and installer-owned script zones
+
+`run_cmd` runs a command only if its binary is on the name allowlist (read-only by default; edited in panel section 6) or it targets a script under a *trusted script directory* (`shell.allowlistDirs`, default `~/.claude/skills` and `~/.aki/akidevrule`, the folders the akidevrule installer writes). The zone check resolves symlinks on both sides, treats `node`/`python3`/… as interpreters (trust follows the script path, so `node -e` stays blocked), and excludes shells. Write + run cannot chain: the file tools (`write_file`, `edit_file`, `create_directory`, `move_file`) refuse any path inside a trusted zone (`scripts/roots.js:resolveRealWritable`), so a zone may sit inside a writable folder. Shell commands the user opts into that write files (`cp`, `git checkout`, …) are outside that guarantee, the same trade-off as any allowlisted write command.
+
 ## Real limitations
 
 - **No refresh token rotation** for the pre-registered confidential Claude client (spec rotation rule targets public clients).
+- **One shared access token, no per-client revocation** — every client holds the same bearer, so a leak of it is a leak for all; roll it instead of revoking one client.
 - **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible.
 - **DCR creates one stored client per ChatGPT connector instance** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations.
 

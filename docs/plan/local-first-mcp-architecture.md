@@ -1,6 +1,6 @@
 # Architecture, Philosophy & Implementation Plan: Local-First MCP Decoupling & Unified AI Tooling
 
-**Status:** PROPOSED · Ready for Review  
+**Status:** PARTIALLY SHIPPED in 2.1.0 (engine, panel, docs); runtime ingress attach deferred, see the implementation-status block below  
 **Date:** 2026-09-18  
 **Originating Council:** `/Users/aki/.aki/agent-council/aki-mcp-sv/2026.09.18-0022-local-first-mcp-plan/` (PASS all 7 checks)  
 **Governing Rules:** `RULE-agent-behavior.md` (agent.B1, agent.B3), `RULE-coding.md` (coding.A1, coding.C4), `RULE-pattern-core.md` (pattern.A1, pattern.B2, pattern.B3), `RULE-docs.md` (docs.B1)  

@@ -78,3 +78,7 @@ Plan: `docs/plan/context-circle-newchat-signal.md`.
 ### Cross-references
 - Feature target lives in the panel (`scripts/aki-pmcontrol/scripts/cdp-autoclicker.js`); if a capture mechanism ships, add a `feat/` doc then.
 - Prior notes referenced a `docs/research/chat-gateway.md` that does not exist in the repo; a code comment in `index.js` also points to it. If that content is recovered, link it here.
+
+## Amendments
+
+- 2026-09-25: the feature this research fed — the context-length bar in the Postman chat footer and its plan `docs/plan/context-circle-newchat-signal.md` — was removed: two Postman releases later the owner no longer needs a new-chat signal. The findings above (context is server-held, not client-visible) stay valid. `docs/research/chat-gateway.md`, named in Cross-references, never existed in this repo.

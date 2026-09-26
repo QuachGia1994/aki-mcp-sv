@@ -133,7 +133,7 @@ Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-
 
 1. In the panel's Postman tab, click the filled JSON to copy. It targets the local loopback endpoint (`http://127.0.0.1:9999/mcp`) and carries a real minted access token — not the passphrase. Postman runs on this machine, so it connects with zero latency and needs no tunnel.
 2. In Postman, add a new MCP server (Settings → Connected Accounts) and paste the JSON.
-3. Paste the panel's prompt into each new chat, since Postman doesn't persist one across sessions.
+3. Send the instruction into each new chat, since Postman doesn't persist one across sessions: after **Launch**, the **Aki MCP for Postman** overlay's *Prompt instruction* box has **Send now**, or tick *Auto-inject into each new chat* (off by default). It is a separate, Postman-specific text (`scripts/postman/prompts/postman.md`), worded as a polite request because Postman's safety check flags directive-style instructions.
 
 The Postman tab also has a **Launch** button that attaches control to the Postman desktop app itself — auto-clicking Approve/Continue/Run/Try again and toggling Thinking/Auto-run inside the Postman window, on top of opening it if it isn't already running. **Quit** stops that control daemon; **New window** asks it to open another Postman window. None of this runs at `npm start` boot — it starts only when Launch is clicked. The in-app overlay it injects is the **Aki MCP for Postman** panel (opened from a status-bar button): it shows the running version and an `akimcp.top` link under the title, keeps the **New Browser Tab** control in the **ANTI-BOT** section, and opens every external link — `akimcp.top`, the AkiDevRule **Repo** button, and each team's **View** — in your OS default browser through Postman's own link handler.
 
@@ -225,7 +225,7 @@ tools-server.js — one shared McpServer, in-process (InMemoryTransport, no chil
                                   agy-mcp.js          (Antigravity CLI, read-only plan mode)
                                   kiro-mcp.js         (kiro_read, read-only, needs kiro-cli on PATH)
                                   filesystem-mcp.js   (native read/write/edit inside the allowed folders)
-                                  postman-mcp.js      (Postman daemon status/eval/rename/panel tools)
+                                  postman/postman-mcp.js (Postman daemon status/eval/rename/panel tools)
                                   rule-context-mcp.js (akidevrule_context handshake tool)
                                   chrome-mcp.js       (profile clone, stealth launch, tabs, interact)
                                   chrome-profile.js   (Chrome/Brave/Edge profile clone + cookie decrypt)
@@ -257,6 +257,7 @@ aki-mcp-sv/
 │   └── akimcp.js                 # global CLI entry point (`npm i -g @akinet/akimcp`), imports scripts/start.js
 ├── scripts/
 │   ├── start.js                 # orchestrates gatekeeper + panel, single process
+│   ├── instance-lock.js          # single-instance lock: a second launch reuses (or replaces an older) running instance
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
@@ -267,7 +268,6 @@ aki-mcp-sv/
 │   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
-│   ├── postman-mcp.js            # postman_status/eval/rename/panel_fullwidth tools + daemon launch/kill path
 │   ├── rule-context-mcp.js       # akidevrule_context MCP tool (schema, registration, output mapping)
 │   ├── rule-context.js           # pure rule-context assembler used by rule-context-mcp.js
 │   ├── chrome-mcp.js             # chrome_profiles/launch/tabs/interact/probe_ai/stop tools
@@ -280,7 +280,7 @@ aki-mcp-sv/
 │   ├── git-mcp.js                # aki__git_status/diff/log: scope-checked git tools
 │   ├── system-mcp.js             # aki__notify_user, clipboard_read/write
 │   ├── sqlite-mcp.js             # aki__sqlite_schema/query: read-only node:sqlite inspector
-│   ├── aki-pmcontrol/            # finished copy of a private internal lab: CDP-driven Postman desktop control
+│   ├── postman/                  # everything Postman-only: postman-mcp.js tools + daemon launch, postman-daemon.cjs (CDP control), page/, debug/, prompts/, test/
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call
@@ -305,10 +305,10 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs l
 ├── oauth-dcr-clients.json # clients that self-registered via /register, one per ChatGPT connector (0600)
 ├── passphrase.txt        # passphrase for the /authorize consent screen (0600)
 ├── tokens.json           # access/refresh tokens (0600)
-└── prompts/              # per-provider chat prompts (aki-pmcontrol), seeded from scripts/aki-pmcontrol/assets/prompts/
+└── prompts/              # editable copy of the shared summarize-for-handoff prompt (Postman daemon), seeded from scripts/postman/prompts/
 ```
 
-`scripts/aki-pmcontrol/assets/prompts/` in the repo is the bundled **default, read-only** source for those prompts — the daemon copies a file from there into `~/.aki/mcpsv/prompts/` on first launch only, and never writes back into the repo.
+`scripts/postman/prompts/` in the repo holds the bundled prompts. The Postman instruction (`postman.md`) is served read-only straight from there; the shared summarize prompt is copied into `~/.aki/mcpsv/prompts/` on first launch only so it can be edited, and nothing is ever written back into the repo.
 
 A clone stays exactly as checked out: editing folders/allowlist from the panel never produces a diff in the repo.
 
@@ -380,7 +380,7 @@ Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatG
 - `gatekeeper.js` is the single public entry point; every tool runs in-process behind it, nothing else listens on any port.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
-- Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
+- Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. There is one access token shared by every client (TTL 1 year); refresh tokens are per authorization and don't expire. Panel Section 1 shows the token and rolls it: *Roll token* replaces it (web AIs refresh silently; re-paste it into local snippets), *Roll & sign out all clients* also revokes refresh tokens so every AI reconnects with the passphrase. Deleting `~/.aki/mcpsv/tokens.json` and restarting does the same as the hard roll.
 - Each ChatGPT connector instance self-registers one client into `~/.aki/mcpsv/oauth-dcr-clients.json` (mode 0600). Registration is open but not a way in on its own: only `claude.ai` and `chatgpt.com` redirect URIs are accepted, and a registered client still has to pass the passphrase consent screen and PKCE before it gets a token. Revoke those registrations by deleting that file and restarting.
 - Funnel stays enabled in the background for the whole project; `npm start` is the only thing you actively start/stop.
 

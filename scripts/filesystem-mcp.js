@@ -14,7 +14,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createTwoFilesPatch } from 'diff';
 import { z } from 'zod';
-import { getRoots, resolveRealUnderRoot } from './roots.js';
+import { getRoots, resolveRealUnderRoot, resolveRealWritable } from './roots.js';
 import { ok, fail } from './mcp-tool.js';
 
 const normalizeLineEndings = (text) => text.replace(/\r\n/g, '\n');
@@ -180,7 +180,7 @@ export function register(server) {
     },
     async ({ path: p, content }) => {
       try {
-        const real = await resolveRealUnderRoot(p);
+        const real = await resolveRealWritable(p);
         await writeFileAtomic(real, content);
         return ok(`wrote ${p}`);
       } catch (e) {
@@ -202,7 +202,7 @@ export function register(server) {
     },
     async ({ path: p, edits, dryRun }) => {
       try {
-        const real = await resolveRealUnderRoot(p);
+        const real = await resolveRealWritable(p);
         return ok(await applyFileEdits(real, edits, dryRun));
       } catch (e) {
         return fail(e);
@@ -220,7 +220,7 @@ export function register(server) {
     async ({ path: p }) => {
       try {
         // The directory itself may not exist yet — resolveRealUnderRoot's ENOENT fallback validates the parent instead, which is exactly what's needed here.
-        const real = await resolveRealUnderRoot(p);
+        const real = await resolveRealWritable(p);
         await fs.mkdir(real, { recursive: true });
         return ok(`created ${p}`);
       } catch (e) {
@@ -238,8 +238,8 @@ export function register(server) {
     },
     async ({ source, destination }) => {
       try {
-        const realSource = await resolveRealUnderRoot(source);
-        const realDest = await resolveRealUnderRoot(destination);
+        const realSource = await resolveRealWritable(source);
+        const realDest = await resolveRealWritable(destination);
         await fs.rename(realSource, realDest);
         return ok(`moved ${source} to ${destination}`);
       } catch (e) {

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { loadAllowlist, loadAllowlistDirs } from './allowlist.js';
-import { getRoots, resolveUnderRoot, containedIn, overlaps } from './roots.js';
+import { resolveUnderRoot, containedIn } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
 
 // Interpreters run a script file passed as an argument, so trust must follow the script's path, not the interpreter binary (which lives on PATH, outside the trusted zones). Shells (sh/bash/zsh) are excluded on purpose — their argument is arbitrary code, not a file to locate under a zone.
@@ -13,31 +13,27 @@ const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx',
 // ls-remote requires zero extra args — a repository/URL argument lets git's own ext:: transport helper spawn an arbitrary process before anything "read-only" happens; bare invocation only queries the configured remote.
 const GIT_NO_ARGS_SUBCOMMANDS = new Set(['ls-remote']);
 
-const warnedDirs = new Set();
-// A trusted dir inside a writable filesystem root would let write_file + run_cmd become arbitrary code execution with no allowlist review in between. Drop it, fail-safe, and say why once.
-function activeTrustedDirs() {
-  return loadAllowlistDirs().filter((dir) => {
-    const clash = getRoots().find((root) => overlaps(dir, root));
-    if (clash && !warnedDirs.has(dir)) {
-      warnedDirs.add(dir);
-      process.stderr.write(`[shell] trusted dir ignored — overlaps writable root ${clash} (write+exec = RCE): ${dir}\n`);
-    }
-    return !clash;
-  });
-}
+// A zone that does not exist yet (skills not installed) stays as typed; one that is or sits under a symlink (macOS /var, a linked ~/.claude) must compare in real form, or no script inside it would ever match.
+const realOrSelf = (dir) => {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return dir;
+  }
+};
 
 // realpath first so a symlink pointing out of a zone can't masquerade as being inside it; a non-existent path can't be a trusted script, so a throw here is a correct "no".
 function underTrusted(p, dirs) {
   try {
     const abs = fs.realpathSync(path.resolve(p));
-    return dirs.some((dir) => containedIn(abs, dir));
+    return dirs.some((dir) => containedIn(abs, realOrSelf(dir)));
   } catch {
     return false;
   }
 }
 
 function preallowedByDir(bin, args) {
-  const dirs = activeTrustedDirs();
+  const dirs = loadAllowlistDirs();
   if (!dirs.length) return false;
   if (bin.includes('/') || bin.includes('\\')) {
     if (!underTrusted(bin, dirs)) return false;
