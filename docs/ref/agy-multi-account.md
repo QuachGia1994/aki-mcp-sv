@@ -53,12 +53,18 @@ The panel is the control surface:
 
 - **Start all** launches all four worker roles.
 - **Stop all** asks each running worker to shut itself down.
-- **Recheck** reads live `/health` state.
+- **Recheck** reads live `/health` state and forces a new quota read for each running role.
 - Each role also has Login, Logout, Start, and Stop controls. Login intentionally opens one visible AGY CLI window for interactive sign-in; close it before Start.
 - The role Windows identities are fixed; there is no editable user mapping.
 - Status shows whether each role identity exists, plus worker PID and allowed modes. Provisioning is considered ready only when the configured common root has a successful-provision marker; creating the folder alone does not clear **Create role identities**.
 
 No four-terminal or four-browser workflow is required after first-time account setup. Sign-in, including any code entry, happens in the AGY CLI window opened by **Login**. Daily execution is CLI-only.
+
+## Usage limits
+
+Each running role shows four quota bars: 5-hour and weekly limits for Gemini, and 5-hour and weekly limits for Claude/GPT. The bars show the percentage **remaining**, with the reset time in the browser's local timezone. The panel updates usage when opened, when Recheck is clicked, and every two minutes while the AGY tab is visible. Automatic reads reuse a worker's result for up to two minutes; Recheck forces a fresh read when the worker is idle.
+
+Usage comes from that role's own hidden `agy -p /usage --output-format json` command. The same AGY run writes a temporary CLI log; the worker extracts the authenticated email's part before `@` and deletes the log after the command returns. If the process is killed before cleanup, the temporary log may remain in that Windows user's temp directory. The panel labels the role `AGY: <name>` when that identity is available, and `AGY: unknown` otherwise. If readiness fails, the worker also attempts a hidden identity read before it stops, so an ineligible account can still show its last observed label when AGY logged the email; the panel keeps the ineligible status beside that label until Login or Start is retried. A stopped or busy worker without a cached reading shows unavailable; if a prior reading exists, the panel marks it **Last known**. Login or Logout clears that role's prior reading and account label so a different account cannot inherit them. The browser receives no full email, AGY credentials, CLI log, or worker bearer secret. If AGY does not log an email, the label remains unknown.
 
 ## Dispatch
 
@@ -81,7 +87,7 @@ agy_run(worker="reviewer", mode="plan", cwd="D:\LacViet\worktrees\executor", pro
 
 - Workers bind only to `127.0.0.1`.
 - Worker URLs must use literal `http://127.0.0.1`; remote hosts are rejected.
-- `/run` and `/stop` require the role bearer secret.
+- `/run`, `/stop`, `/usage`, and `/identity` require the role bearer secret.
 - Advisor/Reviewer cannot be promoted to write mode by a caller; worker-side mode gates enforce the restriction again.
 - The main `agy.allowedModes` gate still runs before worker routing.
 - Each worker restricts requested `cwd` to its configured root, runs one AGY job at a time, and applies request-size, process-timeout, and output-buffer limits. Stop aborts the active AGY process before closing the worker listener.

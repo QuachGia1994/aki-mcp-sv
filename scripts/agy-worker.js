@@ -4,7 +4,7 @@ import { existsSync, readFileSync, realpathSync, unlinkSync } from 'node:fs';
 import { timingSafeEqual } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { z } from 'zod';
-import { DEFAULT_AGY_TIMEOUT_MS, runAgyProcess } from './agy-runner.js';
+import { DEFAULT_AGY_TIMEOUT_MS, runAgyProcess, runAgyUsageProcess } from './agy-runner.js';
 
 const BODY_LIMIT = 1024 * 1024;
 const RUN_SCHEMA = z.object({
@@ -82,7 +82,7 @@ export async function startAgyWorker(
     verifyAgy = true,
     timeoutMs = DEFAULT_AGY_TIMEOUT_MS,
   },
-  { runProcess = runAgyProcess } = {},
+  { runProcess = runAgyProcess, readUsage = runAgyUsageProcess } = {},
 ) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('port must be an integer from 0 to 65535');
   if (!token) throw new Error('worker token is required');
@@ -101,6 +101,12 @@ export async function startAgyWorker(
   let readinessRun = null;
   let agyReady = Boolean(agyPath && !verifyAgy);
   let agyError = agyPath ? null : 'AGY executable not found';
+  let accountHandle = null;
+  let usageCache = null;
+  let usageRead = null;
+  let usageRun = null;
+  let usageDirty = false;
+  let usageGeneration = 0;
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -111,7 +117,9 @@ export async function startAgyWorker(
         return;
       }
 
-      if (req.method !== 'POST' || !['/run', '/stop'].includes(url.pathname)) {
+      const usageRequest = req.method === 'GET' && url.pathname === '/usage';
+      const identityRequest = req.method === 'GET' && url.pathname === '/identity';
+      if (!usageRequest && !identityRequest && (req.method !== 'POST' || !['/run', '/stop'].includes(url.pathname))) {
         sendJson(res, 404, { ok: false, error: 'not found' });
         return;
       }
@@ -121,9 +129,15 @@ export async function startAgyWorker(
         return;
       }
 
+      if (identityRequest) {
+        sendJson(res, 200, { ok: true, accountHandle });
+        return;
+      }
+
       if (url.pathname === '/stop') {
         activeRun?.abort();
         readinessRun?.abort();
+        usageRun?.abort();
         sendJson(res, 200, { ok: true, message: `${name} stopping`, pid: process.pid });
         setImmediate(() => server.close());
         return;
@@ -136,6 +150,35 @@ export async function startAgyWorker(
 
       if (!agyReady) {
         sendJson(res, 503, { ok: false, error: agyError || `worker "${name}" is not AGY-ready` });
+        return;
+      }
+
+      if (usageRequest) {
+        if (busy) {
+          if (usageCache) sendJson(res, 200, { ok: true, ...usageCache, stale: true });
+          else sendJson(res, 409, { ok: false, error: `worker "${name}" is busy` });
+          return;
+        }
+        if (usageCache && !usageDirty && url.searchParams.get('fresh') !== '1' && Date.now() - Date.parse(usageCache.checkedAt) < 120_000) {
+          sendJson(res, 200, { ok: true, ...usageCache, stale: false });
+          return;
+        }
+        if (!usageRead) {
+          const controller = new AbortController();
+          const generation = usageGeneration;
+          usageRun = controller;
+          usageRead = Promise.resolve().then(() => readUsage(agyPath, { cwd: workerRoot, signal: controller.signal }))
+            .then((reading) => {
+              if (generation !== usageGeneration) throw new Error('AGY usage read was superseded by a job');
+              const quotas = reading?.quotas || reading;
+              const observedHandle = reading?.accountHandle || null;
+              accountHandle = observedHandle;
+              usageCache = { quotas, accountHandle, checkedAt: new Date().toISOString(), workerStartedAt: startedAt };
+              usageDirty = false;
+              return usageCache;
+            }).finally(() => { usageRead = null; usageRun = null; });
+        }
+        sendJson(res, 200, { ok: true, ...await usageRead, stale: false });
         return;
       }
 
@@ -167,6 +210,9 @@ export async function startAgyWorker(
         return;
       }
 
+      usageRun?.abort();
+      usageGeneration += 1;
+      usageDirty = true;
       busy = true;
       activeRun = new AbortController();
       try {
@@ -203,7 +249,15 @@ export async function startAgyWorker(
     }).then(() => {
       agyReady = true;
       agyError = null;
-    }).catch((error) => {
+    }).catch(async (error) => {
+      if (!readinessRun.signal.aborted) {
+        try {
+          const reading = await readUsage(agyPath, { cwd: workerRoot, timeoutMs: 12_000, signal: readinessRun.signal });
+          accountHandle = reading?.accountHandle || null;
+        } catch (probeError) {
+          accountHandle = probeError?.accountHandle || null;
+        }
+      }
       agyReady = false;
       agyError = error?.message || String(error);
     }).finally(() => {

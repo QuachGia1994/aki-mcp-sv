@@ -3,16 +3,51 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { buildAgyArgs, runAgyProcess } from '../scripts/agy-runner.js';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { buildAgyArgs, parseAgyAccountHandle, parseAgyUsage, runAgyProcess, runAgyUsageProcess } from '../scripts/agy-runner.js';
 import { executeAgy, resolveWorkerConfig } from '../scripts/agy-mcp.js';
 import { startAgyWorker } from '../scripts/agy-worker.js';
 
 const root = mkdtempSync(path.join(os.tmpdir(), 'aki-agy-worker-'));
 let server;
 let secondServer;
+let usageServer;
 
 try {
+  const usageJson = JSON.stringify({ status: 'SUCCESS', command: { name: 'usage', data: { groups: [
+    { buckets: [
+      { id: 'gemini-5h', remaining_fraction: 0.375, reset_time: '2026-09-26T10:00:00Z' },
+      { id: 'gemini-weekly', remaining_fraction: 0.8, reset_time: '2026-09-27T10:00:00Z' },
+      { id: '3p-5h', remaining_fraction: 0.5, reset_time: '2026-09-26T11:00:00Z' },
+      { id: '3p-weekly', remaining_fraction: 1, reset_time: '2026-09-28T11:00:00Z' },
+    ] },
+  ] } } });
+  const expectedQuotas = parseAgyUsage(usageJson);
+  assert.equal(expectedQuotas.gemini.fiveHour.remainingPercent, 38);
+  assert.equal(expectedQuotas.claudeGpt.weekly.remainingPercent, 100);
+  assert.equal(parseAgyAccountHandle('x applyAuthResult: email=first@example.com, ok\napplyAuthResult: email=guaanthony94@gmail.com, ok'), 'guaanthony94');
+  assert.equal(parseAgyAccountHandle('other: email=token@example.com'), null);
+  let usageLogFile;
+  const usageReading = await runAgyUsageProcess(process.execPath, {
+    cwd: root,
+    execFileImpl: (file, argv, options, callback) => {
+      assert.equal(file, process.execPath);
+      assert.equal(options.windowsHide, true, 'background usage probes must not open a console');
+      assert.deepEqual(argv.slice(0, 4), ['-p', '/usage', '--output-format', 'json']);
+      usageLogFile = argv[argv.indexOf('--log-file') + 1];
+      writeFileSync(usageLogFile, 'applyAuthResult: email=guaanthony94@gmail.com, ok\n');
+      callback(null, usageJson, '');
+    },
+  });
+  assert.deepEqual(usageReading, { quotas: expectedQuotas, accountHandle: 'guaanthony94' });
+  assert.equal(existsSync(usageLogFile), false, 'temporary AGY log must be removed');
+  await assert.rejects(() => runAgyUsageProcess(process.execPath, {
+    execFileImpl: (file, argv, options, callback) => {
+      writeFileSync(argv[argv.indexOf('--log-file') + 1], 'applyAuthResult: email=failed@example.com, ok');
+      callback(new Error('CLI exit'), '', '');
+    },
+  }), (error) => error.message === 'AGY usage command failed' && error.accountHandle === 'failed');
+
   const args = buildAgyArgs({
     prompt: 'read two files',
     mode: 'plan',
@@ -314,6 +349,7 @@ try {
       runProcess: async () => {
         throw new Error('Eligibility check failed: current account is not eligible for Antigravity');
       },
+      readUsage: async () => { throw Object.assign(new Error('usage unavailable'), { accountHandle: 'guaanthony94' }); },
     },
   );
   const probeBase = `http://127.0.0.1:${server.address().port}`;
@@ -322,11 +358,46 @@ try {
   assert.equal(probeHealth.agyReady, false);
   assert.equal(probeHealth.checking, false);
   assert.match(probeHealth.agyError, /Eligibility check failed/);
+  const failedIdentity = await (await fetch(probeBase + '/identity', { headers: { Authorization: 'Bearer probe-secret' } })).json();
+  assert.equal(failedIdentity.accountHandle, 'guaanthony94', 'failed eligibility must retain the authenticated account label');
   await new Promise((resolve) => server.close(resolve));
+
+  let usageReads = 0;
+  usageServer = await startAgyWorker(
+    { name: 'reviewer', port: 0, root, allowedModes: ['plan'], token: 'usage-secret', agyBin: process.execPath, verifyAgy: false },
+    {
+      runProcess: async () => 'done',
+      readUsage: async () => { usageReads += 1; return { quotas: expectedQuotas, accountHandle: 'reviewer94' }; },
+    },
+  );
+  const usageBase = `http://127.0.0.1:${usageServer.address().port}`;
+  assert.equal((await fetch(usageBase + '/usage')).status, 401);
+  assert.equal((await fetch(usageBase + '/identity')).status, 401);
+  const usageHeaders = { Authorization: 'Bearer usage-secret' };
+  assert.equal((await (await fetch(usageBase + '/identity', { headers: usageHeaders })).json()).accountHandle, null);
+  const firstUsage = await (await fetch(usageBase + '/usage', { headers: usageHeaders })).json();
+  assert.deepEqual(firstUsage.quotas, expectedQuotas);
+  assert.equal(firstUsage.accountHandle, 'reviewer94');
+  assert.equal(firstUsage.stale, false);
+  assert.equal(usageReads, 1);
+  assert.equal((await (await fetch(usageBase + '/identity', { headers: usageHeaders })).json()).accountHandle, 'reviewer94');
+  await fetch(usageBase + '/usage', { headers: usageHeaders });
+  assert.equal(usageReads, 1, 'fresh cached usage must not start another CLI probe');
+  await fetch(usageBase + '/usage?fresh=1', { headers: usageHeaders });
+  assert.equal(usageReads, 2, 'explicit refresh must bypass cache');
+  await fetch(usageBase + '/run', {
+    method: 'POST', headers: { ...usageHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: 'work', mode: 'plan', cwd: root }),
+  });
+  await fetch(usageBase + '/usage', { headers: usageHeaders });
+  assert.equal(usageReads, 3, 'a completed AGY job must invalidate cached usage');
+  await new Promise((resolve) => usageServer.close(resolve));
+  usageServer = null;
 
   console.log('agy-mcp.test.js: ok');
 } finally {
   if (server?.listening) await new Promise((resolve) => server.close(resolve));
   if (secondServer?.listening) await new Promise((resolve) => secondServer.close(resolve));
+  if (usageServer?.listening) await new Promise((resolve) => usageServer.close(resolve));
   rmSync(root, { recursive: true, force: true });
 }
