@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Ingress drop-rate benchmark harness** (`bench/drop-rate.mjs`): dependency-free public-edge probing and comparison for Tailscale Funnel vs Cloudflare reliability, with preflight/well-known/real MCP modes and JSONL summaries. The benchmark is contributor tooling only and is excluded from the npm package.
 
 ### Changed
+- **Background-task test is cross-platform**: its short-lived command uses `git rev-parse --show-toplevel` so Windows and Unix runners observe reliable output.
 - **Kiro fallback resource bounds tightened**: read-only fallback calls use a shorter timeout and smaller output buffer so hung probes fail sooner and concurrent calls use less memory.
 
 ### Fixed
