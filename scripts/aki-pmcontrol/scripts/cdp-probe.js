@@ -27,10 +27,7 @@ function pageProbe() {
   const agentLs = {};
   agentKeys.forEach((k) => { agentLs[k] = localStorage.getItem(k); });
 
-  // Heuristic scan for tool-approval UI regardless of exact class name, so a selector drift shows up even if
-  // .tool-approval-wrapper / .tool-approval-single-item no longer match this build. Run the probe WHILE a
-  // permission card ("Approve / Run / Continue ...") is on screen: matchedKnownRoot:false means the current
-  // PERMISSION_CARD_ROOT no longer wraps the card, and cardClass/cardTestid reveal the correct new selector.
+  // Probe while an approval card is visible; matchedKnownRoot:false plus cardClass/cardTestid exposes selector drift.
   const chatContainer = q('[data-testid="ai-chat-container"]');
   const approvalWord = /^(approve|allow|run|continue|accept|try again|reject|deny)$/i;
   const scanRoot = q('[data-testid="ai-chat-conversation-container"]') || chatContainer || document.body;
