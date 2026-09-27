@@ -3,8 +3,8 @@ import { assembleRuleContext, RuleContextError } from './rule-context.js';
 
 export const RULE_CONTEXT_TOOL = 'akidevrule_context';
 export const RULE_CONTEXT_TITLE = 'Load Effective Aki/Claude Context';
-// Both strings end with the /akirule step: the router skill loads through a file read, not through this tool, so the server names it here and the client-side instruction only has to say "must".
-const AKIRULE_STEP = 'Then follow /akirule: read ~/.claude/skills/akirule/SKILL.md and load the rule files it routes for the task; open your first reply with its [RULES] line.';
+// Both strings end with the /akirule step: SKILL.md is embedded every session via CLAUDE.md and echoed in this tool's output, so the step points the model at the already-present routing table; only the routed RULE/METHOD files still need a Read.
+const AKIRULE_STEP = 'Then follow /akirule: the SKILL.md routing table is already included in this output (and in every session) — do not re-read SKILL.md; from its routes, Read only the RULE/METHOD files the task needs, since those are not preloaded. Open your first reply with its [RULES] line.';
 const CONDUCT_STEP = 'Attempt an operation before calling it impossible, never claim a missing capability, and on failure report the exact command, absolute path, exit status and stderr; state the action and its impact before a destructive or external step.';
 export const RULE_CONTEXT_DESCRIPTION = `Call once before the first substantive action in every chat to load the effective default guidance. The server resolves global imports and applicable project CLAUDE.local/AGENTS context itself; do not search for or individually read bootstrap files. Pass an absolute workingPath when known. Read-only. ${AKIRULE_STEP} ${CONDUCT_STEP}`;
 export const RULE_CONTEXT_INSTRUCTIONS = `Before the first substantive action, call aki__akidevrule_context once; pass an absolute workingPath when known. Do not discover or read bootstrap files individually. A returned receipt is the only success signal. ${AKIRULE_STEP} ${CONDUCT_STEP}`;
