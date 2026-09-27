@@ -369,14 +369,17 @@ function renderAgyUsage(role, item) {
       const metric = snapshot?.quotas?.[family]?.[windowName];
       const remaining = metric?.remainingPercent;
       const valid = typeof remaining === 'number' && Number.isFinite(remaining) && remaining >= 0 && remaining <= 100;
-      cell.querySelector('[data-remaining]').textContent = valid ? remaining + '% remaining' : '—';
+      cell.querySelector('[data-remaining]').textContent = valid ? remaining + '% remaining' : 'Not exposed';
       const progress = cell.querySelector('progress');
-      progress.hidden = !valid;
+      progress.hidden = false;
       if (valid) {
         progress.value = remaining;
         progress.setAttribute('aria-label', role + (accountHandle ? ' AGY ' + accountHandle : '') + ' ' + familyName + ' ' + windowLabel + ': ' + remaining + '% remaining');
+      } else {
+        progress.removeAttribute('value');
+        progress.setAttribute('aria-label', role + (accountHandle ? ' AGY ' + accountHandle : '') + ' ' + familyName + ' ' + windowLabel + ': quota not exposed by AGY for this account');
       }
-      cell.querySelector('[data-reset]').textContent = valid && metric.resetAt ? 'Resets ' + agyUsageTime(metric.resetAt) : '';
+      cell.querySelector('[data-reset]').textContent = valid && metric.resetAt ? 'Resets ' + agyUsageTime(metric.resetAt) : 'AGY did not return this quota window';
     }
   }
 }
@@ -445,8 +448,8 @@ function renderAgyPool(status) {
             : item.checking
               ? 'PID ' + item.pid + ' · checking AGY login/eligibility…'
               : item.agyReady
-                ? 'PID ' + item.pid + (item.busy ? ' · busy' : ' · ready') + ' · ' + item.allowedModes.join(',')
-                : 'PID ' + item.pid + ' · not ready';
+                ? 'PID ' + item.pid + (item.busy ? ' · busy' : ' · ready') + ' · ' + item.allowedModes.join(',') + ' · scope ' + item.root
+                : 'PID ' + item.pid + ' · not ready · scope ' + item.root;
     say('agyMsg-' + role, detail, ready);
     const row = document.querySelector('[data-agy-role="' + role + '"]');
     const login = row?.querySelector('[data-act="loginAgyRole"]');

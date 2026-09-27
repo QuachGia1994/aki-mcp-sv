@@ -1,4 +1,5 @@
 // Dedicated MCP tool for the `agy` CLI. The default path executes the local CLI directly; an optional named worker routes the same request to a loopback worker running under a different OS login, which gives AGY an independent credential vault without copying OAuth material into Aki MCP.
+import path from 'node:path';
 import { z } from 'zod';
 import { readSettings } from './allowlist.js';
 import { resolveOrFail } from './roots.js';
@@ -58,7 +59,13 @@ export function resolveWorkerConfig(name, settings = readSettings(), env = proce
     runUrl: new URL('/run', base).toString(),
     token,
     allowedModes,
+    root: typeof entry.root === 'string' && entry.root.trim() ? path.resolve(entry.root) : null,
   };
+}
+
+function isWithinRoot(candidate, root) {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 export async function runRemoteWorker(worker, payload, { fetchImpl = globalThis.fetch } = {}) {
@@ -122,6 +129,9 @@ export async function executeAgy(
   if (workerConfig.allowedModes && !workerConfig.allowedModes.includes(useMode)) {
     throw new Error(`rejected: mode "${useMode}" is not allowlisted for AGY worker "${worker}"`);
   }
+  if (resolved?.dir && workerConfig.root && !isWithinRoot(path.resolve(resolved.dir), workerConfig.root)) {
+    throw new Error(`rejected: cwd "${resolved.dir}" is outside AGY worker "${worker}" scope "${workerConfig.root}"; change agy.workers.${worker}.root or choose a cwd inside that scope`);
+  }
   return runRemoteWorker(workerConfig, payload, { fetchImpl });
 }
 
@@ -134,7 +144,8 @@ export function register(server) {
         'Run the agy CLI for retrieval/delegation. Defaults to local mode "plan" (read-only by mechanism) and model ' +
         `"${DEFAULT_AGY_MODEL}". Other modes must be allowlisted in setting.json under agy.allowedModes. ` +
         'Optional worker selects a named AGY worker on http://127.0.0.1 from agy.workers, allowing separate OS-login credential contexts. ' +
-        'Name exact paths and the exact output shape in the prompt — agy\'s workspace index can resolve files outside cwd, so cwd is not a hard scope boundary. ' +
+        'A named worker enforces its configured agy.workers.<role>.root; cwd outside that root is rejected immediately with the effective scope in the error. ' +
+        'Name exact paths and the exact output shape in the prompt — AGY indexing does not override OS permissions or the worker root boundary. ' +
         'prompt is passed straight to agy as one argument — no shell quoting, spaces/punctuation are safe as-is.',
       inputSchema: {
         prompt: z.string(),

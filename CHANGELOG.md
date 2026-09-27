@@ -16,6 +16,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Kiro fallback resource bounds tightened**: read-only fallback calls use a shorter timeout and smaller output buffer so hung probes fail sooner and concurrent calls use less memory.
 
 ### Fixed
+- **AGY quota and worker-scope diagnostics**: quota windows omitted by AGY now stay visible as `Not exposed` instead of disappearing from a role card, and named-worker dispatch rejects a `cwd` outside that worker's configured root before the remote call while the panel shows the effective scope.
 - **AGY pool workspace scope**: new role workers default to the dedicated `USER_DIR/agy-workspaces` directory instead of the first general MCP root, which could be the owner's entire Windows profile. Provisioning creates the default workspace, grants role access there, and rejects an owner-home root; explicit custom roots remain configurable before role creation. Distinct custom roots require separately verified Windows ACLs.
 - **AGY role Login and worker startup on Windows**: removed the unnecessary hidden cleanup step that caused `Access is denied` on Login, surfaced worker startup errors, and granted the three role users only non-inheriting traverse/read-attributes/synchronize rights on the default workspace's parent directories. The credential file keeps its separate ACL.
 - **Postman diagnostic token handling**: the optional `--enable-mcp` probe now requires `AKI_MCP_ACCESS_TOKEN` instead of embedding a bearer token in tracked source.

@@ -39,6 +39,9 @@ assert.match(client, /'AGY: ' \+ accountHandle/, 'account label must use the ema
 assert.match(client, /' · last known'/, 'offline account labels must be marked as last known');
 assert.match(client, /account is not eligible for Antigravity/, 'ineligible account state must remain visible');
 assert.match(client, /' AGY ' \+ accountHandle/, 'quota accessibility label must name the matching account');
+assert.match(client, /Not exposed/, 'missing AGY quota windows must stay visible instead of looking like a broken card');
+assert.match(client, /AGY did not return this quota window/, 'missing quota windows must explain that AGY omitted the data');
+assert.match(client, /' · scope ' \+ item\.root/, 'worker status must expose the effective filesystem scope for diagnosis');
 assert.match(client, /clearAgyUsage\(btn\.dataset\.role\)/, 'Login and Logout must discard old account quota labels');
 assert.match(client, /markAgyUsageOffline\(btn\.dataset\.role\)/, 'Stop must mark quota values stale');
 assert.match(client, /'\/api\/agy-pool\/usage'/, 'panel must load quota and identity snapshots');

@@ -211,6 +211,20 @@ try {
   assert.equal(workerPayload.mode, 'plan');
   assert.equal(workerPayload.cwd, root);
 
+  await assert.rejects(
+    () => executeAgy(
+      { prompt: 'outside scope', cwd: path.dirname(root), worker: 'advisor' },
+      {
+        settings: { agy: { allowedModes: ['plan'], workers: { advisor: { url: base, secretRef: 'advisor', allowedModes: ['plan'], root } } } },
+        env: {},
+        secrets: { advisor: 'test-secret' },
+        resolveCwd: () => ({ ok: true, dir: path.dirname(root) }),
+      },
+    ),
+    /outside AGY worker "advisor" scope/,
+    'worker routing must reject an out-of-scope cwd before making a remote call',
+  );
+
   const customRoot = path.join(root, 'custom');
   mkdirSync(customRoot);
   secondServer = await startAgyWorker(
