@@ -142,6 +142,14 @@ function isDeclineLabel(label) {
   return !!label && AUTO_CLICK_IGNORES.some((kw) => label === kw || label.includes(kw));
 }
 
+const PRESS_RETRY_MS = 3000;
+
+// A multi-tool card keeps the same DOM node while its label counts down ("Approve (3)" → "(2)"), and a swallowed click leaves the node untouched — a permanent boolean marker would strand both cases.
+function isPressInFlight(btn) {
+  const [label, at] = (btn.dataset.akiPressed || '').split('@');
+  return !!at && label === buttonLabel(btn) && Date.now() - Number(at) < PRESS_RETRY_MS;
+}
+
 function cardCopy(card) {
   return (card.innerText || card.textContent || '').replace(/\s+/g, ' ').trim();
 }
@@ -156,7 +164,7 @@ class PermissionCardClicker {
   }
 
   _slotButton(card, kind) {
-    const buttons = [...card.querySelectorAll('button')].filter((b) => isVisible(b) && !b.disabled && b.dataset.akiPressed !== '1');
+    const buttons = [...card.querySelectorAll('button')].filter((b) => isVisible(b) && !b.disabled && !isPressInFlight(b));
     if (kind === 'decline') return buttons.find((b) => isDeclineLabel(buttonLabel(b))) || null;
     return buttons.find((b) => this.manager.matchPrimary(buttonLabel(b)))
       || (card.matches(PERMISSION_CARD_ROOT) ? buttons.find((b) => !isDeclineLabel(buttonLabel(b))) : null);
@@ -178,7 +186,7 @@ class PermissionCardClicker {
     }
     const chat = document.querySelector(CHAT_ROOT) || document.body;
     for (const btn of chat.querySelectorAll('button')) {
-      if (btn.disabled || btn.dataset.akiPressed === '1') continue;
+      if (btn.disabled || isPressInFlight(btn)) continue;
       const label = buttonLabel(btn);
       const isAction = !!this.manager.matchPrimary(label);
       if (!isAction && !isDeclineLabel(label)) continue;
@@ -208,10 +216,9 @@ class PermissionCardClicker {
     this.manager.updateBadges();
   }
 
-  // A press is async, so a card can survive several ticks before leaving the DOM; without a per-card marker the loop re-presses it every tick, and that double-press is what freezes the chat session — mark it once, credit it when it disappears.
+  // A press is async, so a card can survive several ticks before leaving the DOM; without a marker the loop re-presses it every tick, and that double-press is what freezes the chat session — mark the button (label@time, see isPressInFlight), credit it when it disappears.
   _press(card, button, kind, copy, label) {
-    card.dataset.akiPressed = '1';
-    button.dataset.akiPressed = '1';
+    button.dataset.akiPressed = `${label}@${Date.now()}`;
     window.__pmArmedCard = { kind, copy, label, el: card, btn: button };
     press(button);
     if (!card.isConnected) this._creditArmed();
@@ -220,7 +227,6 @@ class PermissionCardClicker {
   tick(cfg) {
     this._creditArmed();
     for (const card of this.cards()) {
-      if (card.dataset.akiPressed === '1') continue;
       const copy = cardCopy(card);
       const folderIntent = cfg[this.rejectFolder.configKey] && copy.toLowerCase().includes(this.rejectFolder.bodyNeedle);
       if (folderIntent) {

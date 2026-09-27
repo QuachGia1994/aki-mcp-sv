@@ -58,4 +58,4 @@ The safety-flag probe (`postman-probe-instruction-flag.js`), its traps and every
 ## Invariants (do not break)
 
 - `scripts/postman/test/postman-daemon-copy.test.js` regex-asserts the exact `PERMISSION_CARD_ROOT` literal and the single-press guard — change both together or the test fails.
-- One press per card: the `dataset.akiPressed` marker prevents the double-press that freezes the chat session (`flow.B6`). Keep it.
+- One press per button state: `dataset.akiPressed` holds `label@time` (`isPressInFlight`), which prevents the every-tick double-press that freezes the chat session (`flow.B6`). It must never be a permanent boolean: a multi-tool card (`tool-approval-multi`, button `Approve (N)` → `approveSelected()`) keeps the same node while its label changes or a press is swallowed, so a permanent marker strands the card. The marker expires after `PRESS_RETRY_MS` or on a label change.

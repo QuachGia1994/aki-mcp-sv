@@ -26,6 +26,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 
 ### Fixed
 - **`.gitignore` anchored to the project root** (`/.postman/`, `/postman/`): the unanchored `postman/` also ignored `scripts/postman/`, so 23 of its 24 files were never tracked in git.
+- **Postman Auto-approve no longer strands a multi-tool approval card**: the press marker was a permanent flag on a card whose button (`Approve (N)`) keeps the same node while it counts down, so a first press that did not clear the card was never retried; the marker is now `label@time` and expires after 3 s or on a label change.
 
 ## [2.1.0] - 2026-09-18
 
