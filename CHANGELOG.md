@@ -24,6 +24,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Postman context-length bar** (`readConversationChars`/`renderContextBar`, `ctxCharAmber`/`ctxCharRed`) and its plan `context-circle-newchat-signal.md`: the new-chat signal is no longer wanted.
 - **Dead panel UI and code**: the section-3 rule-file checkboxes and "Require reading rules" toggle (they stopped feeding the prompt when it became static), the panel's `ruleFiles` state and `.checks`/`.updwarn` styles, `selectModelByText`/`setThinkingEnabled` in the Postman controller (no callers), the unused `RULE_VERSION` panel constant, and the orphaned `docs/ref/mcp-intro.md` (no prompt or code pointed at it since the instruction was rewritten).
 
+### Fixed
+- **`.gitignore` anchored to the project root** (`/.postman/`, `/postman/`): the unanchored `postman/` also ignored `scripts/postman/`, so 23 of its 24 files were never tracked in git.
+
 ## [2.1.0] - 2026-09-18
 
 ### Added

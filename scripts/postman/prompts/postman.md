@@ -1,0 +1,1 @@
+Could you use the akimcp tools (aki__*) for local files and shell (a subagent, via toolSearchPhrases, for writes and shell searches; verify it), and apply akirule for this chat?
