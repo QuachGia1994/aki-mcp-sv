@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, rmdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -78,30 +78,78 @@ export function runAgyUsageProcess(agyBin, {
   });
 }
 
-export function buildAgyArgs({ prompt, mode = 'plan', model = DEFAULT_AGY_MODEL, effort, outputFormat }) {
-  const args = ['--mode', mode, '--model', model];
+// Prompt travels on stdin as a stream-json turn, never as a CLI argument: a long prompt/schema as argv overflows the Windows command-line limit and the spawn fails with ENAMETOOLONG.
+export function buildAgyArgs({ mode = 'plan', model = DEFAULT_AGY_MODEL, effort } = {}) {
+  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--mode', mode, '--model', model];
   if (effort) args.push('--effort', effort);
-  if (outputFormat) args.push('--output-format', outputFormat);
-  args.push('-p', prompt);
   return args;
 }
 
+export function buildStreamTurn(prompt) {
+  return JSON.stringify({ event: 'user', message: { content: prompt } }) + '\n';
+}
+
+function parseStreamResult(stdout) {
+  let result = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    let event;
+    try { event = JSON.parse(trimmed); } catch { continue; }
+    if (event?.event === 'result' && event.result) result = event.result;
+  }
+  return result;
+}
+
 export function runAgyProcess(
-  { prompt, mode = 'plan', model = DEFAULT_AGY_MODEL, effort, outputFormat, cwd, agyBin = 'agy' },
-  { execFileImpl = execFile, timeoutMs = DEFAULT_AGY_TIMEOUT_MS, maxBuffer = DEFAULT_AGY_MAX_BUFFER, signal } = {},
+  { prompt, mode = 'plan', model = DEFAULT_AGY_MODEL, effort, cwd, agyBin = 'agy' },
+  { spawnImpl = spawn, timeoutMs = DEFAULT_AGY_TIMEOUT_MS, maxBuffer = DEFAULT_AGY_MAX_BUFFER, signal } = {},
 ) {
-  const args = buildAgyArgs({ prompt, mode, model, effort, outputFormat });
+  const args = buildAgyArgs({ mode, model, effort });
   return new Promise((resolve, reject) => {
-    execFileImpl(agyBin, args, { cwd, timeout: timeoutMs, maxBuffer, signal, windowsHide: true }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(String(stdout || stderr || error.message).trim()));
-        return;
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const child = spawnImpl(agyBin, args, { cwd, signal, windowsHide: true });
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch {}
+      finish(reject, new Error(`agy timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    let stdout = '';
+    let stderr = '';
+    child.on('error', (error) => finish(reject, new Error(`agy could not be started: ${error.message}`)));
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+      if (stdout.length > maxBuffer) {
+        try { child.kill(); } catch {}
+        finish(reject, new Error('agy output exceeded the maximum buffer'));
       }
-      if (!stdout || !stdout.trim()) {
-        reject(new Error('agy returned no output — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.'));
-        return;
-      }
-      resolve(stdout);
     });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('close', () => {
+      const result = parseStreamResult(stdout);
+      if (!result) {
+        finish(reject, new Error(String(stderr || 'agy returned no result event').trim()));
+        return;
+      }
+      if (result.status !== 'SUCCESS') {
+        finish(reject, new Error(String(result.error || `agy run ended with status ${result.status}`).trim()));
+        return;
+      }
+      const response = typeof result.response === 'string' ? result.response.trim() : '';
+      if (!response) {
+        finish(reject, new Error('agy returned an empty response — the call may have been silently denied rather than a clean empty result. Re-check the prompt/scope.'));
+        return;
+      }
+      finish(resolve, response);
+    });
+
+    child.stdin.on('error', () => {});
+    child.stdin.end(buildStreamTurn(prompt));
   });
 }

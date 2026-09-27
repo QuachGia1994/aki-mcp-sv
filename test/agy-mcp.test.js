@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
 import { buildAgyArgs, parseAgyAccountHandle, parseAgyUsage, runAgyProcess, runAgyUsageProcess } from '../scripts/agy-runner.js';
 import { executeAgy, resolveWorkerConfig } from '../scripts/agy-mcp.js';
 import { startAgyWorker } from '../scripts/agy-worker.js';
@@ -49,25 +50,39 @@ try {
   }), (error) => error.message === 'AGY usage command failed' && error.accountHandle === 'failed');
 
   const args = buildAgyArgs({
-    prompt: 'read two files',
     mode: 'plan',
     model: 'gemini-3.7-flash-medium',
     effort: 'medium',
-    outputFormat: 'json',
   });
-  assert.deepEqual(args.slice(-2), ['-p', 'read two files'], '-p prompt must stay last');
-  assert.deepEqual(args.slice(0, 4), ['--mode', 'plan', '--model', 'gemini-3.7-flash-medium']);
+  assert.ok(!args.includes('-p') && !args.includes('read two files'), 'the prompt must never appear in argv');
+  assert.deepEqual(args.slice(0, 4), ['--input-format', 'stream-json', '--output-format', 'stream-json']);
+  assert.deepEqual(args.slice(4), ['--mode', 'plan', '--model', 'gemini-3.7-flash-medium', '--effort', 'medium']);
 
+  let hiddenStdin;
   const hidden = await runAgyProcess({ prompt: 'hidden', cwd: root }, {
-    execFileImpl: (file, argv, options, callback) => {
+    spawnImpl: (file, argv, options) => {
       assert.equal(options.windowsHide, true, 'headless AGY must not open a console window');
-      assert.equal(options.timeout, 120_000);
-      assert.equal(options.maxBuffer, 4 * 1024 * 1024);
-      assert.deepEqual(argv.slice(-2), ['-p', 'hidden']);
-      callback(null, 'hidden-ok', '');
+      assert.ok(!argv.includes('hidden'), 'the prompt must go on stdin, never argv');
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {};
+      child.stdin = {
+        on() {},
+        end(payload) {
+          hiddenStdin = payload;
+          queueMicrotask(() => {
+            child.stdout.emit('data', JSON.stringify({ event: 'init' }) + '\n');
+            child.stdout.emit('data', JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'hidden-ok' } }) + '\n');
+            child.emit('close', 0);
+          });
+        },
+      };
+      return child;
     },
   });
   assert.equal(hidden, 'hidden-ok');
+  assert.deepEqual(JSON.parse(hiddenStdin), { event: 'user', message: { content: 'hidden' } }, 'the prompt must travel as a stream-json user turn on stdin');
 
   let localPayload;
   const local = await executeAgy(
