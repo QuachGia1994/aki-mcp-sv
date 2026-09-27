@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   register,
@@ -99,31 +100,36 @@ async function runTests() {
   assert.ok(typeof logOutput === 'string');
   assert.ok(logOutput.includes(process.cwd()) || logOutput.length > 0);
 
-  // 8. Test task_manage: stop with a long-running process
-  const stopTestId = `test_stop_${Date.now()}`;
-  const dummyFile = path.join(os.tmpdir(), `dummy-${Date.now()}.txt`);
-  fs.writeFileSync(dummyFile, 'hello\n');
-  try {
-    const longTask = await taskStart({
-      command: `tail -f ${dummyFile}`,
-      taskId: stopTestId,
-    });
-    assert.equal(longTask.status, 'running');
-    const runningStatus = await taskManage({ action: 'status', taskId: stopTestId });
-    assert.equal(runningStatus.alive, true);
+  // 8. Test task_manage: stop with a long-running process when the Git/Unix tail prerequisite is available.
+  const tailAvailable = spawnSync('tail', ['--version'], { windowsHide: true, stdio: 'ignore' }).status === 0;
+  if (tailAvailable) {
+    const stopTestId = `test_stop_${Date.now()}`;
+    const dummyFile = path.join(os.tmpdir(), `dummy-${Date.now()}.txt`);
+    fs.writeFileSync(dummyFile, 'hello\n');
+    try {
+      const longTask = await taskStart({
+        command: `tail -f ${dummyFile}`,
+        taskId: stopTestId,
+      });
+      assert.equal(longTask.status, 'running');
+      const runningStatus = await taskManage({ action: 'status', taskId: stopTestId });
+      assert.equal(runningStatus.alive, true);
 
-    const stopRes = await taskManage({ action: 'stop', taskId: stopTestId });
-    assert.equal(stopRes.stopped, true);
-    assert.equal(stopRes.wasAlive, true);
+      const stopRes = await taskManage({ action: 'stop', taskId: stopTestId });
+      assert.equal(stopRes.stopped, true);
+      assert.equal(stopRes.wasAlive, true);
 
-    await sleep(200);
-    const afterStopStatus = await taskManage({ action: 'status', taskId: stopTestId });
-    assert.equal(afterStopStatus.alive, false);
-    assert.equal(afterStopStatus.status, 'stopped');
+      await sleep(200);
+      const afterStopStatus = await taskManage({ action: 'status', taskId: stopTestId });
+      assert.equal(afterStopStatus.alive, false);
+      assert.equal(afterStopStatus.status, 'stopped');
 
-    await taskManage({ action: 'delete', taskId: stopTestId });
-  } finally {
-    try { fs.unlinkSync(dummyFile); } catch {}
+      await taskManage({ action: 'delete', taskId: stopTestId });
+    } finally {
+      try { fs.unlinkSync(dummyFile); } catch {}
+    }
+  } else {
+    console.log('SKIP: task stop integration requires tail on PATH');
   }
 
   // 9. Test task_manage: list
