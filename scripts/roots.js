@@ -75,13 +75,49 @@ export async function resolveRealUnderRoot(target) {
   }
 }
 
-// Write variant: trusted script zones (shell.allowlistDirs) run without a command row, so a file tool writing into one would be write + run = code execution. Refused by shape here, which is why a zone may sit inside a writable root.
-export async function resolveRealWritable(target) {
-  const real = await resolveRealUnderRoot(target);
+// Trusted script zones (shell.allowlistDirs) run without a command row, so a file tool writing into one would be write + run = code execution. Refused by shape here, which is why a zone may sit inside a writable root. One helper, shared by both write resolvers, so the refusal cannot drift between them.
+async function refuseTrustedZone(real) {
   const zones = await Promise.all(loadAllowlistDirs().map((dir) => realpath(dir).catch(() => dir)));
   const zone = zones.find((dir) => containedIn(real, dir));
   if (zone) throw new Error(`read-only for file tools: ${zone} is a trusted script directory`);
+}
+
+// Write variant for a single file/dir whose immediate parent already exists.
+export async function resolveRealWritable(target) {
+  const real = await resolveRealUnderRoot(target);
+  await refuseTrustedZone(real);
   return real;
+}
+
+// mkdir -p variant: the target AND any number of intermediate parents may be missing.
+// resolveRealUnderRoot only tolerates ONE missing level (correct for file writes, which never
+// create parents), so directory creation gets its own resolver instead of loosening the shared one.
+// Climb to the nearest EXISTING ancestor and realpath it: that is the symlink-safe check, because
+// the not-yet-existing segments cannot be symlinks, so once the nearest real ancestor is contained,
+// the path rebuilt from it is safe to create.
+export async function resolveRealWritableDir(target) {
+  const abs = resolveUnderRoot(target); // tilde/relative expansion + string containment
+  const missing = [];
+  let existing = abs;
+  for (;;) {
+    try {
+      await realpath(existing);
+      break;
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+      const parent = path.dirname(existing);
+      if (parent === existing) throw new Error(`no existing ancestor within the allowed roots: ${abs}`);
+      missing.push(path.basename(existing));
+      existing = parent;
+    }
+  }
+  const realExisting = await realpath(existing);
+  const realTarget = missing.length ? path.join(realExisting, ...missing.reverse()) : realExisting;
+  if (!getRoots().some((root) => containedIn(realTarget, root))) {
+    throw new Error(`path escapes the allowed roots: ${realTarget}`);
+  }
+  await refuseTrustedZone(realTarget);
+  return realTarget;
 }
 
 // Non-throwing variant for CLI-arm handlers: returns { ok, dir } or { ok:false, error }, so a caller wraps the failure however its context needs (sync fail() vs async) without repeating the try/catch and its Promise-wrapping footgun.

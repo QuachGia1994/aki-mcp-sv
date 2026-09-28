@@ -14,7 +14,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createTwoFilesPatch } from 'diff';
 import { z } from 'zod';
-import { getRoots, resolveRealUnderRoot, resolveRealWritable } from './roots.js';
+import { getRoots, resolveRealUnderRoot, resolveRealWritable, resolveRealWritableDir } from './roots.js';
 import { ok, fail } from './mcp-tool.js';
 
 const normalizeLineEndings = (text) => text.replace(/\r\n/g, '\n');
@@ -219,8 +219,10 @@ export function register(server) {
     },
     async ({ path: p }) => {
       try {
-        // The directory itself may not exist yet — resolveRealUnderRoot's ENOENT fallback validates the parent instead, which is exactly what's needed here.
-        const real = await resolveRealWritable(p);
+        // mkdir -p: the target and any number of missing parents are created. resolveRealWritableDir
+        // climbs to the nearest existing ancestor for the symlink-safe containment check, so a deep
+        // path whose immediate parent does not exist yet still resolves (resolveRealWritable would reject it).
+        const real = await resolveRealWritableDir(p);
         await fs.mkdir(real, { recursive: true });
         return ok(`created ${p}`);
       } catch (e) {
