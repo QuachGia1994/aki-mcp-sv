@@ -79,6 +79,24 @@ const socialLink = ([label, url, path]) =>
 
 const copyEl = (value, hl = false, id) => `<code class="copy${hl ? ' hl' : ''}"${id ? ` id="${esc(id)}"` : ''} title="click to copy"><span class="txt">${esc(value)}</span></code>`;
 
+// Local-time "YYYY-MM-DD HH:mm:ss", not toLocaleString() — that renders differently per OS/locale.
+function formatDateTime(d) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+
+function formatUptime(totalSec) {
+  let sec = Math.floor(totalSec);
+  const days = Math.floor(sec / 86400); sec %= 86400;
+  const hours = Math.floor(sec / 3600); sec %= 3600;
+  const mins = Math.floor(sec / 60);
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (days || hours) parts.push(`${hours}h`);
+  parts.push(`${mins}m`);
+  return parts.join(' ');
+}
+
 function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
@@ -107,13 +125,30 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const mcpUpd = updateInfo.mcp || {};
   const ruleUpd = updateInfo.rule || {};
   const mcpVer = mcpUpd.current || '?';
+  // Process identity for the header — computed fresh per render from the running process, never cached.
+  const pid = process.pid;
+  const startedAt = new Date(Date.now() - process.uptime() * 1000);
+  const startedLabel = `${formatDateTime(startedAt)} (up ${formatUptime(process.uptime())})`;
+  // AkiDevRule install/version badge for section 2 — mirrors the Postman panel's rule-status widget.
+  const ruleState = ruleUpd.state || (ruleUpd.current ? 'current' : 'missing');
+  const ruleCur = ruleUpd.current ? `v${esc(String(ruleUpd.current))}` : '';
+  const ruleLatest = ruleUpd.latest ? `v${esc(String(ruleUpd.latest))}` : '';
+  const RULE_BADGE = {
+    missing: `<span class="rulebadge err">Not installed</span>${ruleLatest ? `<span class="rulebadge-note">latest ${ruleLatest}</span>` : ''}`,
+    update: `<span class="rulebadge warn">Update available: ${ruleCur} → ${ruleLatest}</span>`,
+    ahead: `<span class="rulebadge ok">Installed ${ruleCur}</span><span class="rulebadge-note">ahead of release</span>`,
+    unknown: `<span class="rulebadge ok">Installed ${ruleCur || '(version unknown)'}</span><span class="rulebadge-note">update check failed</span>`,
+    current: `<span class="rulebadge ok">Installed ${ruleCur}</span>`,
+  };
+  const ruleBadge = RULE_BADGE[ruleState] || RULE_BADGE.unknown;
+  const ruleBtnLabel = ruleState === 'missing' ? 'Install' : ruleState === 'update' ? 'Update' : 'Install / update';
   // "Own update on top, rule update below" per the request; the rule row carries the re-paste warning because updating the corpus makes every pasted instruction stale.
   const updateBanner = (mcpUpd.updateAvailable || ruleUpd.updateAvailable) ? `<div class="updbar">
   ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>@akinet/akimcp</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> <button class="primary" data-act="pullUpdate">Pull &amp; restart</button><span class="msg" id="msgUpd"></span></div>` : ''}
   ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span></div>` : ''}
 </div>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(MCP_NAME)} · panel${isDev ? ' (dev)' : ''}</title>
+<title>AkiMCP v${esc(String(mcpVer))}${isDev ? ' (dev)' : ''}</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
 <link rel="stylesheet" href="/panel.css"></head><body><main>
 <header class="panel-hero">
@@ -127,7 +162,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
       <span class="version-badge" aria-label="AKIMCP version ${esc(String(mcpVer))}">v${esc(String(mcpVer))}</span>
     </div>
     <p class="sub">Secure local files and shell access for Claude, ChatGPT, Grok, and Gemini through OAuth 2.1.</p>
-    <p class="panel-meta"><span>Local panel</span><span>127.0.0.1</span><span>${esc(ingressLabel)}</span></p>
+    <p class="panel-meta"><span>Local panel</span><span>127.0.0.1</span><span>${esc(ingressLabel)}</span><span>PID ${pid}</span><span>Started ${esc(startedLabel)}</span></p>
   </div>
   <a class="gh-top" href="${MCP_REPO_URL}" target="_blank" rel="noopener" aria-label="View AKIMCP on GitHub" title="View on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${SVG.github}"/></svg></a>
 </header>
@@ -319,8 +354,9 @@ ${field('Access token', accessToken)}
 ${field('Install command', RULES_INSTALL_CMD)}
 <p class="helptext">Runs on Mac/Linux/Windows — only needs <span class="mono">Node.js 18+</span>. Re-run the command above to update, or add <span class="mono">--check</span> to print installed-vs-latest without changing anything. From a local clone: <span class="mono">node install.mjs</span> (or launchers <span class="mono">install.sh</span> / <span class="mono">install.ps1</span>). No sudo; installs into every detected <span class="mono">~/.claude*</span> profile plus <span class="mono">~/.aki</span>, removable with rm -rf.</p>
 <div class="acts">
-  <button class="primary" data-act="installRules">Install / update</button>
+  <button class="primary" data-act="installRules">${ruleBtnLabel}</button>
   <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
+  ${ruleBadge}
   <span class="msg" id="msgRules"></span>
 </div>
 </section>

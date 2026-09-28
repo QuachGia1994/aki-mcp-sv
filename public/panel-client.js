@@ -332,7 +332,8 @@ const ACTIONS = {
   }),
   installRules: (btn) => act(btn, 'msgRules', async () => {
     const { message } = await api('POST', '/api/install-rules');
-    return message;
+    setTimeout(() => location.reload(), 800);
+    return message + ' — reloading';
   }),
   rollToken: (btn) => rollToken(btn, false),
   rollTokenHard: (btn) => rollToken(btn, true),
@@ -355,9 +356,9 @@ const ACTIONS = {
   }),
   updateRules: (btn) => act(btn, 'msgUpdRule', async () => {
     const { message } = await api('POST', '/api/install-rules');
-    document.querySelector('.updrule')?.remove();
-    if (!document.querySelector('.updbar .updrow')) document.querySelector('.updbar')?.remove();
-    return message;
+    // Reload so the server re-renders the section-2 badge, hero version pill and update-bar from fresh state.
+    setTimeout(() => location.reload(), 800);
+    return message + ' — reloading';
   }),
   registerDomain: (btn) => act(btn, 'msgDomain', async () => {
     const subdomain = document.getElementById('subdomainInput').value.trim();

@@ -12,7 +12,7 @@ import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic } from './http.js';
-import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
+import { getLocalVersions, cmpSemver, writeStatusFile, getRuleStatus } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman/postman-mcp.js';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,7 @@ const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
 
 function writeJsonAtomic(file, data) {
+  mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
   renameSync(tmp, file);
@@ -181,10 +182,11 @@ async function pullUpdate() {
 // A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
 function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
-  for (const key of ['mcp', 'rule']) {
-    updateInfo[key].current = local[key];
-    updateInfo[key].updateAvailable = cmpSemver(local[key], updateInfo[key].latest) < 0;
-  }
+  updateInfo.mcp.current = local.mcp;
+  updateInfo.mcp.updateAvailable = cmpSemver(local.mcp, updateInfo.mcp.latest) < 0;
+  // Rebuild the whole rule branch (installed/unreleasedOnly/state), not just current, so a post-install
+  // reload flips "not installed" -> "installed" and clears the update badge — same source as boot.
+  updateInfo.rule = getRuleStatus(updateInfo.rule?.latest ?? null);
   writeStatusFile(updateInfo);
 }
 

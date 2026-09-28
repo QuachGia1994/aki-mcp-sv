@@ -203,4 +203,8 @@ Căn cứ quy định tại `METHOD-audit-subtraction.md`:
 │                          │ • chrome-remote-interface: Bị depcheck báo thừa  │
 │                          │   nhưng thực tế daemon CDP bắt buộc phải dùng.   │
 └──────────────────────────┴──────────────────────────────────────────────────┘
+
+## Amendments
+
+- 2026-09-27: **REDUNDANT finding #2 resolved** — `scripts/aki-pmcontrol/scripts/update-check.js` (nay là `scripts/postman/postman-rule-update-check.cjs` sau đổi tên/di chuyển) không còn "sao chép 136 LOC từ `scripts/update-check.js`". Logic parse changelog/so sánh semver/phân loại install-state được gộp về một SSoT duy nhất, `scripts/rule-version-core.cjs` (`.cjs` để cả ESM `update-check.js` và CommonJS daemon đều `require`/`import` được), cả hai phía chỉ còn wrapper mỏng gọi vào đó. Đồng thời gỡ luôn phần trùng lặp *network* — trước đây main process và Postman daemon mỗi bên tự gọi GitHub raw để lấy bản `akidevrule` mới nhất; giờ chỉ main process (`scripts/start.js` boot) làm việc đó, ghi vào `~/.aki/mcpsv/aki-mcp-status.json`, và daemon đọc lại file này (`readMainProcessLatest()`) thay vì fetch riêng. Decision ở §3/§4 không đổi, chỉ cập nhật trạng thái phát hiện.
 ```

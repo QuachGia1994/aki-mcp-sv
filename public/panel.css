@@ -115,6 +115,11 @@ details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 details.adv summary:hover { color: var(--accent); }
 .msg { font-size: 12px; margin-left: 4px; }
 .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+.rulebadge { font: 700 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+.rulebadge.ok { color: var(--ok); border-color: var(--ok); }
+.rulebadge.warn { color: var(--accent); border-color: var(--accent); }
+.rulebadge.err { color: var(--err); border-color: var(--err); }
+.rulebadge-note { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
 a { color: var(--accent); }
 .btnlink { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .btnlink:hover { border-color: var(--accent); }

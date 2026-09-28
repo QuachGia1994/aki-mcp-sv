@@ -14,9 +14,9 @@ const { eligibleTargets, attachmentTargets, deterministicOwnerTargetId, waitForE
 const { loadInstruction, copyDefaultIfMissing } = require('./postman-instruction-store.cjs');
 const daemonPid = require('./postman-daemon-pid.cjs');
 const {
-  checkForUpdate,
   localSnapshot,
   refreshLocalVersions,
+  refreshFromNetwork,
   getLocalVersions,
   RULES_DIR,
 } = require('./postman-rule-update-check.cjs');
@@ -278,7 +278,7 @@ async function installAkiRule() {
   return { ok: install.ok, msg: `${last} (source: ${repo})`, version: getLocalVersions().current };
 }
 
-// The app's own version (repo-root package.json) — shown as the version subline under the panel title. Cached and best-effort so a standalone/lab checkout without that package.json still boots.
+// The app's own version (repo-root package.json) — shown as the version subline under the panel title. Cached and best-effort so a standalone checkout without that package.json still boots.
 let cachedAppVersion;
 function getAppVersion() {
   if (cachedAppVersion !== undefined) return cachedAppVersion;
@@ -532,7 +532,7 @@ async function main() {
   init();
   loadAkiData();
   logRuleUpdate(cachedUpdateInfo);
-  checkForUpdate().then((info) => {
+  refreshFromNetwork().then((info) => {
     cachedUpdateInfo = info;
     logRuleUpdate(info);
     pushUpdateInfoToAll();

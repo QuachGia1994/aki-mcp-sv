@@ -1,135 +1,62 @@
 'use strict';
+// Daemon-side wrapper. Two trigger points (main-process boot, this daemon's own start) share one fetch impl (rule-version-core.cjs fetchLatestRuleVersion) and write the same STATUS_PATH, so whichever ran last wins and the other side picks it up on its next disk read.
 
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
-const https = require('https');
+const core = require('../rule-version-core.cjs');
 
-const RULES_DIR = path.join(os.homedir(), '.aki', 'akidevrule');
-const RULE_CHANGELOG = path.join(RULES_DIR, 'CHANGELOG.md');
-const RULE_INDEX = path.join(RULES_DIR, 'index.md');
-const RULE_CHANGELOG_URL = 'https://raw.githubusercontent.com/lacvietanh/akidevrule/master/CHANGELOG.md';
+const RULES_DIR = core.RULE_DIR;
+const AKI_DATA_DIR = process.env.AKI_DATA_DIR || path.join(os.homedir(), '.aki', 'mcpsv');
+const STATUS_PATH = path.join(AKI_DATA_DIR, 'aki-mcp-status.json');
 
-function parseChangelogVersion(text) {
-  const m = text && text.match(/^##\s*\[(\d+\.\d+\.\d+)\]/m);
-  return m ? m[1] : null;
-}
-
-function cmpSemver(a, b) {
-  if (!a || !b) return 0;
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    const x = pa[i] || 0;
-    const y = pb[i] || 0;
-    if (x !== y) return x < y ? -1 : 1;
-  }
-  return 0;
-}
-
-function isInstalled() {
-  return fs.existsSync(RULE_CHANGELOG) || fs.existsSync(RULE_INDEX);
-}
-
-function isUnreleasedOnly(text) {
-  return !!(text && !parseChangelogVersion(text) && /^##\s*\[Unreleased\]/m.test(text));
-}
-
-function readLocalRule() {
-  try {
-    const text = fs.readFileSync(RULE_CHANGELOG, 'utf8');
-    return { current: parseChangelogVersion(text), unreleasedOnly: isUnreleasedOnly(text) };
-  } catch (e) {
-    return { current: null, unreleasedOnly: false };
-  }
+// null before the main process has ever run checkForUpdate — getRuleStatus(null) then degrades to "current known, latest unknown".
+function readMainProcessLatest() {
+  try { return JSON.parse(fs.readFileSync(STATUS_PATH, 'utf8'))?.rule?.latest ?? null; }
+  catch { return null; }
 }
 
 function getLocalVersions() {
-  const local = readLocalRule();
-  return {
-    current: local.current,
-    installed: isInstalled(),
-    unreleasedOnly: local.unreleasedOnly,
-  };
-}
-
-function classifyRule(rule) {
-  if (!rule.installed) return 'missing';
-  if (rule.unreleasedOnly) return 'ahead';
-  if (!rule.latest) return 'unknown';
-  if (rule.updateAvailable) return 'update';
-  if (rule.current && cmpSemver(rule.current, rule.latest) > 0) return 'ahead';
-  if (rule.current && rule.latest && cmpSemver(rule.current, rule.latest) === 0) return 'current';
-  return 'unknown';
-}
-
-function snapshot(current, latest, local) {
-  const rule = {
-    current,
-    latest,
-    updateAvailable: cmpSemver(current, latest) < 0,
-    installed: local.installed,
-    unreleasedOnly: !!local.unreleasedOnly,
-  };
-  rule.state = classifyRule(rule);
-  return { rule };
+  const status = core.getRuleStatus(null);
+  return { current: status.current, installed: status.installed, unreleasedOnly: status.unreleasedOnly };
 }
 
 function localSnapshot() {
-  const local = getLocalVersions();
-  return snapshot(local.current, null, local);
+  return { rule: core.getRuleStatus(readMainProcessLatest()) };
 }
 
+// Rebuilds the rule branch from disk so a post-install reload flips installed/unreleasedOnly/state without a network round-trip.
 function refreshLocalVersions(updateInfo) {
   if (!updateInfo || !updateInfo.rule) return updateInfo;
-  const local = getLocalVersions();
-  updateInfo.rule.current = local.current;
-  updateInfo.rule.installed = local.installed;
-  updateInfo.rule.unreleasedOnly = local.unreleasedOnly;
-  updateInfo.rule.updateAvailable = cmpSemver(local.current, updateInfo.rule.latest) < 0;
-  updateInfo.rule.state = classifyRule(updateInfo.rule);
+  updateInfo.rule = core.getRuleStatus(readMainProcessLatest());
   return updateInfo;
 }
 
-function fetchText(url, timeoutMs, redirectsLeft) {
-  if (redirectsLeft === undefined) redirectsLeft = 3;
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (value) => { if (!settled) { settled = true; resolve(value); } };
-    const req = https.get(url, { timeout: timeoutMs, headers: { 'User-Agent': 'aki-postman-daemon' } }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
-        res.resume();
-        return done(fetchText(new URL(res.headers.location, url).toString(), timeoutMs, redirectsLeft - 1));
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        return done(null);
-      }
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
-      res.on('error', () => done(null));
-    });
-    req.on('timeout', () => { req.destroy(); done(null); });
-    req.on('error', () => done(null));
-  });
+// Merges `rule` into the shared status file without disturbing the `mcp` branch the main process owns.
+function writeSharedRule(rule) {
+  let existing = {};
+  try { existing = JSON.parse(fs.readFileSync(STATUS_PATH, 'utf8')); } catch { existing = {}; }
+  const info = { checkedAt: new Date().toISOString(), mcp: existing.mcp ?? null, rule };
+  try {
+    fs.mkdirSync(path.dirname(STATUS_PATH), { recursive: true });
+    fs.writeFileSync(STATUS_PATH, `${JSON.stringify(info, null, 2)}\n`);
+  } catch { /* best-effort, matches update-check.js writeStatusFile */ }
 }
 
-async function checkForUpdate({ timeoutMs = 3000 } = {}) {
-  const local = getLocalVersions();
-  const ruleLog = await fetchText(RULE_CHANGELOG_URL, timeoutMs);
-  return snapshot(local.current, parseChangelogVersion(ruleLog), local);
+// Once per daemon start, never per Postman window/target. On fetch failure, falls back to whatever `latest` the status file already holds rather than downgrading it to unknown.
+async function refreshFromNetwork(timeoutMs = 3000) {
+  const fetched = await core.fetchLatestRuleVersion(timeoutMs, 'aki-postman-daemon').catch(() => null);
+  const latest = fetched ?? readMainProcessLatest();
+  const rule = core.getRuleStatus(latest);
+  writeSharedRule(rule);
+  return { rule };
 }
 
 module.exports = {
   RULES_DIR,
-  RULE_CHANGELOG,
-  RULE_CHANGELOG_URL,
-  parseChangelogVersion,
-  cmpSemver,
-  classifyRule,
+  STATUS_PATH,
   getLocalVersions,
   localSnapshot,
   refreshLocalVersions,
-  checkForUpdate,
+  refreshFromNetwork,
 };
