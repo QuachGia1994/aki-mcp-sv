@@ -314,18 +314,26 @@ export async function probeAi({ host = DEFAULT_HOST, port, target, filter } = {}
       const href = location.href;
       if (href.includes('claude.ai')) {
         try {
+          // Org resolution matches AIObox's fixed probe.rs / the vendored claude-counter
+          // reference: the 'lastActiveOrg' cookie names the org the tab actually shows, so it
+          // wins over list order. orgs[0] previously picked the wrong org's name/plan/usage on
+          // any account belonging to 2+ Claude orgs, and org.plan is not a real field (always 'free').
+          const cookieRaw = document.cookie.split('; ').find(row => row.startsWith('lastActiveOrg='))?.split('=')[1];
+          const cookieOrgId = cookieRaw ? decodeURIComponent(cookieRaw) : null;
           const orgs = await fetch('/api/organizations', { credentials: 'include' }).then(r => r.json());
-          const org = Array.isArray(orgs) ? orgs[0] : null;
+          const orgList = Array.isArray(orgs) ? orgs : [];
+          const org = (cookieOrgId && orgList.find(o => o && (o.uuid === cookieOrgId || o.id === cookieOrgId))) || orgList[0] || null;
           if (!org) return { provider: 'claude', loggedIn: false };
+          const orgId = cookieOrgId || org.uuid || org.id;
           let usage = null;
           try {
-            usage = await fetch('/api/organizations/' + org.id + '/usage', { credentials: 'include' }).then(r => r.json());
+            usage = await fetch('/api/organizations/' + orgId + '/usage', { credentials: 'include' }).then(r => r.json());
           } catch {}
           return {
             provider: 'claude',
             loggedIn: true,
-            orgName: org.name,
-            plan: org.plan || 'free',
+            orgName: org.name || org.organization_name || null,
+            plan: org.rate_limit_tier || org.claude_ai_plan || org.billing_type || (org.settings && org.settings.rate_limit_tier) || 'free',
             usage: usage || null,
           };
         } catch (e) {
