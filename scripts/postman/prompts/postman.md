@@ -1,1 +1,1 @@
-Could you use the akimcp tools (aki__*) for local files and shell (a subagent, via toolSearchPhrases, for writes and shell searches; verify it), and apply akirule for this chat?
+Could you use the akimcp tools (aki__*) as primary, and fall back to your subagent shell for commands that akimcp cannot execute?

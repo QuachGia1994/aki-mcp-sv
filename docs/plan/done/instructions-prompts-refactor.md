@@ -13,7 +13,7 @@ Gộp yêu cầu sửa lỗi lưu prompt với kế hoạch REFACTOR. Phạm vi:
 
 ## Bối cảnh hiện tại (đã đọc code, 2026-09-05)
 
-- Daemon `scripts/aki-pmcontrol/index.js` là bản copy CommonJS từ lab; quản lý instruction qua `scripts/aki-pmcontrol/scripts/instruction-store.js`.
+- Daemon `scripts/aki-pmcontrol/index.js` là bản copy CommonJS; quản lý instruction qua `scripts/aki-pmcontrol/scripts/instruction-store.js`.
 - Path instruction trong `index.js`:
   - writable: `USER_PROMPT_PATH = ~/.aki/mcpsv/prompts/postman.md` (const `AKI_DATA_DIR = ~/.aki/mcpsv`).
   - legacy read (cdp-postman, chỉ đọc): `LEGACY_INSTRUCTION_PATH = ~/.aki/cdp-postman/aki-postman-instruction.md`.
