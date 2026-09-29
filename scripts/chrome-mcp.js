@@ -11,12 +11,13 @@ import {
   stopChrome,
   getActivePort,
   getActiveSession,
+  NO_CDP_PORT_MESSAGE,
 } from './chrome-profile.js';
 
 function resolvePort(explicitPort) {
   const p = explicitPort || getActivePort();
   if (!p) {
-    throw new Error('No CDP port specified and no active Chrome session. Launch one with aki__chrome_launch or provide port.');
+    throw new Error(NO_CDP_PORT_MESSAGE);
   }
   return p;
 }

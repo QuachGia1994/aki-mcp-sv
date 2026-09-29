@@ -331,6 +331,9 @@ export function getActiveSession() {
   return activeSession;
 }
 
+export const NO_CDP_PORT_MESSAGE =
+  'No CDP port specified and no active Chrome session. Launch a clone with aki__chrome_launch, or attach to a window already running with a remote-debugging port: find the port with aki__port_status (a Chrome process listening on 127.0.0.1), run aki__devtools_targets on it, match the tab by title or url, then pass that port and targetId explicitly.';
+
 // Launches a cloned Chromium instance with stealth flags and dynamic port 0.
 export async function launchChrome(profileId = 'Default', {
   browser = 'chrome',
