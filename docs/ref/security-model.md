@@ -1,6 +1,21 @@
 # Security model — minimal OAuth 2.1 (Claude + ChatGPT)
 
-Updated 2026-08-21 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
+updated 2026-09-29 · v2.1.0 — Claude keeps a pre-issued confidential client; ChatGPT uses RFC 7591 DCR on the same server.
+
+## Design stance — convenience first, guardrail second
+
+The root the rest of this doc, the README Security section, panel section 6 and `feat/tools.md` defer to. Owner decision, 2026-09-29.
+
+- **Priority order:** (1) convenient use, (2) safety. The guardrail exists so that convenience is not paid for with accidents; it never outranks convenience.
+- **Owners allow everything in practice.** Clients such as Claude Code already have an auto mode that permits every command, and a deny rule leaves no reason to use akimcp at all. So akimcp is not a fortress and does not add another permission layer for the owner to configure.
+- **What the guardrail is for:** stopping "weak" models — less safe than Claude, or overeager and not yet safe to trust — from doing damage. Such models (the `agy` ones) make per-call approval prompts unbearable, which is why the guardrail is a fixed allowlist rather than a question asked on every call.
+- **What the guardrail must be:** clearly delimited (the line between what runs freely and what needs the owner is explicit), principled and professional, balanced between convenience and security, and free of nuisance. A rule that is complex, intrusive or hard to explain fails this bar even when it is safer.
+
+Consequences already decided:
+- The shell allowlist is the guardrail. Commands the owner adds are the owner's responsibility.
+- Command arguments are not path-scoped (only `cwd` is): too complex and intrusive for the gain.
+- Tools are not split into read/write variants to carry permissions: clients differ, and the owner allows everything anyway. What needs safety goes back to the allowlist.
+- A dedicated tool beside `run_cmd` earns its place only by saving tokens (compact output for reads); otherwise `run_cmd` covers it, and its description steers the model to the tool that does it cheaper.
 
 ## Current auth architecture
 
@@ -43,7 +58,7 @@ When no ingress is attached, the OAuth discovery and `/authorize` endpoints retu
 
 ## Shell trust: names, and installer-owned script zones
 
-`run_cmd` runs a command only if its binary is on the name allowlist (read-only by default; edited in panel section 6) or it targets a script under a *trusted script directory* (`shell.allowlistDirs`, default `~/.claude/skills` and `~/.aki/akidevrule`, the folders the akidevrule installer writes). The zone check resolves symlinks on both sides, treats `node`/`python3`/… as interpreters (trust follows the script path, so `node -e` stays blocked), and excludes shells. Write + run cannot chain: the file tools (`write_file`, `edit_file`, `create_directory`, `move_file`) refuse any path inside a trusted zone (`scripts/roots.js:resolveRealWritable`), so a zone may sit inside a writable folder. Shell commands the user opts into that write files (`cp`, `git checkout`, …) are outside that guarantee, the same trade-off as any allowlisted write command.
+`run_cmd` runs a command only if its binary is on the name allowlist (inspection-first by default — reads plus a few dev/media helpers, git write forms refused; edited in panel section 6) or it targets a script under a *trusted script directory* (`shell.allowlistDirs`, default `~/.claude/skills` and `~/.aki/akidevrule`, the folders the akidevrule installer writes). The zone check resolves symlinks on both sides, treats `node`/`python3`/… as interpreters (trust follows the script path, so `node -e` stays blocked), and excludes shells. Write + run cannot chain: the file tools (`write_file`, `edit_file`, `create_directory`, `move_file`) refuse any path inside a trusted zone (`scripts/roots.js:resolveRealWritable`), so a zone may sit inside a writable folder. Shell commands the user opts into that write files (`cp`, `git checkout`, …) are outside that guarantee, the same trade-off as any allowlisted write command.
 
 ## Real limitations
 

@@ -398,7 +398,8 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
 <section id="s6"><h2>6 · Allowed shell commands</h2>
-<p class="helptext">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access.</p>
+<p class="helptext"><strong>This is a guardrail for weak or overeager models, not a lock against you.</strong> It lets them work without approval prompts while keeping them off destructive commands; convenience comes first, so widen it freely for your own needs. Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access. A restricted <code>git</code> row lets <code>branch</code>, <code>tag</code> and <code>remote</code> run in their read forms only; press <em>any</em> to allow every git command.</p>
+<p class="helptext"><strong>What each limit covers:</strong> this list bounds the shell command tool only. Section 5 (folders) bounds the file, search and git tools and where shell commands may run. The AGY and Kiro tools run in a locked mode of their own. Details: <code>docs/feat/tools.md</code>.</p>
 <input type="text" id="cmdFilter" placeholder="filter commands…">
 <div class="chips" id="cmdChips"></div>
 <div class="flist" id="cmdRows"></div>

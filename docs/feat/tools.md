@@ -1,6 +1,6 @@
 # Tools — the local capability suite (anchored)
 
-> updated 2026-09-27 · v2.1.0
+> updated 2026-09-29 · v2.1.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini / Postman) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -11,10 +11,10 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 | `filesystem` (native, `scripts/filesystem-mcp.js`) | `read_text_file`, `write_file`, `edit_file`, `create_directory`, `move_file`, `get_file_info`, `list_allowed_directories` | Read/write/edit files under the allowed roots, symlink-safe | The remote model, directly |
 | `search` | `find_path`, `search_content` | Fast index-backed path + content lookup (no per-call `find`/`grep` spawn) | The remote model, directly |
 > The third-party `@modelcontextprotocol/server-filesystem` package this replaced also exposed `list_directory`/`directory_tree`/`search_files`/`read_multiple_files`/`read_media_file` — dropped outright rather than prompt-banned, since `find_path`/`search_content` already supersede the listing/search family in practice and the rest had no evidence of real use (`docs/plan/done/2.0.0-improve.md` §7). Cheap to re-add if a real need shows up.
-| `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
+| `shell` | `run_cmd` | Run an allowlisted command as the user; inspection-first by default (reads plus a few dev/media helpers; destructive commands and git write forms refused), write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy_run` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
-| `postman` (`scripts/postman/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/postman/` daemon is running (own child or an externally-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. This tree is a frozen copy, not kept in sync with its origin (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
+| `postman` (`scripts/postman/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/postman/` daemon is running (own child or an externally-started pid at `$AKI_DATA_DIR/daemon.pid`) and its `data.json`. This tree is a frozen copy, not kept in sync with its origin (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
 
 ## Layout of `scripts/postman/` (Postman only)
 
@@ -41,6 +41,20 @@ An audit that only pattern-matches capabilities will call `kiro_read` "redundant
 - **Offload multi-step local work** — a local model runs the investigate/read/synthesize loop against local files and returns a conclusion, instead of the remote model paying round-trips and context for every intermediate read.
 - **Local trust scoping by mechanism** — the arm runs under its own locked tool set (`kiro` → `fs_read` only; `agy` → `plan` mode only), a boundary the remote model cannot widen from a prompt.
 - **Model/tier choice per task** — `agy` reaches a wide-context discovery tier; `kiro` is pinned to a specific Sonnet id for cost/behavior determinism.
+
+## When a tool earns its place beside `run_cmd`
+
+`run_cmd` can already run anything on the allowlist, so a separate tool exists only if it meets at least one of: saves tokens (compact output for reads); keeps state across calls; carries non-trivial logic; enforces a safety control the allowlist cannot express (SSRF, path containment); or owns a cross-process contract. Otherwise the model uses `run_cmd`. The arms above qualify by providing behavior `run_cmd` cannot. Splitting tools by read/write to carry permissions is not a reason: the owner allows everything anyway, and safety belongs to the allowlist (`ref/security-model.md` § Design stance). `run_cmd`'s description steers the model to the cheaper dedicated tool.
+
+## Output shaping — what the model reads back from `run_cmd`
+
+The cost of a tool is the tokens its output puts in the remote model's context, so `run_cmd` (and the `git` tool) return shaped text (`scripts/output-shape.js`; research and rejected alternatives: [`research/token-saving-rtk.md`](../research/token-saving-rtk.md)). Rule: nothing is destroyed that cannot be recovered verbatim, and a cut is announced on the first line.
+
+- **Cleaned, losslessly:** ANSI codes removed; carriage-return progress keeps its last redraw; a run of 3 or more identical lines becomes the line plus `[previous line repeated N times in total]`.
+- **Cut, recoverably:** past about 20k characters the model gets the first ~14k and last ~6k at line boundaries. Line 1 states the sizes and the path of the saved raw text, `~/.aki/mcpsv/out/<time>-<id>.txt` (owner-only, newest 20 kept). Read it with `read_text_file` (`head`/`tail`) or find the middle with `search_content`; no extra tool is registered, since every tool costs its schema on every turn. The folder is under the always-allowed `~/.aki` root only while `AKI_MCP_DATA_DIR` stays at its default.
+- **Failures keep their evidence:** a non-zero exit returns `[exit code N]`, then stdout and stderr (test failures print to stdout). A timeout or the 32 MB capture limit says so in the same first line.
+- **`aki__git op=diff`** shows whole files in order and names the omitted ones with their size first; re-request them with `file=<path>`.
+- **Not done on purpose:** field-dropping filters for `ls`/`git log`, noise-directory hiding, test-runner summaries by keyword. Reasons in the research doc.
 
 ## Search ladder — how the model should compose a hunt
 

@@ -1,6 +1,6 @@
 # aki-mcp-sv (`@akinet/akimcp`)
 
-Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 39 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
+Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 37 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
 
 One command opens a much larger operating surface: build and edit projects from the browser, inspect databases and local APIs, drive browser workflows, manage long-running jobs, debug through DevTools, and control Postman without giving every client unrestricted shell access.
 
@@ -93,7 +93,7 @@ Claude discovers OAuth automatically. No Client ID or Client Secret is needed.
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the in-house `aki__*` tool suite (39 tools):
+claude.ai connects and calls the in-house `aki__*` tool suite (37 tools):
 - **Chromium Remote & Profiles**: `aki__chrome_profiles`, `aki__chrome_launch`, `aki__chrome_tabs`, `aki__chrome_interact`, `aki__chrome_probe_ai`, `aki__chrome_stop` (stealth port-0 clone, auto-port fallback, React/Vue synthetic typing, scroll-to-center click, and AI quota probe)
 - **DevTools & CDP**: `aki__devtools_targets`, `aki__devtools_eval`, `aki__devtools_screenshot`
 - **OS Native Integration**: `aki__notify_user` (desktop notification banner & chime sound), `aki__clipboard_read`, `aki__clipboard_write` (system clipboard read/write bridge)
@@ -102,7 +102,7 @@ claude.ai connects and calls the in-house `aki__*` tool suite (39 tools):
 - **Filesystem**: `aki__read_text_file`, `aki__write_file`, `aki__edit_file`, `aki__create_directory`, `aki__move_file`, `aki__get_file_info`, `aki__list_allowed_directories`
 - **Search & Execution**: `aki__find_path`, `aki__search_content`, `aki__run_cmd`
 - **Dev Servers & Ports**: `aki__port_status`, `aki__kill_port`
-- **Git Operations**: `aki__git_status`, `aki__git_diff`, `aki__git_log`
+- **Git (read-only)**: `aki__git` with `op` = `status` | `diff` | `log` | `tags` (local, or a remote's via `ls-remote --tags`); compact output, cheaper than `run_cmd`. Writes go through `run_cmd`
 - **SQLite Database**: `aki__sqlite_schema`, `aki__sqlite_query`
 - **Agent & Context**: `aki__agy_run`, `aki__kiro_read`, `aki__akidevrule_context`
 - **Postman Control**: `aki__postman_status`, `aki__postman_eval`, `aki__postman_rename_conversation`, `aki__postman_panel_fullwidth`
@@ -173,6 +173,7 @@ claude mcp add --transport http aki-mcp http://127.0.0.1:9999/mcp --header "Auth
 }
 ```
 
+
 **Codex CLI** — append to `~/.codex/config.toml` (don't overwrite; Codex reaches the local engine over streamable HTTP, token inlined so there's no env var to export):
 
 ```toml
@@ -221,7 +222,7 @@ gatekeeper.js  — public port 9999
       ▼
 tools-server.js — one shared McpServer, in-process (InMemoryTransport, no child, no SSE), tools:
                                   search-mcp.js       (find_path/search_content, whole-tree in one call)
-                                  shell-mcp.js        (allowlisted commands, curated to read-only)
+                                  shell-mcp.js        (allowlisted commands, inspection-first defaults)
                                   agy-mcp.js          (Antigravity CLI, read-only plan mode)
                                   kiro-mcp.js         (kiro_read, read-only, needs kiro-cli on PATH)
                                   filesystem-mcp.js   (native read/write/edit inside the allowed folders)
@@ -264,7 +265,7 @@ aki-mcp-sv/
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> the in-process tools server (InMemoryTransport)
 │   ├── tools-server.js           # builds the one shared McpServer mounting every tool arm below
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
-│   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
+│   ├── shell-mcp.js              # allowlist-gated shell tool (inspection-first defaults)
 │   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
@@ -277,7 +278,7 @@ aki-mcp-sv/
 │   ├── fetch-mcp.js              # aki__local_fetch: SSRF-protected localhost/LAN HTTP client
 │   ├── task-mcp.js               # aki__task_start/task_manage: detached background task runner
 │   ├── port-mcp.js               # aki__port_status/kill_port: TCP port inspection + kill
-│   ├── git-mcp.js                # aki__git_status/diff/log: scope-checked git tools
+│   ├── git-mcp.js                # aki__git (op: status/diff/log/tags): read-only, compact
 │   ├── system-mcp.js             # aki__notify_user, clipboard_read/write
 │   ├── sqlite-mcp.js             # aki__sqlite_schema/query: read-only node:sqlite inspector
 │   ├── postman/                  # everything Postman-only: postman-mcp.js tools + daemon launch, postman-daemon.cjs (CDP control), page/, debug/, prompts/, test/
@@ -373,10 +374,12 @@ Use `aki__find_path` to locate a file or directory — it scans the whole tree i
 
 ## Security
 
+**Convenience first, guardrail second.** Owners allow everything in practice (Claude Code's auto mode already permits every command), so AKIMCP is not a fortress and adds no permission layer to configure. Its guardrail, the shell allowlist below, exists to stop weak or overeager models, less safe than Claude, from doing damage, without the per-call approval prompts that make such models unbearable. The guardrail stays clearly delimited, balanced and free of nuisance. Full stance: [`docs/ref/security-model.md`](docs/ref/security-model.md#design-stance--convenience-first-guardrail-second).
+
 Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
 
 - `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is every tool's main root, plus `~/.aki` and `~/.claude` (for native rule files) — read fresh from `~/.aki/mcpsv/setting.json` on every call, so a panel edit takes effect on the next call, no restart. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/setting.json`'s `folders` list directly if you want it out).
-- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js` — flag-rich binaries whose own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) are deliberately kept out of it (issue #2), so a default connector cannot write, delete, or exec through the shell tool; the `find_path`/`search_content` tools cover the read-only lookup they were used for. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
+- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is inspection-first, defined in `allowlist.js`: reading commands, plus a few dev/media helpers (`npm run`/`test`, `npx vitest`, and on macOS `open`, `sips`, `ffmpeg`). Destructive commands and destructive forms are not in it: flag-rich binaries whose own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) are kept out (issue #2), and `git branch`/`tag`/`remote` pass in their read forms only (`git branch -D`, `git tag -d`, `git remote set-url` are refused, with a message saying so); the `find_path`/`search_content` tools cover the lookup `find` was used for. Bare `git` on the allowlist means every git command — the owner's call. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
 - `gatekeeper.js` is the single public entry point; every tool runs in-process behind it, nothing else listens on any port.
 - `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
 - `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
@@ -396,7 +399,7 @@ This project targets a different scenario: exposing local access to Claude **on 
 - **Minimal attack surface**: only the exact commands you've approved can run, nothing more.
 - **Granular down to the subcommand**: `git` is scoped to `status/log/diff/show`, something a blocklist can't express cleanly.
 - **Neutralizes prompt injection**: exposed to the open internet, a hard whitelist means a malicious or injected instruction has nothing to escalate to — there's no unlisted command for it to reach for.
-- **Read-only by construction**: the built-in set is read-only — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2); adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
+- **Inspection-first by construction**: the built-in set is reads plus a few dev/media helpers — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2), and git's write forms are refused; adding a write command is a deliberate edit (panel section 6 or `~/.aki/mcpsv/setting.json`), not the removal of a ban.
 
 ## Screenshots
 <img width="899" height="1035" alt="image" src="https://github.com/user-attachments/assets/c7504913-7ff0-4802-b607-b6a6220e82c2" />

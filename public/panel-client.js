@@ -144,6 +144,7 @@ function addRow(bin, subs) {
   const row = document.createElement('div');
   row.className = 'cmdrow'; row.dataset.bin = bin;
   if (ALWAYS_RISK[bin]) { row.classList.add('risk-hi'); row.title = '⚠ ' + ALWAYS_RISK[bin]; }
+  if (bin === 'git') row.title = 'branch, tag and remote allow their read forms only; press "any" to allow every git command';
   const name = document.createElement('span');
   name.className = 'cmd-bin'; name.textContent = bin;
   const subI = document.createElement('input');
