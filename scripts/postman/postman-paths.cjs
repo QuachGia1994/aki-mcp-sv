@@ -1,76 +1,14 @@
-const fs = require('fs');
+// The Postman daemon's runtime files, in the main server's data dir (scripts/userdata.js USER_DIR): one definition for the daemon, the panel-side reader, the usage reader and the pid file, which all meet across a process boundary.
+// CommonJS because the daemon cannot import ESM; the env var is what userdata.js exports to child processes.
+const os = require('os');
 const path = require('path');
-const { execSync } = require('child_process');
 
-function getPostmanPaths() {
-  const platform = process.platform;
-  let appPath = '';
-  let resourcesDir = '';
-  let execPath = '';
+const AKI_DATA_DIR = process.env.AKI_DATA_DIR || path.join(os.homedir(), '.aki', 'mcpsv');
 
-  if (platform === 'darwin') {
-    appPath = '/Applications/Postman.app';
-    resourcesDir = path.join(appPath, 'Contents', 'Resources');
-    execPath = path.join(appPath, 'Contents', 'MacOS', 'Postman');
-  } else if (platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Local');
-    const postmanBase = path.join(localAppData, 'Postman');
-    if (fs.existsSync(postmanBase)) {
-      const appDirs = fs.readdirSync(postmanBase)
-        .filter(f => f.startsWith('app-') && fs.statSync(path.join(postmanBase, f)).isDirectory())
-        .sort();
-      if (appDirs.length > 0) {
-        const latestApp = appDirs[appDirs.length - 1];
-        appPath = path.join(postmanBase, latestApp);
-        resourcesDir = path.join(appPath, 'resources');
-        execPath = path.join(appPath, 'Postman.exe');
-      }
-    }
-  } else {
-    // Linux
-    const candidates = [
-      '/opt/Postman/app/resources',
-      '/usr/lib/postman/app/resources',
-      path.join(process.env.HOME || '', '.local/share/Postman/app/resources'),
-      '/var/lib/flatpak/app/com.getpostman.Postman/current/active/files/extra/Postman/app/resources',
-      '/snap/postman/current/usr/share/postman/resources'
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(c)) {
-        resourcesDir = c;
-        appPath = path.dirname(resourcesDir);
-        execPath = path.join(appPath, 'Postman');
-        break;
-      }
-    }
-
-    if (!execPath) {
-      try {
-        const bin = execSync('which postman', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
-        if (bin && fs.existsSync(bin)) {
-          execPath = bin;
-        }
-      } catch (e) {}
-    }
-  }
-
-  // Fallback chung nếu execPath chưa tìm thấy
-  if (!execPath) {
-    try {
-      const cmd = process.platform === 'win32' ? 'where Postman.exe' : 'which postman';
-      const out = execSync(cmd, { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim().split('\n')[0].trim();
-      if (out && fs.existsSync(out)) {
-        execPath = out;
-      }
-    } catch (e) {}
-  }
-
-  return {
-    appPath,
-    resourcesDir,
-    execPath,
-    asarPath: resourcesDir ? path.join(resourcesDir, 'app.asar') : ''
-  };
-}
-
-module.exports = { getPostmanPaths };
+module.exports = {
+  AKI_DATA_DIR,
+  DATA_JSON_PATH: path.join(AKI_DATA_DIR, 'data.json'),
+  OWNERSHIP_STATUS_PATH: path.join(AKI_DATA_DIR, 'ownership-status.json'),
+  NEW_WINDOW_FLAG_PATH: path.join(AKI_DATA_DIR, 'new-window.flag'),
+  PID_PATH: path.join(AKI_DATA_DIR, 'daemon.pid'),
+};

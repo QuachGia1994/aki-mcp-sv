@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 
 (async () => {
 const { browserIdentity, PostmanSession } = require('../postman-session.cjs');
-const { attachmentTargets, deterministicOwnerTargetId, createdTarget, waitForCreatedTarget, openOwnedWindow } = require('../postman-ownership.cjs');
+const { eligibleTargets, deterministicOwnerTargetId, createdTarget, waitForCreatedTarget, openOwnedWindow } = require('../postman-ownership.cjs');
 
 const eligible = (url) => url.startsWith('https://desktop.postman.com');
 const pages = [
@@ -10,11 +10,11 @@ const pages = [
   { id: 'a', type: 'page', url: 'https://desktop.postman.com/a' },
   { id: 'x', type: 'page', url: 'https://example.com' },
 ];
-assert.deepEqual(attachmentTargets(pages, eligible).map((target) => target.id), ['a', 'b']);
+assert.deepEqual(eligibleTargets(pages, eligible).map((target) => target.id), ['a', 'b']);
 assert.equal(deterministicOwnerTargetId(pages, eligible), 'a');
-assert.deepEqual(attachmentTargets([...pages, { id: 'c', type: 'page', url: 'https://desktop.postman.com/c' }], eligible).map((target) => target.id), ['a', 'b', 'c']);
+assert.deepEqual(eligibleTargets([...pages, { id: 'c', type: 'page', url: 'https://desktop.postman.com/c' }], eligible).map((target) => target.id), ['a', 'b', 'c']);
 assert.equal(deterministicOwnerTargetId([...pages, { id: 'c', type: 'page', url: 'https://desktop.postman.com/c' }], eligible), 'a');
-assert.deepEqual(attachmentTargets([...pages, { id: 'invalid', type: 'page', url: 'https://example.com/new' }], eligible).map((target) => target.id), ['a', 'b']);
+assert.deepEqual(eligibleTargets([...pages, { id: 'invalid', type: 'page', url: 'https://example.com/new' }], eligible).map((target) => target.id), ['a', 'b']);
 assert.equal(createdTarget(new Set(['a']), pages, eligible).id, 'b');
 assert.equal(createdTarget(new Set(['a', 'b']), [...pages, { id: 'c', type: 'page', url: 'https://desktop.postman.com/c' }], eligible).id, 'c');
 assert.deepEqual(browserIdentity({ webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/browser-1' }, 9222), { kind: 'browser-websocket', browserId: 'browser-1' });
@@ -72,5 +72,10 @@ const opened = await openOwnedWindow({
 });
 assert.equal(evaluateCount, 1);
 assert.equal(opened.id, 'c');
+const { normalizeOwnershipStatus } = require('../postman-ownership.cjs');
+assert.deepEqual(normalizeOwnershipStatus(null), { daemonPid: null, attached: false, endpoint: null, ownerTargetId: null, attachedPageCount: 0, mode: null, launchProcessPid: null });
+const written = { daemonPid: 7, attached: true, endpoint: { host: '127.0.0.1', port: 9 }, ownerTargetId: 'a', attachedPageCount: 2, mode: 'owned', launchProcessPid: 8 };
+assert.deepEqual(normalizeOwnershipStatus(written), written, 'a full status survives the writer/reader round trip unchanged');
+assert.deepEqual(Object.keys(normalizeOwnershipStatus({ extra: 1 })), Object.keys(written), 'unknown fields are dropped, so the file has exactly one shape');
 console.log('postman-ownership.test.cjs: ok');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

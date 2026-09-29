@@ -6,9 +6,8 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
-const AKI_DATA_JSON = path.join(os.homedir(), '.aki', 'cdp-postman', 'data.json');
+const { DATA_JSON_PATH: AKI_DATA_JSON } = require('./postman-paths.cjs');
 
 function getStoredAccessToken() {
   if (fs.existsSync(AKI_DATA_JSON)) {

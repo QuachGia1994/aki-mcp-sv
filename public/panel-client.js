@@ -272,7 +272,7 @@ function postmanStatusMessage(status) {
   const cdp = endpoint && endpoint.port ? ' · CDP ' + (endpoint.host || '127.0.0.1') + ':' + endpoint.port : '';
   const runtime = 'daemon PID ' + status.daemonPid + cdp;
   if (!status.attached) return 'waiting for a Postman window · ' + runtime;
-  const count = status.attachedWindowCount || 0;
+  const count = status.attachedPageCount || 0;
   return status.mode + ' · attached to ' + count + ' Postman window' + (count === 1 ? '' : 's') + ' · ' + runtime;
 }
 

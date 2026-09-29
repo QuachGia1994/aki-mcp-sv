@@ -2,9 +2,15 @@
 import assert from 'node:assert/strict';
 import { mock } from 'node:test';
 import cp from 'node:child_process';
-import { register, getDaemonStatus } from '../postman-mcp.js';
-import { ROUTES } from '../../panel.js';
-import daemonPid from '../postman-daemon-pid.cjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// userdata.js reads AKI_MCP_DATA_DIR at import: an empty temp data dir, so no real daemon.pid/data.json/ownership file of the owner's can leak in.
+process.env.AKI_MCP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'postman-mcp-test-'));
+const { register, getDaemonStatus } = await import('../postman-mcp.js');
+const { ROUTES } = await import('../../panel.js');
+const { default: daemonPid } = await import('../postman-daemon-pid.cjs');
 
 // Hermetic: neutralize the real on-disk daemon pid file so a daemon actually running on this
 // machine (e.g. one serving a live session) cannot leak into the baseline. cp.spawn is mocked

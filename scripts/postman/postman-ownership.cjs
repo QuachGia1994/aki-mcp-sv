@@ -4,10 +4,6 @@ function eligibleTargets(targets, isEligible) {
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
-function attachmentTargets(targets, isEligible) {
-  return eligibleTargets(targets, isEligible);
-}
-
 function deterministicOwnerTargetId(targets, isEligible) {
   return eligibleTargets(targets, isEligible)[0]?.id || null;
 }
@@ -44,4 +40,18 @@ async function openOwnedWindow({ ownerClient, listTargets, isEligible, ...option
   return waitForCreatedTarget({ ...options, beforeIds, listTargets, isEligible });
 }
 
-module.exports = { eligibleTargets, attachmentTargets, deterministicOwnerTargetId, createdTarget, waitForEligibleTargets, waitForCreatedTarget, openOwnedWindow };
+// The ownership-status file's one shape: the daemon writes it and the main server reads it across a process boundary, so both go through here and a field is added in one place.
+function normalizeOwnershipStatus(raw) {
+  const status = raw || {};
+  return {
+    daemonPid: status.daemonPid || null,
+    attached: !!status.attached,
+    endpoint: status.endpoint || null,
+    ownerTargetId: status.ownerTargetId || null,
+    attachedPageCount: status.attachedPageCount || 0,
+    mode: status.mode || null,
+    launchProcessPid: status.launchProcessPid || null,
+  };
+}
+
+module.exports = { normalizeOwnershipStatus, eligibleTargets, deterministicOwnerTargetId, createdTarget, waitForEligibleTargets, waitForCreatedTarget, openOwnedWindow };

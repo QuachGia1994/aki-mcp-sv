@@ -41,7 +41,11 @@ try {
 }
 
 const indexSrc = readFileSync(path.join(mcpRoot, 'postman-daemon.cjs'), 'utf8');
-assert.match(indexSrc, /const AKI_DATA_DIR = process\.env\.AKI_DATA_DIR \|\| path\.join\(os\.homedir\(\), '\.aki', 'mcpsv'\)/);
+assert.match(indexSrc, /require\('\.\/postman-paths\.cjs'\)/, 'the daemon takes its runtime paths from the shared module');
+assert.match(readFileSync(path.join(mcpRoot, 'postman-paths.cjs'), 'utf8'), /const AKI_DATA_DIR = process\.env\.AKI_DATA_DIR \|\| path\.join\(os\.homedir\(\), '\.aki', 'mcpsv'\)/);
+for (const file of ['postman-daemon.cjs', 'postman-mcp.js', 'postman-usage.cjs', 'postman-daemon-pid.cjs', 'postman-paths.cjs']) {
+  assert.doesNotMatch(readFileSync(path.join(mcpRoot, file), 'utf8'), /cdp-postman|LEGACY_CDP/, `${file}: no legacy data dir`);
+}
 assert.match(indexSrc, /const PROMPTS_DIR = path\.join\(AKI_DATA_DIR, 'prompts'\)/);
 assert.match(indexSrc, /const PROVIDER = 'postman'/);
 assert.match(indexSrc, /function init\(\)/);

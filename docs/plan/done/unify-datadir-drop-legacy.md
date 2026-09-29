@@ -2,7 +2,7 @@
 
 Kế thừa & mở rộng `docs/plan/done/instructions-prompts-refactor.md` (refactor tiền nhiệm — plan đã hoàn tất & đưa vào `done/`; nó cố ý xếp việc hợp nhất `~/.aki/cdp-postman` → `~/.aki/mcpsv` vào mục *No action*). Plan này thực hiện đúng phần bị hoãn đó theo yêu cầu owner: **không giữ bất kỳ legacy nào, gọn sạch.**
 
-> Read-only research, CHƯA triển khai. Đọc code tại working tree 1.14.0 + refactor chưa commit (2026-09-05).
+> **DONE 2026-09-29 (v2.1.0).** Bước A đã có sẵn trong code (chain prompt chỉ còn `DEFAULT`); B–E làm ngày này, kết quả ở cuối file. Bản nghiên cứu ban đầu: working tree 1.14.0 + refactor chưa commit (2026-09-05).
 
 ## Mục tiêu
 - Một thư mục writable duy nhất: `~/.aki/mcpsv` (`$AKI_DATA_DIR`). Xoá hẳn `~/.aki/cdp-postman`.
@@ -94,3 +94,13 @@ Còn trỏ `~/.aki/cdp-postman` (cụm `data.json` / `daemon.pid` / `new-window.
 ## Open questions
 - Bỏ luôn dòng `data/` trong `.gitignore`? Đề xuất: có (không còn dùng).
 - Dọn `~/.aki/cdp-postman` trên máy dev bằng `rm`, hay để user tự xoá? Đề xuất: để user; plan chỉ nêu.
+
+## Kết quả (2026-09-29)
+- [x] A. Prompt chỉ còn `loadInstruction([DEFAULT_PROMPT_PATH])` — đã có trước khi thực thi bước này.
+- [x] B. Một module `scripts/postman/postman-paths.cjs` định nghĩa `AKI_DATA_DIR`, `DATA_JSON_PATH`, `OWNERSHIP_STATUS_PATH`, `NEW_WINDOW_FLAG_PATH`, `PID_PATH`; daemon, `postman-mcp.js`, `postman-usage.cjs`, `postman-daemon-pid.cjs` dùng chung (bản plan đề xuất "tùy chọn", làm vì trước đó 4 nơi cùng tự định nghĩa: `pattern.A1`/A2). `postman-mcp.js` import `../userdata.js` trước để `AKI_DATA_DIR` đúng cả ở dev mode (`mcpsv-dev`), điều đường dẫn cứng cũ không làm được.
+- [x] C. `scripts/postman/data/` không còn tồn tại; dòng `data/` trong `.gitignore` đã bỏ (không có thư mục `data` nào trong cây hay trong git).
+- [x] D. `CLAUDE.md` § Process topology và `docs/feat/tools.md` cập nhật; README không nhắc thư mục cũ.
+- [x] E. `postman-daemon-copy.test.js` kiểm daemon lấy path từ module chung và không file nào còn chuỗi `cdp-postman`; `postman-status.test.js` và `postman-mcp.test.js` dùng thư mục dữ liệu tạm (trước đó `postman-status.test.js` ghi thẳng vào `~/.aki/cdp-postman` thật của máy).
+- Kiểm chứng: `grep -rn "cdp-postman" scripts public` chỉ còn assertion trong test; 5 test Postman + `npm test` qua.
+- Daemon đã tắt khi làm (PID trong `daemon.pid` là file rác, không còn tiến trình). Không di trú: `~/.aki/cdp-postman/` còn nguyên trên đĩa, không code nào đọc nó nữa; chủ máy tự xoá khi muốn (quyết định của plan).
+

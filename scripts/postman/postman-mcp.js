@@ -4,7 +4,6 @@
 // default. `npm start` never calls launchPostmanDaemon. No CDP, no ensureRunning here either: that
 // stays inside the daemon child, never this module.
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 // Default import, not `{ spawn }`: node:test's mock.method only intercepts the shared exports
@@ -13,12 +12,13 @@ import { fileURLToPath } from 'node:url';
 import cp from 'node:child_process';
 import { z } from 'zod';
 import { ok, fail } from '../mcp-tool.js';
+import '../userdata.js'; // sets AKI_DATA_DIR before postman-paths.cjs reads it
+import paths from './postman-paths.cjs';
 import daemonPid from './postman-daemon-pid.cjs';
+import { normalizeOwnershipStatus } from './postman-ownership.cjs';
+const { AKI_DATA_DIR, DATA_JSON_PATH, NEW_WINDOW_FLAG_PATH, OWNERSHIP_STATUS_PATH } = paths;
 import cdp from '../cdp-engine.js';
 
-const DATA_JSON_PATH = path.join(os.homedir(), '.aki', 'cdp-postman', 'data.json');
-const NEW_WINDOW_FLAG_PATH = path.join(path.dirname(DATA_JSON_PATH), 'new-window.flag');
-const OWNERSHIP_STATUS_PATH = path.join(path.dirname(DATA_JSON_PATH), 'ownership-status.json');
 const DAEMON_SCRIPT_PATH = fileURLToPath(new URL('./postman-daemon.cjs', import.meta.url));
 
 let daemonProcess = null;
@@ -46,7 +46,7 @@ function readOwnershipStatus(livePid) {
   if (!livePid || !existsSync(OWNERSHIP_STATUS_PATH)) return null;
   try {
     const status = JSON.parse(readFileSync(OWNERSHIP_STATUS_PATH, 'utf8'));
-    return status.daemonPid === livePid ? status : null;
+    return status.daemonPid === livePid ? normalizeOwnershipStatus(status) : null;
   } catch {
     return null;
   }
@@ -54,17 +54,12 @@ function readOwnershipStatus(livePid) {
 
 export function getDaemonStatus() {
   const daemonPidValue = childRunning() ? daemonProcess.pid : filePidLive();
-  const ownership = readOwnershipStatus(daemonPidValue);
+  const ownership = normalizeOwnershipStatus(readOwnershipStatus(daemonPidValue));
   return {
     running: !!daemonPidValue,
+    ...ownership,
     daemonPid: daemonPidValue || null,
     pid: daemonPidValue || null,
-    attached: !!ownership?.attached,
-    endpoint: ownership?.endpoint || null,
-    ownerTargetId: ownership?.ownerTargetId || null,
-    attachedWindowCount: ownership?.attachedWindowCount || 0,
-    mode: ownership?.mode || null,
-    launchProcessPid: ownership?.launchProcessPid || null,
     dataFile: readDataFile(),
   };
 }
@@ -169,7 +164,7 @@ export function requestNewWindow() {
   const status = getDaemonStatus();
   if (!status.running) throw new Error('Postman daemon not running — launch it first');
   if (!status.attached || !status.ownerTargetId) throw new Error('Postman daemon has no attached owner target');
-  mkdirSync(path.dirname(NEW_WINDOW_FLAG_PATH), { recursive: true });
+  mkdirSync(AKI_DATA_DIR, { recursive: true });
   writeFileSync(NEW_WINDOW_FLAG_PATH, '');
   return { ok: true, message: 'requested a new Postman window' };
 }

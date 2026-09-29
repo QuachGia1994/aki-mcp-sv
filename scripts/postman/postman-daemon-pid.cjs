@@ -1,8 +1,6 @@
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
-
-const PID_PATH = path.join(os.homedir(), '.aki', 'cdp-postman', 'daemon.pid');
+const { PID_PATH } = require('./postman-paths.cjs');
 
 function live(pid) {
   if (!pid) return false;

@@ -10,7 +10,7 @@ const os = require('os');
 const { execFile } = require('child_process');
 const { fetchAllUsage } = require('./postman-usage.cjs');
 const { PostmanSession } = require('./postman-session.cjs');
-const { eligibleTargets, attachmentTargets, deterministicOwnerTargetId, waitForEligibleTargets, openOwnedWindow } = require('./postman-ownership.cjs');
+const { eligibleTargets, deterministicOwnerTargetId, waitForEligibleTargets, openOwnedWindow, normalizeOwnershipStatus } = require('./postman-ownership.cjs');
 const { loadInstruction, copyDefaultIfMissing } = require('./postman-instruction-store.cjs');
 const daemonPid = require('./postman-daemon-pid.cjs');
 const {
@@ -21,8 +21,7 @@ const {
   RULES_DIR,
 } = require('./postman-rule-update-check.cjs');
 
-// Writable runtime/user data, shared SSoT with the main server's scripts/userdata.js (USER_DIR = ~/.aki/mcpsv); redefined here since this CommonJS daemon can't import that ESM module.
-const AKI_DATA_DIR = process.env.AKI_DATA_DIR || path.join(os.homedir(), '.aki', 'mcpsv');
+const { AKI_DATA_DIR, DATA_JSON_PATH, OWNERSHIP_STATUS_PATH, NEW_WINDOW_FLAG_PATH } = require('./postman-paths.cjs');
 const PROMPTS_DIR = path.join(AKI_DATA_DIR, 'prompts');
 const ASSETS_PROMPTS_DIR = path.join(__dirname, 'prompts');
 const PROVIDER = 'postman';
@@ -32,10 +31,6 @@ const DEFAULT_PROMPT_PATH = path.join(ASSETS_PROMPTS_DIR, `${PROVIDER}.md`);
 const SHARED_PROMPT_USER_PATH = path.join(PROMPTS_DIR, SUM_PROMPT_NAME);
 const SHARED_PROMPT_DEFAULT_PATH = path.join(ASSETS_PROMPTS_DIR, SUM_PROMPT_NAME);
 
-// Writable runtime dir for daemon state (data.json/ownership-status). The Postman instruction is now served natively read-only from the bundled repo asset — no user-editable copy, no legacy fallback.
-const LEGACY_CDP_DIR = path.join(os.homedir(), '.aki', 'cdp-postman');
-const DATA_JSON_PATH = path.join(LEGACY_CDP_DIR, 'data.json');
-const OWNERSHIP_STATUS_PATH = path.join(LEGACY_CDP_DIR, 'ownership-status.json');
 const RULES_SOURCE_FILE = path.join(RULES_DIR, '.source-repo');
 const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
@@ -46,6 +41,10 @@ let controlSession = null;
 let ownerTargetId = null;
 let ownershipMode = null;
 let cachedUsageData = null;
+// Startup/attach usage-refresh dedupe: collapse the concurrent per-page refreshes at boot into one
+// network call, and skip re-fetching when the account token has not changed (the manual refresh bypasses this).
+let usageRefreshInFlight = null;
+let lastUsageToken;
 let cachedUpdateInfo = localSnapshot();
 let akiConfig = null;
 let loggedMissingRule = false;
@@ -54,6 +53,18 @@ const CHAT_URL_RE = /gateway\.postman\.com\/chat/i;
 async function refreshUsageData(customToken = null) {
   cachedUsageData = await fetchAllUsage(customToken);
   return cachedUsageData;
+}
+
+// Idempotent usage fetch for the boot/attach fan-out: one shared in-flight promise dedupes the
+// concurrent per-page calls, and a completed fetch for the same account token is not repeated.
+function ensureUsageData(token = null) {
+  const key = token || akiConfig?.access_token || null;
+  if (usageRefreshInFlight) return usageRefreshInFlight;
+  if (cachedUsageData !== null && key === lastUsageToken) return Promise.resolve(cachedUsageData);
+  usageRefreshInFlight = refreshUsageData(token)
+    .then((data) => { lastUsageToken = key; return data; })
+    .finally(() => { usageRefreshInFlight = null; });
+  return usageRefreshInFlight;
 }
 
 function pushUsageToPage(client) {
@@ -158,8 +169,6 @@ function applyChatUsageFromSSE(client, sseText, ctx) {
 // POST /api/postman-new-window, via postman-mcp.js's requestNewWindow): a flag file next to
 // data.json is the smallest transport that works — the panel is the only writer, this is the
 // only reader/deleter, and it rides discover()'s existing 1s tick instead of a new interval.
-const NEW_WINDOW_FLAG_PATH = path.join(LEGACY_CDP_DIR, 'new-window.flag');
-
 async function consumePendingNewWindow() {
   if (!fs.existsSync(NEW_WINDOW_FLAG_PATH)) return;
   try { fs.unlinkSync(NEW_WINDOW_FLAG_PATH); } catch (e) {}
@@ -211,9 +220,7 @@ function init() {
 
 function saveAkiData(data) {
   try {
-    if (!fs.existsSync(LEGACY_CDP_DIR)) {
-      fs.mkdirSync(LEGACY_CDP_DIR, { recursive: true });
-    }
+    fs.mkdirSync(AKI_DATA_DIR, { recursive: true });
     let existing = {};
     if (fs.existsSync(DATA_JSON_PATH)) {
       try {
@@ -331,8 +338,11 @@ async function setupCDP(target, port) {
       });
       const token = tokenEval && tokenEval.result && tokenEval.result.value;
       if (token) {
-        saveAkiData({ access_token: token });
-        refreshUsageData(token).then(() => pushUsageToPage(client));
+        if (!akiConfig || akiConfig.access_token !== token) {
+          saveAkiData({ access_token: token });
+          akiConfig = { ...akiConfig, access_token: token };
+        }
+        ensureUsageData(token).then(() => pushUsageToPage(client));
       }
     } catch (e) {}
 
@@ -439,17 +449,17 @@ function isKnownPostmanSurface(url) {
 
 function writeOwnershipStatus() {
   if (!controlSession) return;
-  const status = {
+  const status = normalizeOwnershipStatus({
     daemonPid: process.pid,
     attached: !!ownerTargetId && clients.has(ownerTargetId),
     endpoint: { host: '127.0.0.1', port: controlSession.port, browserIdentity: controlSession.browserIdentity },
     ownerTargetId,
-    attachedWindowCount: attachedTargetIds.size,
+    attachedPageCount: attachedTargetIds.size,
     mode: ownershipMode,
     launchProcessPid: controlSession.launchProcessPid,
-  };
+  });
   try {
-    fs.mkdirSync(LEGACY_CDP_DIR, { recursive: true });
+    fs.mkdirSync(AKI_DATA_DIR, { recursive: true });
     const temporary = `${OWNERSHIP_STATUS_PATH}.${process.pid}.tmp`;
     fs.writeFileSync(temporary, JSON.stringify(status, null, 2));
     fs.renameSync(temporary, OWNERSHIP_STATUS_PATH);
@@ -476,7 +486,7 @@ async function discover() {
       if (client) try { client.close(); } catch {}
       clients.delete(targetId);
     }
-    const validTargets = attachmentTargets(targets, isKnownPostmanSurface);
+    const validTargets = eligibleTargets(targets, isKnownPostmanSurface);
     for (const target of validTargets) {
       attachedTargetIds.add(target.id);
       await setupCDP(target, controlSession.port);
@@ -548,12 +558,12 @@ async function main() {
     });
     if (initialTargets) controlSession.targets = initialTargets;
   }
-  const targets = attachmentTargets(controlSession.targets, isKnownPostmanSurface);
+  const targets = eligibleTargets(controlSession.targets, isKnownPostmanSurface);
   for (const target of targets) attachedTargetIds.add(target.id);
   ownerTargetId = deterministicOwnerTargetId(targets, isKnownPostmanSurface);
   for (const target of targets) await setupCDP(target, controlSession.port);
   writeOwnershipStatus();
-  await refreshUsageData();
+  await ensureUsageData();
 
   setInterval(discover, 1000);
   discover();
