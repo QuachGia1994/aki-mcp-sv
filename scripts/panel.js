@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkS
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel } from './config-page.js';
-import { getOrIssueAccessToken, rotateAccessToken } from './oauth.js';
+import { getOrIssueAccessToken, rotateAccessToken, rotatePassphrase, loadOrCreatePassphrase } from './oauth.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
 import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
@@ -232,6 +232,9 @@ export const ROUTES = {
     rotateAccessToken({ revokeRefresh: body.hard === true });
     return { ok: true, message: body.hard === true ? 'rolled — every client must re-authorize' : 'rolled — re-paste the token into local snippets' };
   },
+  'POST /api/roll-passphrase': async () => {
+    rotatePassphrase();
+    return { ok: true, message: 'rolled — the old passphrase no longer authorizes; connected AIs keep working' };
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
   // Ingress is decided at start.js boot, not live-switchable — saving here never restarts anything, only records the pick for the next `npm start`.
   'POST /api/ingress/cloudflared': async (body) => {
@@ -255,7 +258,7 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
         return res.end('wrong token — open the URL printed in your terminal');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderPanel({ origin, ingress, client, passphrase, token, accessToken: getOrIssueAccessToken(), repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, savedIngress: readIngressConfig(), isDev }));
+      return res.end(renderPanel({ origin, ingress, client, passphrase: loadOrCreatePassphrase(), token, accessToken: getOrIssueAccessToken(), repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, savedIngress: readIngressConfig(), isDev }));
     }
 
     if (req.method === 'GET' && await serveStatic(res, urlPath)) return;

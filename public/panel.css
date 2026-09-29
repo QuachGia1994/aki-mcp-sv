@@ -50,6 +50,8 @@ h3.subh:first-of-type { margin-top: 4px; }
 .copy::after { content: '⧉'; flex-shrink: 0; color: var(--muted); }
 .copy:hover { border-color: var(--accent); }
 .copy:hover::after { color: var(--accent); }
+.secret { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.eye { padding: 0 6px; line-height: 1.6; }
 .copy.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .copy.copied { border-color: var(--ok); }
 .copy.copied::after { content: '✓'; color: var(--ok); }

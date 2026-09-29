@@ -3,7 +3,7 @@
 // Claude: pre-registered confidential client (paste Client ID/Secret), or DCR if it self-registers.
 // ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import {
   CLIENT_PATH as CLIENT_FILE,
@@ -122,6 +122,12 @@ export function loadOrCreatePassphrase() {
   const p = Array.from(bytes, (b) => PASSPHRASE_ALPHABET[b % PASSPHRASE_ALPHABET.length]).join('');
   writeFileSync(PASSPHRASE_FILE, p, { mode: 0o600 });
   return p;
+}
+
+// The passphrase file is read per authorize request, so a roll takes effect immediately; existing tokens stay valid.
+export function rotatePassphrase() {
+  rmSync(PASSPHRASE_FILE, { force: true });
+  return loadOrCreatePassphrase();
 }
 
 function safeEqual(a, b) {

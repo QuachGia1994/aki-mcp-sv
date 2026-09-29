@@ -14,7 +14,7 @@ const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 // down instead of leaking an orphaned hub.
 export function startGatekeeper(origin = null, onFatal) {
   const port = Number(process.env.GATEKEEPER_PORT || 9999);
-  const passphrase = loadOrCreatePassphrase();
+  loadOrCreatePassphrase();
   // Public OAuth discovery metadata only exists when an ingress is attached; on pure loopback it stays null and the
   // .well-known / authorize / register / token routes answer 503. A runtime attach-after-boot path (updating this)
   // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
@@ -51,7 +51,7 @@ export function startGatekeeper(origin = null, onFatal) {
     }
     if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
-      return handleAuthorize(req, res, passphrase, origin);
+      return handleAuthorize(req, res, loadOrCreatePassphrase(), origin);
     }
     if (path === '/token' && req.method === 'POST') {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }

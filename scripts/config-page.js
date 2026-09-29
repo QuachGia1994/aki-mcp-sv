@@ -101,6 +101,7 @@ function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
 
+function secretField(label, value) {
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
   // Local-First: local clients (Postman Desktop, Cursor, Claude Code, AGY, Codex) run on this machine, so they
@@ -240,10 +241,10 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 <p class="helptext">One AKIMCP endpoint, two paths. <strong>Local tools</strong> (Postman, Cursor, Claude Code, AGY) connect directly over <span class="mono">127.0.0.1</span> — zero latency, no tunnel, works offline; each tab below carries a ready-to-paste local config. <strong>Web AIs</strong> (Claude, Grok, ChatGPT, Gemini) use the MCP URL below and ${origin ? 'are reachable now.' : 'need a public ingress — set it up in <a href="#s0">Section 0</a> first (the MCP URL fills in once ingress is active).'}</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
-${field('Passphrase', passphrase)}
-${field('Access token', accessToken)}
-<div class="acts"><button data-act="rollToken">Roll token</button><button data-act="rollTokenHard">Roll &amp; sign out all clients</button><span class="msg" id="msgRoll"></span></div>
-<p class="helptext">One access token serves every client. <strong>Roll token</strong> replaces it: web AIs refresh on their own, but any token pasted into a local snippet below must be re-pasted. <strong>Roll &amp; sign out all clients</strong> also revokes refresh, so every AI must reconnect with the passphrase; use it if the token may have leaked.</p>
+${secretField('Passphrase', passphrase)}
+${secretField('Access token', accessToken)}
+<div class="acts"><button data-act="rollToken">Roll token</button><button data-act="rollTokenHard">Roll &amp; sign out all clients</button><button data-act="rollPassphrase">Roll passphrase</button><span class="msg" id="msgRoll"></span></div>
+<p class="helptext">One access token serves every client. <strong>Roll token</strong> replaces it: web AIs refresh on their own, but any token pasted into a local snippet below must be re-pasted. <strong>Roll &amp; sign out all clients</strong> also revokes refresh, so every AI must reconnect with the passphrase; use it if the token may have leaked. <strong>Roll passphrase</strong> issues a new one: the old passphrase stops authorizing new connections, while already-connected AIs keep working; use it if the passphrase may have leaked.</p>
 
 <nav class="tabs" role="tablist">
   <span class="tab-group-label">Local · direct 0ms</span>

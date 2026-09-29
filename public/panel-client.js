@@ -61,9 +61,18 @@ function copyText(text, btn) {
   });
 }
 document.addEventListener('click', (e) => {
+  const eye = e.target.closest('[data-eye]');
+  if (eye) {
+    const txt = eye.parentElement.querySelector('.txt');
+    const masked = txt.dataset.shown !== '1';
+    txt.textContent = masked ? txt.dataset.v : '•'.repeat(12);
+    txt.dataset.shown = masked ? '1' : '0';
+    return;
+  }
   const el = e.target.closest('.copy');
   if (!el) return;
-  navigator.clipboard.writeText((el.querySelector('.txt') || el).textContent).then(() => {
+  const txt = el.querySelector('.txt') || el;
+  navigator.clipboard.writeText(txt.dataset.v ?? txt.textContent).then(() => {
     el.classList.add('copied');
     setTimeout(() => el.classList.remove('copied'), 1000);
   });
@@ -337,6 +346,14 @@ const ACTIONS = {
   }),
   rollToken: (btn) => rollToken(btn, false),
   rollTokenHard: (btn) => rollToken(btn, true),
+  rollPassphrase: (btn) => {
+    if (!confirm('Roll the passphrase? The old one stops working for new connections; connected AIs are not signed out.')) return;
+    return act(btn, 'msgRoll', async () => {
+      const { message } = await api('POST', '/api/roll-passphrase');
+      setTimeout(() => location.reload(), 800);
+      return message + ' — reloading';
+    });
+  },
   pullUpdate: (btn) => act(btn, 'msgUpd', async () => (await api('POST', '/api/pull-update')).message),
   saveTunnel: (btn) => act(btn, 'msgTunnel', async () => {
     const fileInput = document.getElementById('tunnelCredFile');
