@@ -355,6 +355,7 @@ const ACTIONS = {
       return message + ' — reloading';
     });
   },
+  agyApply: (btn) => act(btn, 'msgAgy', async () => (await api('POST', '/api/agy-apply-mcp')).message),
   pullUpdate: (btn) => act(btn, 'msgUpd', async () => (await api('POST', '/api/pull-update')).message),
   saveTunnel: (btn) => act(btn, 'msgTunnel', async () => {
     const fileInput = document.getElementById('tunnelCredFile');

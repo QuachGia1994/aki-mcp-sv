@@ -3,6 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { esc } from './html.js';
 
+// SSoT for the AGY server identity: the mcpServers key AND the mcp(<key>/*) pre-allow name; set directly, not left to AGY's hyphen-dropping normalization (docs/ref/fact-agy-mcp-config.md § CLI-5).
+export const AGY_SERVER_KEY = 'akimcp';
+
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const AKI_DIR = path.join(os.homedir(), '.aki');
 const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
@@ -101,7 +104,11 @@ function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
 }
 
+// Shown masked so a screenshot never carries it; the eye button reveals it, click-to-copy always copies the real value.
 function secretField(label, value) {
+  return `<div class="row"><label>${esc(label)}</label><span class="secret"><code class="copy"><span class="txt" data-v="${esc(value)}">${'•'.repeat(12)}</span></code><button type="button" class="eye" data-eye aria-label="Show ${esc(label)}" title="Show / hide">👁</button></span></div>`;
+}
+
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {
   const url = origin ? `${origin}/mcp` : 'not available yet, see section 0';
   // Local-First: local clients (Postman Desktop, Cursor, Claude Code, AGY, Codex) run on this machine, so they
@@ -112,9 +119,9 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
     mcpServers: { 'aki-mcp-sv': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } },
   });
   const cursorJson = JSON.stringify({ mcpServers: { 'aki-mcp': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
-  // AGY CLI (Gemini-CLI lineage) uses `httpUrl` for streamable HTTP; the Antigravity IDE (Windsurf lineage) uses `serverUrl`.
-  const agyJson = JSON.stringify({ mcpServers: { 'aki-mcp': { httpUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
-  const agyIdeJson = JSON.stringify({ mcpServers: { 'aki-mcp': { serverUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
+  // stdio, because our /mcp is Bearer-gated and agy's SSE transport has no headers; CLI and IDE read the same file, so one entry serves both — docs/ref/fact-agy-mcp-config.md § CLI-1, CLI-2, IDE-1.
+  const agyStdioPath = path.join(repoRoot, 'scripts', 'stdio.js');
+  const agyJson = JSON.stringify({ mcpServers: { [AGY_SERVER_KEY]: { command: 'node', args: [agyStdioPath] } } });
   const claudeCodeCmd = `claude mcp add --transport http aki-mcp ${localUrl} --header "Authorization: Bearer ${accessToken}"`;
   // Codex CLI (~/.codex/config.toml) speaks streamable HTTP via a `url` key; `http_headers` carries a static bearer so the
   // snippet is copy-paste-ready with no shell env var to export first (matches how every other local tab embeds the token).
@@ -337,10 +344,12 @@ ${secretField('Access token', accessToken)}
 
 <div class="tabpane" id="tab-agy">
   <h3 class="subh">Connect Antigravity (AGY) — local, 0ms</h3>
-  <p class="helptext"><strong>CLI (<span class="mono">agy</span>):</strong> merge the entry below under the existing <span class="mono">mcpServers</span> key in <span class="mono">~/.gemini/antigravity-cli/settings.json</span> — don't overwrite the file, it also holds your model &amp; permissions. Uses <span class="mono">httpUrl</span> (streamable HTTP).</p>
+  <p class="helptext"><strong>CLI (<span class="mono">agy</span>) and IDE:</strong> both read this file: merge the entry below under the existing <span class="mono">mcpServers</span> key in <span class="mono">~/.gemini/config/mcp_config.json</span>, but don't overwrite the file. It registers a <span class="mono">stdio</span> command that spawns <span class="mono">scripts/stdio.js</span> (the local <span class="mono">/mcp</span> is Bearer-gated, so stdio is the transport that works without a token). The pre-allow below writes <span class="mono">antigravity-cli/settings.json</span> and covers the CLI only; the IDE asks for its own approval on the first tool call.</p>
   ${copyEl(agyJson, true, 'agyJson')}
-  <p class="helptext"><strong>IDE:</strong> paste into <span class="mono">~/.gemini/config/mcp_config.json</span> (or <span class="mono">.agents/mcp_config.json</span> per workspace). The IDE uses <span class="mono">serverUrl</span> instead of <span class="mono">httpUrl</span>.</p>
-  ${copyEl(agyIdeJson, true, 'agyIdeJson')}
+  <div class="acts">
+    <button class="primary" data-act="agyApply">Apply to AGY CLI (mcp_config.json)</button>
+    <span class="msg" id="msgAgy"></span>
+  </div>
 </div>
 
 <div class="tabpane" id="tab-codex">

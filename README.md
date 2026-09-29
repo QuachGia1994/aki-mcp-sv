@@ -160,19 +160,20 @@ Local tools run on the same machine as AKIMCP, so they connect **straight to the
 claude mcp add --transport http aki-mcp http://127.0.0.1:9999/mcp --header "Authorization: Bearer YOUR_LOCAL_ACCESS_TOKEN"
 ```
 
-**Antigravity (AGY) CLI / IDE** — `~/.gemini/antigravity-cli/mcp_config.json`:
+**Antigravity (AGY) CLI and IDE** — no token: they spawn `scripts/stdio.js` (the same tools, over stdio). Click **Apply to AGY CLI** in the panel's AGY tab, or merge this into `~/.gemini/config/mcp_config.json` (the file both read) and restart:
 
 ```json
 {
   "mcpServers": {
-    "aki-mcp": {
-      "httpUrl": "http://127.0.0.1:9999/mcp",
-      "headers": { "Authorization": "Bearer YOUR_LOCAL_ACCESS_TOKEN" }
+    "akimcp": {
+      "command": "node",
+      "args": ["/absolute/path/to/aki-mcp-sv/scripts/stdio.js"]
     }
   }
 }
 ```
 
+The button also pre-allows the server for the CLI; the IDE asks for its own approval on the first tool call. Details: [`docs/ref/fact-agy-mcp-config.md`](docs/ref/fact-agy-mcp-config.md).
 
 **Codex CLI** — append to `~/.codex/config.toml` (don't overwrite; Codex reaches the local engine over streamable HTTP, token inlined so there's no env var to export):
 

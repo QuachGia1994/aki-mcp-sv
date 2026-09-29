@@ -11,6 +11,8 @@ If a fact changes, revisit the code that encodes it rather than patching around 
 
 Fully runnable on this machine; facts are [obs] unless noted.
 
+How agy and the Antigravity IDE load MCP servers (config file, transports, permissions) is a separate subject: [`fact-agy-mcp-config.md`](fact-agy-mcp-config.md).
+
 | Fact | Checked | Where it is encoded |
 |---|---|---|
 | `-p`/`--print` takes the prompt as its **value**, so it must be the **last** arg — anything after it is swallowed into the prompt, not parsed as a flag, and the call returns a confident, unrelated answer with no error. | 2026-08-09 | `agy-mcp.js:74` pushes `-p` last, after `--mode`/`--model`/`--effort`/`--output-format`. |

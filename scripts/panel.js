@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { renderPanel } from './config-page.js';
+import { renderPanel, AGY_SERVER_KEY } from './config-page.js';
 import { getOrIssueAccessToken, rotateAccessToken, rotatePassphrase, loadOrCreatePassphrase } from './oauth.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
 import { getRoots } from './roots.js';
@@ -207,6 +207,42 @@ export const ROUTES = {
   'POST /api/postman-quit': async () => killPostmanDaemon(),
   // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman/postman-mcp.js).
   'POST /api/postman-new-window': async () => requestNewWindow(),
+  // Servers go to mcp_config.json, permissions to settings.json — docs/ref/fact-agy-mcp-config.md § CLI-1, CLI-3, CLI-4.
+  // The panel's instance token is not a /mcp access token (401), hence stdio. Idempotent: merges, never clobbers other entries.
+  'POST /api/agy-apply-mcp': async () => {
+    // (A) MCP server -> ~/.gemini/config/mcp_config.json as a stdio entry.
+    const mcpConfigPath = path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json');
+    let mcpConfig = {};
+    if (existsSync(mcpConfigPath)) {
+      try {
+        mcpConfig = JSON.parse(readFileSync(mcpConfigPath, 'utf8')) || {};
+      } catch {
+        throw new Error(`${mcpConfigPath} is not valid JSON — fix or remove it, then retry`);
+      }
+    }
+    mcpConfig.mcpServers = mcpConfig.mcpServers || {};
+    mcpConfig.mcpServers[AGY_SERVER_KEY] = { command: 'node', args: [path.join(REPO_ROOT, 'scripts', 'stdio.js')] };
+    writeJsonAtomic(mcpConfigPath, mcpConfig);
+
+    // (B) Pre-allow -> ~/.gemini/antigravity-cli/settings.json (permissions only; agy does NOT read MCP servers here).
+    // Also drop any stale akimcp server entry a previous (wrong) version wrote under mcpServers here.
+    const settingsPath = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'settings.json');
+    let settings = {};
+    if (existsSync(settingsPath)) {
+      try {
+        settings = JSON.parse(readFileSync(settingsPath, 'utf8')) || {};
+      } catch {
+        throw new Error(`${settingsPath} is not valid JSON — fix or remove it, then retry`);
+      }
+    }
+    if (settings.mcpServers && settings.mcpServers[AGY_SERVER_KEY]) delete settings.mcpServers[AGY_SERVER_KEY];
+    settings.permissions = settings.permissions || { allow: [], deny: [] };
+    settings.permissions.allow = settings.permissions.allow || [];
+    settings.permissions.allow = [...new Set([...settings.permissions.allow, `mcp(${AGY_SERVER_KEY}/*)`])];
+    writeJsonAtomic(settingsPath, settings);
+
+    return { ok: true, message: 'Applied — akimcp (stdio) → ~/.gemini/config/mcp_config.json + pre-allow → antigravity-cli/settings.json. Restart agy to pick it up.' };
+  },
   // No hub restart: setFolders writes setting.json, and roots.js reads it fresh per call — a save takes effect on the next shell/find_path/search_content call, same as the allowlist.
   'POST /api/paths': async (body) => {
     setFolders(validatePaths(body.paths));
@@ -235,6 +271,7 @@ export const ROUTES = {
   'POST /api/roll-passphrase': async () => {
     rotatePassphrase();
     return { ok: true, message: 'rolled — the old passphrase no longer authorizes; connected AIs keep working' };
+  },
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
   // Ingress is decided at start.js boot, not live-switchable — saving here never restarts anything, only records the pick for the next `npm start`.
   'POST /api/ingress/cloudflared': async (body) => {
