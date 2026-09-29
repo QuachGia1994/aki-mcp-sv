@@ -7,7 +7,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const { DATA_JSON_PATH: AKI_DATA_JSON } = require('./postman-paths.cjs');
+const { DATA_JSON_PATH: AKI_DATA_JSON } = require('./postman-data-paths.cjs');
 
 function getStoredAccessToken() {
   if (fs.existsSync(AKI_DATA_JSON)) {

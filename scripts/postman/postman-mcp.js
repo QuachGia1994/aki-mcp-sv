@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url';
 import cp from 'node:child_process';
 import { z } from 'zod';
 import { ok, fail } from '../mcp-tool.js';
-import '../userdata.js'; // sets AKI_DATA_DIR before postman-paths.cjs reads it
-import paths from './postman-paths.cjs';
+import '../userdata.js'; // sets AKI_DATA_DIR before postman-data-paths.cjs reads it
+import paths from './postman-data-paths.cjs';
 import daemonPid from './postman-daemon-pid.cjs';
 import { normalizeOwnershipStatus } from './postman-ownership.cjs';
 const { AKI_DATA_DIR, DATA_JSON_PATH, NEW_WINDOW_FLAG_PATH, OWNERSHIP_STATUS_PATH } = paths;

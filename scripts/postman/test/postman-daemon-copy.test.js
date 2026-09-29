@@ -41,9 +41,9 @@ try {
 }
 
 const indexSrc = readFileSync(path.join(mcpRoot, 'postman-daemon.cjs'), 'utf8');
-assert.match(indexSrc, /require\('\.\/postman-paths\.cjs'\)/, 'the daemon takes its runtime paths from the shared module');
-assert.match(readFileSync(path.join(mcpRoot, 'postman-paths.cjs'), 'utf8'), /const AKI_DATA_DIR = process\.env\.AKI_DATA_DIR \|\| path\.join\(os\.homedir\(\), '\.aki', 'mcpsv'\)/);
-for (const file of ['postman-daemon.cjs', 'postman-mcp.js', 'postman-usage.cjs', 'postman-daemon-pid.cjs', 'postman-paths.cjs']) {
+assert.match(indexSrc, /require\('\.\/postman-data-paths\.cjs'\)/, 'the daemon takes its runtime paths from the shared module');
+assert.match(readFileSync(path.join(mcpRoot, 'postman-data-paths.cjs'), 'utf8'), /const AKI_DATA_DIR = process\.env\.AKI_DATA_DIR \|\| path\.join\(os\.homedir\(\), '\.aki', 'mcpsv'\)/);
+for (const file of ['postman-daemon.cjs', 'postman-mcp.js', 'postman-usage.cjs', 'postman-daemon-pid.cjs', 'postman-data-paths.cjs']) {
   assert.doesNotMatch(readFileSync(path.join(mcpRoot, file), 'utf8'), /cdp-postman|LEGACY_CDP/, `${file}: no legacy data dir`);
 }
 assert.match(indexSrc, /const PROMPTS_DIR = path\.join\(AKI_DATA_DIR, 'prompts'\)/);
@@ -129,3 +129,7 @@ assert.match(mcpSrc, /#aki-control-panel \.aki-model-row \.aki-label \{[^}]*whit
 assert.equal((mcpSrc.match(/<input type="radio" name="aki-model"/g) || []).length, 4, 'model selector must keep exactly four semantic radios');
 
 console.log('postman-daemon-copy.test.js: ok');
+
+const sessionModule = path.join(mcpRoot, 'postman-session.cjs');
+assert.equal(typeof require(path.join(mcpRoot, 'postman-paths.cjs')).getPostmanPaths, 'function', 'postman-paths.cjs locates the Postman executable; the data-dir paths live in postman-data-paths.cjs');
+assert.equal(typeof require(sessionModule).PostmanSession.ensureRunning, 'function', 'the daemon session module must load with all its imports');

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { PID_PATH } = require('./postman-paths.cjs');
+const { PID_PATH } = require('./postman-data-paths.cjs');
 
 function live(pid) {
   if (!pid) return false;

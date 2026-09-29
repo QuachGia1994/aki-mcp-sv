@@ -97,10 +97,11 @@ Còn trỏ `~/.aki/cdp-postman` (cụm `data.json` / `daemon.pid` / `new-window.
 
 ## Kết quả (2026-09-29)
 - [x] A. Prompt chỉ còn `loadInstruction([DEFAULT_PROMPT_PATH])` — đã có trước khi thực thi bước này.
-- [x] B. Một module `scripts/postman/postman-paths.cjs` định nghĩa `AKI_DATA_DIR`, `DATA_JSON_PATH`, `OWNERSHIP_STATUS_PATH`, `NEW_WINDOW_FLAG_PATH`, `PID_PATH`; daemon, `postman-mcp.js`, `postman-usage.cjs`, `postman-daemon-pid.cjs` dùng chung (bản plan đề xuất "tùy chọn", làm vì trước đó 4 nơi cùng tự định nghĩa: `pattern.A1`/A2). `postman-mcp.js` import `../userdata.js` trước để `AKI_DATA_DIR` đúng cả ở dev mode (`mcpsv-dev`), điều đường dẫn cứng cũ không làm được.
+- [x] B. Một module `scripts/postman/postman-data-paths.cjs` định nghĩa `AKI_DATA_DIR`, `DATA_JSON_PATH`, `OWNERSHIP_STATUS_PATH`, `NEW_WINDOW_FLAG_PATH`, `PID_PATH`; daemon, `postman-mcp.js`, `postman-usage.cjs`, `postman-daemon-pid.cjs` dùng chung (bản plan đề xuất "tùy chọn", làm vì trước đó 4 nơi cùng tự định nghĩa: `pattern.A1`/A2). `postman-mcp.js` import `../userdata.js` trước để `AKI_DATA_DIR` đúng cả ở dev mode (`mcpsv-dev`), điều đường dẫn cứng cũ không làm được.
 - [x] C. `scripts/postman/data/` không còn tồn tại; dòng `data/` trong `.gitignore` đã bỏ (không có thư mục `data` nào trong cây hay trong git).
 - [x] D. `CLAUDE.md` § Process topology và `docs/feat/tools.md` cập nhật; README không nhắc thư mục cũ.
 - [x] E. `postman-daemon-copy.test.js` kiểm daemon lấy path từ module chung và không file nào còn chuỗi `cdp-postman`; `postman-status.test.js` và `postman-mcp.test.js` dùng thư mục dữ liệu tạm (trước đó `postman-status.test.js` ghi thẳng vào `~/.aki/cdp-postman` thật của máy).
 - Kiểm chứng: `grep -rn "cdp-postman" scripts public` chỉ còn assertion trong test; 5 test Postman + `npm test` qua.
 - Daemon đã tắt khi làm (PID trong `daemon.pid` là file rác, không còn tiến trình). Không di trú: `~/.aki/cdp-postman/` còn nguyên trên đĩa, không code nào đọc nó nữa; chủ máy tự xoá khi muốn (quyết định của plan).
 
+- Chạy daemon thật (Postman 12.29.4, 2026-09-29): lần chạy đầu lộ lỗi `getPostmanPaths is not a function` do module đường dẫn mới đã ghi đè `postman-paths.cjs` cũ (tìm file thực thi Postman); đã tách thành `postman-data-paths.cjs` và thêm assertion nạp module vào `postman-daemon-copy.test.js`. Sau sửa: khởi động = đúng 1 lượt `fetchAllUsage` (26 request: 1 teams + 25 quota), mở cửa sổ thứ hai (`attachedPageCount` 1 → 2) không phát sinh request nào thêm; `ownership-status.json` nằm trong `~/.aki/mcpsv/`.

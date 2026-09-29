@@ -21,7 +21,7 @@ const {
   RULES_DIR,
 } = require('./postman-rule-update-check.cjs');
 
-const { AKI_DATA_DIR, DATA_JSON_PATH, OWNERSHIP_STATUS_PATH, NEW_WINDOW_FLAG_PATH } = require('./postman-paths.cjs');
+const { AKI_DATA_DIR, DATA_JSON_PATH, OWNERSHIP_STATUS_PATH, NEW_WINDOW_FLAG_PATH } = require('./postman-data-paths.cjs');
 const PROMPTS_DIR = path.join(AKI_DATA_DIR, 'prompts');
 const ASSETS_PROMPTS_DIR = path.join(__dirname, 'prompts');
 const PROVIDER = 'postman';
