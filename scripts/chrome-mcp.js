@@ -159,28 +159,6 @@ export function register(server) {
   );
 
   server.registerTool(
-    'chrome_probe_ai',
-    {
-      title: 'Chromium: probe AI quota and session (Claude, ChatGPT, Grok)',
-      description:
-        'Probes the active web tab for AI service login state and rate limits (supports claude.ai /api/organizations + /usage, chatgpt.com /backend-api/wham/usage, grok.com /rest/rate-limits).',
-      inputSchema: {
-        targetId: z.string().optional().describe('optional CDP target ID (default: auto-detects AI tab)'),
-        port: z.number().int().optional().describe('CDP port (default: active session port)'),
-      },
-    },
-    async ({ targetId, port }) => {
-      try {
-        const p = resolvePort(port);
-        const res = await cdp.probeAi({ port: p, target: targetId });
-        return ok(JSON.stringify(res, null, 2));
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
-
-  server.registerTool(
     'chrome_stop',
     {
       title: 'Chromium: stop active or specified Chrome session',

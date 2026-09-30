@@ -308,86 +308,6 @@ export async function activateTab({ host = DEFAULT_HOST, port, targetId } = {}) 
   });
 }
 
-export async function probeAi({ host = DEFAULT_HOST, port, target, filter } = {}) {
-  const expression = `
-    (async () => {
-      const href = location.href;
-      if (href.includes('claude.ai')) {
-        try {
-          // Org resolution matches AIObox's fixed probe.rs / the vendored claude-counter
-          // reference: the 'lastActiveOrg' cookie names the org the tab actually shows, so it
-          // wins over list order. orgs[0] previously picked the wrong org's name/plan/usage on
-          // any account belonging to 2+ Claude orgs, and org.plan is not a real field (always 'free').
-          const cookieRaw = document.cookie.split('; ').find(row => row.startsWith('lastActiveOrg='))?.split('=')[1];
-          const cookieOrgId = cookieRaw ? decodeURIComponent(cookieRaw) : null;
-          const orgs = await fetch('/api/organizations', { credentials: 'include' }).then(r => r.json());
-          const orgList = Array.isArray(orgs) ? orgs : [];
-          const org = (cookieOrgId && orgList.find(o => o && (o.uuid === cookieOrgId || o.id === cookieOrgId))) || orgList[0] || null;
-          if (!org) return { provider: 'claude', loggedIn: false };
-          const orgId = cookieOrgId || org.uuid || org.id;
-          let usage = null;
-          try {
-            usage = await fetch('/api/organizations/' + orgId + '/usage', { credentials: 'include' }).then(r => r.json());
-          } catch {}
-          return {
-            provider: 'claude',
-            loggedIn: true,
-            orgName: org.name || org.organization_name || null,
-            plan: org.rate_limit_tier || org.claude_ai_plan || org.billing_type || (org.settings && org.settings.rate_limit_tier) || 'free',
-            usage: usage || null,
-          };
-        } catch (e) {
-          return { provider: 'claude', loggedIn: false, error: e.message };
-        }
-      }
-      if (href.includes('chatgpt.com')) {
-        try {
-          const session = await fetch('/api/auth/session', { credentials: 'include' }).then(r => r.json());
-          if (!session || !session.user) return { provider: 'chatgpt', loggedIn: false };
-          let usage = null;
-          if (session.accessToken) {
-            try {
-              usage = await fetch('/backend-api/wham/usage', {
-                headers: { Authorization: 'Bearer ' + session.accessToken },
-                credentials: 'include'
-              }).then(r => r.json());
-            } catch {}
-          }
-          return {
-            provider: 'chatgpt',
-            loggedIn: true,
-            email: session.user.email,
-            name: session.user.name,
-            plan: session.accountPlan || 'free',
-            usage: usage || null,
-          };
-        } catch (e) {
-          return { provider: 'chatgpt', loggedIn: false, error: e.message };
-        }
-      }
-      if (href.includes('grok.com')) {
-        try {
-          const res = await fetch('/rest/rate-limits', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ requestKind: 'DEFAULT', modelName: 'grok-3' }),
-            credentials: 'include'
-          }).then(r => r.json());
-          return {
-            provider: 'grok',
-            loggedIn: !res.error,
-            rateLimits: res,
-          };
-        } catch (e) {
-          return { provider: 'grok', loggedIn: false, error: e.message };
-        }
-      }
-      return { provider: 'unknown', url: href, title: document.title };
-    })()
-  `;
-  return evaluate({ host, port, target, filter, expression });
-}
-
 export default {
   devToolsPortFile,
   readDevToolsPort,
@@ -402,5 +322,4 @@ export default {
   openTab,
   closeTab,
   activateTab,
-  probeAi,
 };

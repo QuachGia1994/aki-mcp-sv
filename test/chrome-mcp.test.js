@@ -11,7 +11,6 @@ async function runTests() {
   assert.equal(typeof cdp.openTab, 'function');
   assert.equal(typeof cdp.closeTab, 'function');
   assert.equal(typeof cdp.activateTab, 'function');
-  assert.equal(typeof cdp.probeAi, 'function');
 
   // 2. Register tools with McpServer
   const server = new McpServer({ name: 'test-chrome', version: '2.0.0' });
@@ -32,7 +31,6 @@ async function runTests() {
   assert.ok(server._registeredTools['chrome_launch']);
   assert.ok(server._registeredTools['chrome_tabs']);
   assert.ok(server._registeredTools['chrome_interact']);
-  assert.ok(server._registeredTools['chrome_probe_ai']);
   assert.ok(server._registeredTools['chrome_stop']);
 
   console.log('chrome-mcp.test.js: ok');

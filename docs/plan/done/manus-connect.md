@@ -5,6 +5,7 @@ Manus's "Custom MCP → Import by JSON" panel has no OAuth step. Connecting it t
 Throughout, `<HOST>` is a placeholder for this server's public host — a Tailscale MagicDNS name (example: `myhost.tail0abc1.ts.net`) or a fixed domain. Substitute your own; never a hardcoded real host.
 
 ## Status
+- **CLOSED 2026-09-29 by owner decision, not executed.** Superseded: providers now connect through a direct MCP config with a token in the header (the panel's per-client snippets), which covers Manus's Import by JSON and any provider that accepts a bearer token; the hand-mint recipe below was never run and is kept as history only.
 - No network path from the assistant's session to `<HOST>`: outside the assistant's sandbox network allowlist, and the Aki-MCP `run_cmd` tool has no network verb (`curl` etc.) in its read-only command allowlist. The steps below must be run by the owner locally.
 - Manus's exact JSON key names (`type` vs `transport`, `streamable-http` vs `streamableHttp`) are inferred from third-party examples — `docs.manus.im/docs/integrations/custom-mcp` documents the UI form ("Server URL" / "Authentication: API key, Bearer token, or other credentials"), not the raw JSON schema. Confirm on first real import; if Manus rejects the shape, try `"type": "streamableHttp"` or `"transport": "streamable-http"` before suspecting the token.
 

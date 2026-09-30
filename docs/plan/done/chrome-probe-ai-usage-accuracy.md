@@ -1,6 +1,6 @@
 # Plan — accurate AI usage from `chrome_probe_ai`
 
-Status: active · not started
+Status: dropped 2026-09-30 by owner decision, not executed. `aki__chrome_probe_ai` was removed: it depended on three vendors' private web APIs, so keeping it accurate meant per-vendor maintenance that does not last. Reopen if a model must auto-switch accounts on quota exhaustion without AIObox.
 
 ## Goal
 

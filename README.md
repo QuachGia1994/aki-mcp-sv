@@ -1,6 +1,6 @@
 # aki-mcp-sv (`@akinet/akimcp`)
 
-Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 37 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
+Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 36 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
 
 One command opens a much larger operating surface: build and edit projects from the browser, inspect databases and local APIs, drive browser workflows, manage long-running jobs, debug through DevTools, and control Postman without giving every client unrestricted shell access.
 
@@ -93,8 +93,8 @@ Claude discovers OAuth automatically. No Client ID or Client Secret is needed.
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the in-house `aki__*` tool suite (37 tools):
-- **Chromium Remote & Profiles**: `aki__chrome_profiles`, `aki__chrome_launch`, `aki__chrome_tabs`, `aki__chrome_interact`, `aki__chrome_probe_ai`, `aki__chrome_stop` (stealth port-0 clone, auto-port fallback, React/Vue synthetic typing, scroll-to-center click, and AI quota probe)
+claude.ai connects and calls the in-house `aki__*` tool suite (36 tools):
+- **Chromium Remote & Profiles**: `aki__chrome_profiles`, `aki__chrome_launch`, `aki__chrome_tabs`, `aki__chrome_interact`, `aki__chrome_stop` (stealth port-0 clone, auto-port fallback, React/Vue synthetic typing, scroll-to-center click)
 - **DevTools & CDP**: `aki__devtools_targets`, `aki__devtools_eval`, `aki__devtools_screenshot`
 - **OS Native Integration**: `aki__notify_user` (desktop notification banner & chime sound), `aki__clipboard_read`, `aki__clipboard_write` (system clipboard read/write bridge)
 - **Localhost & Intranet Fetch**: `aki__local_fetch` (SSRF-protected HTTP client for local backend APIs and LAN services)
@@ -272,7 +272,7 @@ aki-mcp-sv/
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
 │   ├── rule-context-mcp.js       # akidevrule_context MCP tool (schema, registration, output mapping)
 │   ├── rule-context.js           # pure rule-context assembler used by rule-context-mcp.js
-│   ├── chrome-mcp.js             # chrome_profiles/launch/tabs/interact/probe_ai/stop tools
+│   ├── chrome-mcp.js             # chrome_profiles/launch/tabs/interact/stop tools
 │   ├── chrome-profile.js         # clones real browser profiles (Keychain/DPAPI cookie decryption)
 │   ├── cdp-mcp.js                # devtools_targets/eval/screenshot tools over CDP
 │   ├── cdp-engine.js             # app-agnostic CDP launch/target/eval engine shared by chrome-mcp/postman-mcp
