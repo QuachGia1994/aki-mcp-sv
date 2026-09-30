@@ -8,7 +8,7 @@
 ## Bối cảnh
 Lớp này nhìn chung **rất chắc** và cố ý giữ nguyên: tách tầng `cdp-engine.js` (app-agnostic, kết nối ngắn, không giữ ownership) ↔ `postman-*` (app-specific); `postman-ownership.cjs` thuần hàm + có unit test; `readDevToolsPort` trả `null` trung thực thay vì đoán cổng 9222. Plan này **chỉ dọn phần rìa**: tên gây hiểu nhầm, indirection chết, hợp đồng khai báo 2 nơi, và chi phí thừa lúc khởi động.
 
-Mục **#4 (hợp nhất data-dir, bỏ `LEGACY_CDP_DIR`)** đã có plan riêng — xem [`docs/plan/unify-datadir-drop-legacy.md`](./unify-datadir-drop-legacy.md). Không lặp lại ở đây.
+Mục **#4 (hợp nhất data-dir, bỏ `LEGACY_CDP_DIR`)** đã có plan riêng — xem [`docs/plan/done/unify-datadir-drop-legacy.md`](./done/unify-datadir-drop-legacy.md). Không lặp lại ở đây.
 Mục **#7 (14 bản `harness-facts.md`)** thuộc repo khác (`akidevrule`) — ghi ở cuối như finding, không có action trong repo này.
 
 ---

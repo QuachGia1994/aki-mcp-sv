@@ -48,3 +48,4 @@ Governed directly by `RULE-release.md` (`B4`, `B6`, `B7`). Repo-specific deltas:
 - **Bare semver tags**: New git tags must be bare semver (`1.7.0`, not `v1.7.0`). Existing `v1.x.x` tags are immutable history. Display title may show `v{version}`.
 - **Drift check**: Before committing, verify section numbers in `scripts/config-page.js`, `README.md`, and `docs/index.md`.
 - **Immutability**: `done/` plan docs and released CHANGELOG blocks are read-only.
+- **Never suggest removing `public/` images**: the panel and README use them; a reference scan that misses them is wrong, not proof they are dead.

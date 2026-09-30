@@ -9,12 +9,12 @@ import { z } from 'zod';
 import { USER_DIR } from './userdata.js';
 import { resolveUnderRoot } from './roots.js';
 import { Shell } from './shell-mcp.js';
-import { ok, err, fail } from './mcp-tool.js';
+import { ok, fail } from './mcp-tool.js';
 
-export const TASKS_FILE = path.join(USER_DIR, 'tasks.json');
-export const TASK_LOGS_DIR = path.join(USER_DIR, 'task-logs');
+const TASKS_FILE = path.join(USER_DIR, 'tasks.json');
+const TASK_LOGS_DIR = path.join(USER_DIR, 'task-logs');
 
-export function loadTasks() {
+function loadTasks() {
   if (!fs.existsSync(TASKS_FILE)) return {};
   try {
     const raw = fs.readFileSync(TASKS_FILE, 'utf8');
@@ -25,7 +25,7 @@ export function loadTasks() {
   }
 }
 
-export function saveTasks(tasks) {
+function saveTasks(tasks) {
   fs.mkdirSync(USER_DIR, { recursive: true, mode: 0o700 });
   // Prune completed/stopped tasks if total exceeds 100 to prevent unbounded growth
   const entries = Object.entries(tasks);
@@ -38,7 +38,7 @@ export function saveTasks(tasks) {
   fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2), 'utf8');
 }
 
-export function saveTask(task) {
+function saveTask(task) {
   const tasks = loadTasks();
   tasks[task.taskId] = task;
   saveTasks(tasks);
@@ -54,7 +54,7 @@ export function isProcessAlive(pid) {
   }
 }
 
-export function killProcessGroup(pid, signal = 'SIGTERM') {
+function killProcessGroup(pid, signal = 'SIGTERM') {
   if (!pid || typeof pid !== 'number' || pid <= 0) return;
   if (process.platform === 'win32') {
     try {

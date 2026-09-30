@@ -8,8 +8,8 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { USER_DIR } from './userdata.js';
 
-export const CHROME_CLONES_DIR = path.join(USER_DIR, 'chrome-clones');
-export const SESSION_FILE = path.join(USER_DIR, 'chrome-session.json');
+const CHROME_CLONES_DIR = path.join(USER_DIR, 'chrome-clones');
+const SESSION_FILE = path.join(USER_DIR, 'chrome-session.json');
 
 const EXCLUDE_NAMES = [/^Singleton/, /lock/i, /^LOCK$/, /^Cache$/, /^Code Cache$/, /^GPUCache$/, /^Crashpad$/];
 
@@ -207,7 +207,7 @@ function pruneAndCopyLocalState(srcLocalState, dstLocalState, profileFolder) {
 }
 
 // Clones a profile with atomic-swap (.incoming) and allowlist pruning.
-export function cloneProfile(profileId = 'Default', { browser = 'chrome', refresh = false } = {}) {
+function cloneProfile(profileId = 'Default', { browser = 'chrome', refresh = false } = {}) {
   const { name: browserName, userDataDir } = getBrowserInfo(browser);
   const srcProfileDir = path.join(userDataDir, profileId);
   if (!fs.existsSync(srcProfileDir)) {
@@ -433,15 +433,3 @@ export function stopChrome({ pid, profileId } = {}) {
 
   return { stopped: true, pid: targetPid || null };
 }
-
-export default {
-  getBrowserInfo,
-  listInstalledBrowsers,
-  listProfiles,
-  cloneProfile,
-  waitForDevToolsActivePort,
-  launchChrome,
-  stopChrome,
-  getActivePort,
-  getActiveSession,
-};

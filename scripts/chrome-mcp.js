@@ -10,7 +10,6 @@ import {
   launchChrome,
   stopChrome,
   getActivePort,
-  getActiveSession,
   NO_CDP_PORT_MESSAGE,
 } from './chrome-profile.js';
 

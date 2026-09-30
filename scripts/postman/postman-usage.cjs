@@ -112,5 +112,4 @@ async function fetchAllUsage(customToken = null) {
 
 module.exports = {
   fetchAllUsage,
-  getStoredAccessToken
 };

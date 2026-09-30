@@ -93,7 +93,7 @@ async function fetchLatestRuleVersion(timeoutMs = 3000, userAgent = 'aki-mcp-sv'
 }
 
 module.exports = {
-  RULE_DIR, RULE_CHANGELOG, RULE_INDEX, RULE_CHANGELOG_URL,
-  parseChangelogVersion, cmpSemver, isRuleInstalled, isUnreleasedOnly, classifyRule, getRuleStatus,
+  RULE_DIR,
+  parseChangelogVersion, cmpSemver, classifyRule, getRuleStatus,
   fetchText, fetchLatestRuleVersion,
 };

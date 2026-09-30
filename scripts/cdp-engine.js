@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Where each known app writes its live DevToolsActivePort file (first line = the actual port a
 // running instance bound to — authoritative, unlike a guessed 9222). A caller that already knows
 // the port passes it directly and skips this. Unknown app => treat the arg as the support-dir name.
-export function devToolsPortFile(app = 'postman') {
+function devToolsPortFile(app = 'postman') {
   const home = os.homedir();
   const NAMES = { postman: 'Postman', code: 'Code', slack: 'Slack' };
   const dirName = NAMES[app] || app;
@@ -56,7 +56,7 @@ function selectTarget(targets, filter) {
 }
 
 // Evaluate JS in a target and return the serialized result — or throw with the page-side message
-// on a thrown exception. `target` may be a target object (from listTargets/waitForTarget), a target
+// on a thrown exception. `target` may be a target object (from listTargets/findTarget), a target
 // id string, or omitted with a `filter` to locate one.
 export async function evaluate({
   host = DEFAULT_HOST, port, target, filter, expression,
@@ -84,41 +84,6 @@ export async function evaluate({
   } finally {
     await client.close().catch(() => {});
   }
-}
-
-// Poll until a target matching `filter` exists AND (optional) `readyExpression` returns truthy
-// INSIDE it. This is the real fix for "endpoint-up ≠ renderer-ready": CDP.List() answering only
-// proves the CDP server is up, not that the SPA has mounted its DOM. Gate one-shot actions on real
-// DOM, e.g. readyExpression: "!!document.querySelector('[data-testid=\"ai-chat-container\"]')".
-export async function waitForTarget({
-  host = DEFAULT_HOST, port, filter, readyExpression,
-  timeoutMs = 15000, pollMs = 150,
-} = {}) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  do {
-    try {
-      // Scan ALL matching page targets, not just the first: an Electron app (Postman) opens several
-      // windows and only one hosts the DOM the caller wants. Return the first where readyExpression
-      // holds, so the right window is chosen instead of whichever sorted first.
-      const pages = (await CDP.List({ host, port })).filter((t) => t.type === 'page');
-      const test = !filter ? () => true
-        : filter instanceof RegExp ? (t) => filter.test(`${t.url} ${t.title}`)
-        : typeof filter === 'function' ? filter
-        : (t) => `${t.url} ${t.title}`.includes(String(filter));
-      const candidates = pages.filter(test);
-      for (const target of candidates) {
-        if (!readyExpression) return target;
-        const probe = await evaluate({ host, port, target, expression: `!!(${readyExpression})` })
-          .catch((e) => { lastError = e; return { value: false }; });
-        if (probe.value) return target;
-      }
-    } catch (e) {
-      lastError = e;
-    }
-    await sleep(pollMs);
-  } while (Date.now() < deadline);
-  throw new Error(`waitForTarget timed out on ${host}:${port}${lastError ? ` (${lastError.message})` : ''}`);
 }
 
 // Launch any Electron/Chromium app with remote debugging enabled, then wait until its CDP endpoint
@@ -309,11 +274,9 @@ export async function activateTab({ host = DEFAULT_HOST, port, targetId } = {}) 
 }
 
 export default {
-  devToolsPortFile,
   readDevToolsPort,
   listTargets,
   evaluate,
-  waitForTarget,
   findTarget,
   launch,
   screenshot,
