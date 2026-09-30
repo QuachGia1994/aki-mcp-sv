@@ -5,8 +5,15 @@ import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken,
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
 import { log, logErr } from './log.js';
 import { serveStatic } from './http.js';
+import { createLimiter, clientKey } from './rate-limit.js';
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
+const FAILURE_STATUSES = new Set([400, 401, 404]);
+
+function refuse(res, retryAfterSeconds) {
+  res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': String(retryAfterSeconds) });
+  res.end('too many failed attempts, try again later');
+}
 
 // origin: the public https origin (Tailscale MagicDNS / Cloudflare) or null. Local-First: the /mcp engine binds
 // 127.0.0.1 and serves local clients with or without a public ingress; OAuth discovery metadata only exists once
@@ -19,6 +26,11 @@ export function startGatekeeper(origin = null, onFatal) {
   // .well-known / authorize / register / token routes answer 503. A runtime attach-after-boot path (updating this)
   // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
   const meta = origin ? metadataHandlers(origin) : null;
+  const failures = createLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
+  const registrations = createLimiter({ max: 20, windowMs: 60 * 60 * 1000 });
+  const recordFailure = (key) => {
+    if (failures.record(key)) log(`[gatekeeper] rate limit: ${key} refused after repeated failed attempts`);
+  };
 
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0];
@@ -35,6 +47,13 @@ export function startGatekeeper(origin = null, onFatal) {
       return;
     }
 
+    const key = clientKey(req);
+    if (path !== '/mcp') {
+      const wait = failures.retryAfterSeconds(key);
+      if (wait) return refuse(res, wait);
+      res.on('finish', () => { if (FAILURE_STATUSES.has(res.statusCode)) recordFailure(key); });
+    }
+
     // OAuth discovery + authorize are only meaningful with a public ingress (web clients). Local clients send the
     // Bearer token straight to /mcp and never touch these, so return 503 (not 404) when ingress is off.
     if ((path === '/.well-known/oauth-protected-resource' || path === '/.well-known/oauth-protected-resource/mcp') && req.method === 'GET') {
@@ -47,6 +66,9 @@ export function startGatekeeper(origin = null, onFatal) {
     }
     if (path === '/register' && req.method === 'POST') {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      const wait = registrations.retryAfterSeconds(key);
+      if (wait) return refuse(res, wait);
+      registrations.record(key);
       return handleRegister(req, res);
     }
     if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) {
@@ -60,6 +82,9 @@ export function startGatekeeper(origin = null, onFatal) {
 
     if (path === '/mcp') {
       if (!verifyBearer(req.headers.authorization)) {
+        const wait = failures.retryAfterSeconds(key);
+        if (wait) return refuse(res, wait);
+        recordFailure(key);
         // Advertise the OAuth resource metadata only when an ingress is attached; on pure loopback emit a bare
         // Bearer challenge instead of a bogus "null/.well-known/..." URL.
         res.writeHead(401, {

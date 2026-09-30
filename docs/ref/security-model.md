@@ -56,6 +56,25 @@ Prefer the literal `127.0.0.1` over `localhost` everywhere (config, docs, snippe
 
 When no ingress is attached, the OAuth discovery and `/authorize` endpoints return `503` while local `/mcp` keeps serving normally; attaching an ingress (via the panel's Section 0 or the `--tunnel`/`PUBLIC_ORIGIN` flags) takes effect on restart, when `origin` is resolved at boot — there is intentionally no runtime attach-after-boot path yet.
 
+## Rate limiting
+
+`scripts/rate-limit.js`, wired in `scripts/gatekeeper.js`. It counts **failures only**, so a caller with valid credentials is never counted or refused (convenience first, see Design stance).
+- **Failures**: `400`, `401` and `404` answered to any path except `/mcp` (wrong passphrase, bad client, bad code, scanner probes), plus an invalid Bearer on `/mcp`. 10 in 10 minutes per caller, then `429` with `Retry-After` until the oldest one ages out. A valid Bearer on `/mcp` skips the check entirely, so a banned caller with a real token still works.
+- **Registrations**: 20 `POST /register` per hour per caller (every attempt counts, it writes a file), and no new client is stored once 500 exist (`MAX_DCR_CLIENTS` in `scripts/oauth.js`, `429 too_many_clients`).
+- **Caller key**: tunnel traffic arrives from loopback, so when the socket peer is loopback the key is `CF-Connecting-IP`, else the last `X-Forwarded-For` entry, else the single bucket `loopback`. Verified by test with these headers; **not verified** against a live Tailscale Funnel: whether Funnel sets `X-Forwarded-For` was not checked. If it does not, every Funnel caller shares one bucket, so an attacker's failures also refuse the owner's new connections (existing tokens keep working) until the window passes or akimcp restarts.
+
+Verdict record (`proportion.C1`):
+
+| Measure | Value |
+|---|---|
+| Reach | anyone who learns the public hostname (estimated: Funnel hostnames appear in certificate transparency logs, so scanners find them) |
+| Capability | plain HTTP requests (estimated: lowest rung) |
+| Motive | shell and file access on the owner's machine (estimated: high) |
+| Blast radius | brute force cannot succeed (50-bit passphrase, 256-bit token; at 1,000 guesses per second the passphrase takes about 35,000 years, calculated); the reachable harm is a disk-growth and CPU flood through unauthenticated `/register` and log noise, recoverable |
+| Rung | 2: enforced once at the gatekeeper, the trust boundary that already exists |
+
+**Reopen when** Funnel is confirmed to forward no client address (then per-caller keys need another source or a global cap), a second user or a shared host is added, or the passphrase becomes user-chosen.
+
 ## Shell trust: names, and installer-owned script zones
 
 `run_cmd` runs a command only if its binary is on the name allowlist (inspection-first by default — reads plus a few dev/media helpers, git write forms refused; edited in panel section 6) or it targets a script under a *trusted script directory* (`shell.allowlistDirs`, default `~/.claude/skills` and `~/.aki/akidevrule`, the folders the akidevrule installer writes). The zone check resolves symlinks on both sides, treats `node`/`python3`/… as interpreters (trust follows the script path, so `node -e` stays blocked), and excludes shells. Write + run cannot chain: the file tools (`write_file`, `edit_file`, `create_directory`, `move_file`) refuse any path inside a trusted zone (`scripts/roots.js:resolveRealWritable`), so a zone may sit inside a writable folder. Shell commands the user opts into that write files (`cp`, `git checkout`, …) are outside that guarantee, the same trade-off as any allowlisted write command.
@@ -64,7 +83,7 @@ When no ingress is attached, the OAuth discovery and `/authorize` endpoints retu
 
 - **No refresh token rotation** for the pre-registered confidential Claude client (spec rotation rule targets public clients).
 - **One shared access token, no per-client revocation** — every client holds the same bearer, so a leak of it is a leak for all; roll it instead of revoking one client.
-- **No rate-limiting on `/authorize`** — acceptable because the 50-bit passphrase makes brute-forcing infeasible.
+- **The limiter is in memory and per caller key** — a restart clears it, and a caller who can forge the forwarding headers picks its own key (see Rate limiting).
 - **DCR creates one stored client per ChatGPT connector instance** — delete `oauth-dcr-clients.json` (and restart) to revoke those registrations.
 
 ## Cross-references

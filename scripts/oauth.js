@@ -25,6 +25,7 @@ const GEMINI_CALLBACK_PREFIX = 'https://oauth-redirect.googleusercontent.com/r/'
 // redirect_uris=["https://grok.com/connectors-oauth-exchange-code/"]. Note: NOT a /connector/oauth/ path.
 const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
 const CODE_TTL_MS = 5 * 60 * 1000;
+const MAX_DCR_CLIENTS = 500; // /register is unauthenticated and rewrites the whole file per call, so growth must be bounded
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -188,6 +189,7 @@ export async function handleRegister(req, res) {
     clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP client',
   };
   const map = loadDcrClients();
+  if (Object.keys(map).length >= MAX_DCR_CLIENTS) return json(res, 429, { error: 'too_many_clients' });
   map[clientId] = entry;
   saveDcrClients(map);
 
