@@ -8,7 +8,8 @@ import { serveStatic } from './http.js';
 import { createLimiter, clientKey } from './rate-limit.js';
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
-const FAILURE_STATUSES = new Set([400, 401, 404]);
+// Only a rejected credential counts: protocol errors and unknown paths happen during normal connects and must never lock the owner out.
+const FAILURE_STATUS = 401;
 
 function refuse(res, retryAfterSeconds) {
   res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': String(retryAfterSeconds) });
@@ -27,7 +28,7 @@ export function startGatekeeper(origin = null, onFatal) {
   // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
   const meta = origin ? metadataHandlers(origin) : null;
   const failures = createLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
-  const registrations = createLimiter({ max: 20, windowMs: 60 * 60 * 1000 });
+  const registrations = createLimiter({ max: 100, windowMs: 10 * 60 * 1000 });
   const recordFailure = (key) => {
     if (failures.record(key)) log(`[gatekeeper] rate limit: ${key} refused after repeated failed attempts`);
   };
@@ -51,7 +52,7 @@ export function startGatekeeper(origin = null, onFatal) {
     if (path !== '/mcp') {
       const wait = failures.retryAfterSeconds(key);
       if (wait) return refuse(res, wait);
-      res.on('finish', () => { if (FAILURE_STATUSES.has(res.statusCode)) recordFailure(key); });
+      res.on('finish', () => { if (res.statusCode === FAILURE_STATUS) recordFailure(key); });
     }
 
     // OAuth discovery + authorize are only meaningful with a public ingress (web clients). Local clients send the

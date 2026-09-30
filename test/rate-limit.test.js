@@ -41,11 +41,7 @@ const call = (pathname, headers) => new Promise((resolve, reject) => {
   }).on('error', reject);
 });
 
-for (let i = 0; i < 10; i++) assert.equal((await call('/nope', { 'x-forwarded-for': '198.51.100.1' })).status, 404);
-const blocked = await call('/nope', { 'x-forwarded-for': '198.51.100.1' });
-assert.equal(blocked.status, 429);
-assert.ok(Number(blocked.retryAfter) > 0);
-assert.equal((await call('/nope', { 'x-forwarded-for': '198.51.100.2' })).status, 404, 'another caller is not affected');
+for (let i = 0; i < 30; i++) assert.equal((await call('/nope', { 'x-forwarded-for': '198.51.100.1' })).status, 404, 'unknown paths are never counted');
 
 for (let i = 0; i < 10; i++) assert.equal((await call('/mcp', { 'x-forwarded-for': '198.51.100.3', authorization: 'Bearer wrong' })).status, 401);
 assert.equal((await call('/mcp', { 'x-forwarded-for': '198.51.100.3', authorization: 'Bearer wrong' })).status, 429);
@@ -61,7 +57,7 @@ const register = (forwardedFor) => fetch(`http://127.0.0.1:${process.env.GATEKEE
   headers: { 'content-type': 'application/json', 'x-forwarded-for': forwardedFor },
   body: JSON.stringify({ redirect_uris: ['https://claude.ai/api/mcp/auth_callback'], token_endpoint_auth_method: 'none' }),
 }).then((res) => res.status);
-for (let i = 0; i < 20; i++) assert.equal(await register('198.51.100.4'), 201);
+for (let i = 0; i < 100; i++) assert.equal(await register('198.51.100.4'), 201, 'many connects in a few minutes are allowed');
 assert.equal(await register('198.51.100.4'), 429, 'a caller registering in bulk is refused');
 assert.equal(await register('198.51.100.5'), 201, 'another caller can still register');
 withIngress.close();

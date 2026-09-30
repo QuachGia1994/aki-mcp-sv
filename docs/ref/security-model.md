@@ -59,8 +59,8 @@ When no ingress is attached, the OAuth discovery and `/authorize` endpoints retu
 ## Rate limiting
 
 `scripts/rate-limit.js`, wired in `scripts/gatekeeper.js`. It counts **failures only**, so a caller with valid credentials is never counted or refused (convenience first, see Design stance).
-- **Failures**: `400`, `401` and `404` answered to any path except `/mcp` (wrong passphrase, bad client, bad code, scanner probes), plus an invalid Bearer on `/mcp`. 10 in 10 minutes per caller, then `429` with `Retry-After` until the oldest one ages out. A valid Bearer on `/mcp` skips the check entirely, so a banned caller with a real token still works.
-- **Registrations**: 20 `POST /register` per hour per caller (every attempt counts, it writes a file), and no new client is stored once 500 exist (`MAX_DCR_CLIENTS` in `scripts/oauth.js`, `429 too_many_clients`).
+- **Failures**: a rejected credential only, i.e. `401` (wrong passphrase at `/authorize`, wrong client secret at `/token`, invalid Bearer on `/mcp`). `400` and `404` are never counted: they occur during ordinary connects. 10 in 10 minutes per caller, then `429` with `Retry-After` until the oldest one ages out. A valid Bearer on `/mcp` skips the check entirely, so a banned caller with a real token still works.
+- **Registrations**: 100 `POST /register` per 10 minutes per caller (every attempt counts, it writes a file; a burst of connects to many providers stays far below it), and no new client is stored once 500 exist (`MAX_DCR_CLIENTS` in `scripts/oauth.js`, `429 too_many_clients`).
 - **Caller key**: tunnel traffic arrives from loopback, so when the socket peer is loopback the key is `CF-Connecting-IP`, else the last `X-Forwarded-For` entry, else the single bucket `loopback`. Verified by test with these headers; **not verified** against a live Tailscale Funnel: whether Funnel sets `X-Forwarded-For` was not checked. If it does not, every Funnel caller shares one bucket, so an attacker's failures also refuse the owner's new connections (existing tokens keep working) until the window passes or akimcp restarts.
 
 Verdict record (`proportion.C1`):
