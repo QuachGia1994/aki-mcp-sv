@@ -106,7 +106,7 @@ function field(label, value, hl = false) {
 
 // Shown masked so a screenshot never carries it; the eye button reveals it, click-to-copy always copies the real value.
 function secretField(label, value) {
-  return `<div class="row"><label>${esc(label)}</label><span class="secret"><code class="copy"><span class="txt" data-v="${esc(value)}">${'•'.repeat(12)}</span></code><button type="button" class="eye" data-eye aria-label="Show ${esc(label)}" title="Show / hide">👁</button></span></div>`;
+  return `<div class="row"><label>${esc(label)}<button type="button" class="eye" data-eye aria-label="Show ${esc(label)}" title="Show / hide">👁</button></label><code class="copy"><span class="txt" data-v="${esc(value)}">${'•'.repeat(12)}</span></code></div>`;
 }
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {

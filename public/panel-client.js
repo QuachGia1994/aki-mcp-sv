@@ -63,7 +63,7 @@ function copyText(text, btn) {
 document.addEventListener('click', (e) => {
   const eye = e.target.closest('[data-eye]');
   if (eye) {
-    const txt = eye.parentElement.querySelector('.txt');
+    const txt = eye.closest('.row').querySelector('.txt');
     const masked = txt.dataset.shown !== '1';
     txt.textContent = masked ? txt.dataset.v : '•'.repeat(12);
     txt.dataset.shown = masked ? '1' : '0';
