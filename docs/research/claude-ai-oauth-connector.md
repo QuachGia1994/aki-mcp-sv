@@ -156,6 +156,6 @@ Levers tested this day:
 - No rate-limiting on `/authorize` — acceptable because of the 256-bit passphrase, making brute-force infeasible.
 
 ## Cross-references
-- `docs/ref/security-model.md` — security model updated for this OAuth architecture
+- `docs/feat/security.md` — security model updated for this OAuth architecture
 - `docs/plan/done/init.md` — architecture decision table
 - `scripts/oauth.js`, `scripts/gatekeeper.js` — the real implementation

@@ -1,6 +1,7 @@
 # Docs index
 
 - [feat/tools.md](feat/tools.md) — the local capability suite and each tool's anchored purpose; why `agy`/`kiro` are agent-arms ("hands"), not redundant primitives, and are not to be removed by a subtraction audit
+- [feat/security.md](feat/security.md) — the whole security picture: convenience-first stance, every surface and its gate, OAuth 2.1 (passphrase + PKCE, one shared token), loopback zero trust, connection limits, tool reach, secrets on disk and how to revoke each
 - [feat/checkupdate.md](feat/checkupdate.md) — aki-mcp-sv + akidevrule version-check lifecycle: `rule-version-core.cjs` as the one classification+fetch SSoT, the two network triggers (main boot, Postman daemon start) vs. every other trigger being a disk-only re-read of `~/.aki/mcpsv/aki-mcp-status.json`, mermaid flowchart
 - [plan/done/init.md](plan/done/init.md) — architecture decisions (mcp-hub + gatekeeper + funnel) and repo bootstrap checklist
 - [plan/done/instruction-prompt-improve.md](plan/done/instruction-prompt-improve.md) — compact the paste-in instruction prompt under ChatGPT's 1500-char cap (hoist the rules-dir prefix) and add the mandatory survey + `working.md` per-task workflow; shipped 1.2.0
@@ -42,7 +43,6 @@
 - [plan/done/unify-datadir-drop-legacy.md](plan/done/unify-datadir-drop-legacy.md) — shipped 2026-09-29: all Postman daemon data (`data.json`, `daemon.pid`, `new-window.flag`, `ownership-status.json`) moved into `~/.aki/mcpsv/` with the paths defined once in `postman-data-paths.cjs`; no migration, legacy dir left on disk
 - [ref/chatgpt-connector.md](ref/chatgpt-connector.md) — ChatGPT install: Developer mode (Settings → Security and login) → create connector (icon, name, description, MCP URL) → passphrase; DCR auto-registers, no Client ID/Secret to paste
 - [ref/claude-connector.md](ref/claude-connector.md) — the real fields on claude.ai's "Add custom connector" dialog
-- [ref/security-model.md](ref/security-model.md) — the current OAuth 2.1 security model (Claude pre-registered client; ChatGPT self-registers via RFC 7591 DCR, live)
 - [ref/fact-agy-mcp-config.md](ref/fact-agy-mcp-config.md) — verified facts on how Antigravity CLI (`agy` 1.2.13) and IDE (2.5.5) load MCP servers: shared `~/.gemini/config/mcp_config.json`, stdio vs SSE, `mcp(<server>/*)` pre-allow, IDE CDP launch caveats
 - [ref/harness-fact.md](ref/harness-fact.md) — the agy/kiro CLI facts the arm MCPs depend on (flags, model ids, effort enums), split by evidence tier: agy and kiro both verified live (kiro-cli 2.16.2, 2026-08-09)
 - [ref/postman-permission-popup-test.md](ref/postman-permission-popup-test.md) — self-debug guide for the CDP autoclicker: how to trigger and verify each auto (Approve/Run/Continue/Try again/reject-folder) plus the Thinking/Auto-run toggles, the `__pmDeliverSummarizePrompt` self-prompt hook, and `postman-probe-dom-contract.js` selector-drift recovery, and the safety-flag probe (see research/postman-instruction-safety-flag.md) for probing whether an instruction text trips Postman's safety flag; referenced from `postman-panel.js`
@@ -69,3 +69,4 @@
 - [research/agy-mcp-config-ide-cli.md](research/agy-mcp-config-ide-cli.md) — 2026-09-29 event record behind `fact-agy-mcp-config.md`: bundle and doc reads, IDE launched under CDP, what is still unverified
 - [plan/cdp-control-layer-cleanup.md](plan/cdp-control-layer-cleanup.md) — CDP/Postman control layer cleanup: naming, indirection and contract fixes; #1, #2, #5 done 2026-09-29, #6 open
 - [plan/done/chrome-probe-ai-usage-accuracy.md](plan/done/chrome-probe-ai-usage-accuracy.md) — dropped 2026-09-30, not executed: `aki__chrome_probe_ai` was removed instead of made accurate
+- [plan/client-activity-and-security-log.md](plan/client-activity-and-security-log.md) — proposed: per-client activity on the client record, live `/mcp` callers in memory, security-only log, provisional DCR registrations, housekeeping for long runs; not started

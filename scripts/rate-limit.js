@@ -1,4 +1,4 @@
-// Failure-only limiter for the public gatekeeper: a caller who keeps presenting rejected credentials is blocked for a while, a caller with valid credentials is never counted (docs/ref/security-model.md § Rate limiting).
+// Failure-only limiter for the public gatekeeper: a caller who keeps presenting rejected credentials is blocked for a while, a caller with valid credentials is never counted (docs/feat/security.md § Rate limiting).
 import { readSettings } from './allowlist.js';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);

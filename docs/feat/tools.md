@@ -44,7 +44,7 @@ An audit that only pattern-matches capabilities will call `kiro_read` "redundant
 
 ## When a tool earns its place beside `run_cmd`
 
-`run_cmd` can already run anything on the allowlist, so a separate tool exists only if it meets at least one of: saves tokens (compact output for reads); keeps state across calls; carries non-trivial logic; enforces a safety control the allowlist cannot express (SSRF, path containment); or owns a cross-process contract. Otherwise the model uses `run_cmd`. The arms above qualify by providing behavior `run_cmd` cannot. Splitting tools by read/write to carry permissions is not a reason: the owner allows everything anyway, and safety belongs to the allowlist (`ref/security-model.md` § Design stance). `run_cmd`'s description steers the model to the cheaper dedicated tool.
+`run_cmd` can already run anything on the allowlist, so a separate tool exists only if it meets at least one of: saves tokens (compact output for reads); keeps state across calls; carries non-trivial logic; enforces a safety control the allowlist cannot express (SSRF, path containment); or owns a cross-process contract. Otherwise the model uses `run_cmd`. The arms above qualify by providing behavior `run_cmd` cannot. Splitting tools by read/write to carry permissions is not a reason: the owner allows everything anyway, and safety belongs to the allowlist (`feat/security.md` § Design stance). `run_cmd`'s description steers the model to the cheaper dedicated tool.
 
 ## Output shaping — what the model reads back from `run_cmd`
 

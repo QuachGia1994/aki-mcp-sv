@@ -4,7 +4,7 @@
 2026-09-29, aki-mcp-sv 2.1.0 plus uncommitted work, macOS. rtk 0.47.0 installed; its repository read at HEAD `6d4b77e` (after v0.50.0).
 
 ## Initial purpose
-`run_cmd` returned raw stdout up to 1 MB to a remote model, and the owner asked to learn from `rtk` (a CLI proxy that filters command output before it reaches an LLM, installed on this machine through a Claude Code hook) instead of inventing a truncation. Constraints at the time: a remote model reads only what an MCP tool returns and has no shell on the user's machine; the server must work on macOS, Linux and Windows and cannot require rtk; `docs/ref/security-model.md` § Design stance (convenience first) rules out complexity that annoys. First-principles goal: the model reads the fewest tokens that still carry what it needs, and anything left out can be recovered verbatim.
+`run_cmd` returned raw stdout up to 1 MB to a remote model, and the owner asked to learn from `rtk` (a CLI proxy that filters command output before it reaches an LLM, installed on this machine through a Claude Code hook) instead of inventing a truncation. Constraints at the time: a remote model reads only what an MCP tool returns and has no shell on the user's machine; the server must work on macOS, Linux and Windows and cannot require rtk; `docs/feat/security.md` § Design stance (convenience first) rules out complexity that annoys. First-principles goal: the model reads the fewest tokens that still carry what it needs, and anything left out can be recovered verbatim.
 
 ## Strategy
 A read-only subagent studied rtk (help output, `gh api` on the repository, `rtk config`, measurements on this repo); the findings below were then spot-checked here before any design depended on them. Design was derived from the principles, not from rtk's command list.
@@ -82,5 +82,5 @@ The diff is the only large win in tokens (about 61k of the saving). Unmeasured: 
 - Test-runner summary: rtk's own heuristic misreports (R4.1); a correct one needs per-runner parsing, out of proportion to the gain.
 - Comment stripping on file reads: rtk itself defaults it off, and the model may need the comments.
 
-**Cross-references:** [`ref/security-model.md` § Design stance](../ref/security-model.md) (why complexity that annoys loses), [`feat/tools.md`](../feat/tools.md).
+**Cross-references:** [`feat/security.md` § Design stance](../feat/security.md) (why complexity that annoys loses), [`feat/tools.md`](../feat/tools.md).
 **Reopen if:** a measured session shows most tokens still come from command families this leaves untouched, or the chars-per-token estimate is contradicted by real usage.

@@ -63,4 +63,4 @@ Files this materialized in:
 
 **Rejected/closed.** Keep Generate (surplus fetch of a token the GET already has). Bind `verifyBearer` to a client. Label `clientId`/`via` on access. Dedicated Postman `clientId`. DCR-client cleanup. GC of still-valid access. A paired `docs/plan/` for this one-item change.
 
-**Cross-references.** README Connecting from Postman; CHANGELOG `[Unreleased]` and `[1.12.0]` Postman entries; `docs/feat/tools.md` (names Postman as a client, not the setup steps); `docs/ref/security-model.md` (token store, not Generate); `docs/plan/manus-connect.md` (different client, hand-mint).
+**Cross-references.** README Connecting from Postman; CHANGELOG `[Unreleased]` and `[1.12.0]` Postman entries; `docs/feat/tools.md` (names Postman as a client, not the setup steps); `docs/feat/security.md` (token store, not Generate); `docs/plan/manus-connect.md` (different client, hand-mint).

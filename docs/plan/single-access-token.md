@@ -30,7 +30,7 @@
 - [x] `scripts/oauth.js`: single-token invariant, collapse-on-load, `rotateAccessToken`, remaining-lifetime `expires_in`
 - [x] `scripts/panel.js` route `POST /api/roll-token`; `scripts/config-page.js` token field + buttons; `public/panel-client.js` handlers
 - [x] `test/oauth-single-token.test.js` in a temp `AKI_MCP_DATA_DIR`, added to `npm test`
-- [x] `README.md`, `docs/ref/security-model.md`, `docs/index.md`, `CHANGELOG.md` `[Unreleased]`
+- [x] `README.md`, `docs/feat/security.md`, `docs/index.md`, `CHANGELOG.md` `[Unreleased]`
 
 ## No action (deliberate)
 - Refresh-token growth per authorization: see table row above; bounded by the number of real authorizations, cleared by a hard roll.

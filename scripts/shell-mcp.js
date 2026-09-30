@@ -18,7 +18,7 @@ const COMMAND_TIMEOUT_MS = 10_000;
 const MAX_CAPTURE_BYTES = 32 * 1024 * 1024; // what the process may print before it is stopped; what the model reads is bounded separately by shapeForModel
 
 // A listed git subcommand that also has write forms (branch -D, tag -d, remote set-url, diff --output=<file>) is allowed in its read form only.
-// Bare `git` on the allowlist skips this: it means everything, the owner's call (docs/ref/security-model.md § Design stance).
+// Bare `git` on the allowlist skips this: it means everything, the owner's call (docs/feat/security.md § Design stance).
 const isListFlag = (a) => a === '-l' || a === '--list';
 const GIT_READ_FORMS = {
   branch: (a) => a.every((x) => ['-a', '-r', '-v', '-vv', '-l', '--list', '--all', '--remotes', '--verbose', '--show-current'].includes(x)),
