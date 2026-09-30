@@ -1,6 +1,6 @@
 # Single shared access token + two-level roll
 
-**Status:** IMPLEMENTED, unreleased (in `CHANGELOG.md` `[Unreleased]`; moves to `done/` at release) · 2026-09-25 · governing rules: `coding.C4`, `pattern.A1`, `release.B5` (persisted-state change)
+**Status:** DONE, shipped in 2.2.0 (2026-10-01) · written 2026-09-25 · governing rules: `coding.C4`, `pattern.A1`, `release.B5` (persisted-state change)
 
 ## Problem (observed, `~/.aki/mcpsv/tokens.json`)
 - 12 access + 12 refresh tokens accumulated; every `authorization_code` and every `refresh_token` grant minted a new access token and nothing removed the old ones before their 1-year expiry (`scripts/oauth.js` `mintTokens`).

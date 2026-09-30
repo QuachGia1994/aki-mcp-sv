@@ -1,6 +1,6 @@
 # Plan: Dọn lớp điều khiển CDP/Postman — tên đúng bản chất, bỏ indirection, gom hợp đồng
 
-> **Trạng thái**: #1, #2, #5 ĐÃ THỰC HIỆN (2026-09-29, `npm test` xanh). Còn lại **#6** (#3 xong 2026-09-27; #4 có plan riêng; #7 thuộc repo khác).
+> **Trạng thái**: DONE, ship trong 2.2.0 (2026-10-01). #1, #2, #5 xong 2026-09-29; #3 xong 2026-09-27; #6 xong trong commit `53438c1` (`normalizeOwnershipStatus` ở `scripts/postman/postman-ownership.cjs`, cả daemon lẫn `postman-mcp.js` dùng chung); #4 có plan riêng (`done/unify-datadir-drop-legacy.md`); #7 thuộc repo khác.
 > **Phạm vi**: lớp điều khiển CDP của Postman trong `scripts/postman/` + `scripts/cdp-engine.js`. KHÔNG đụng logic ownership đã có test, KHÔNG đổi hành vi quan sát được của tool.
 > **Governing rules**: `pattern.A1` (một nguồn sự thật, không định nghĩa lại nhiều nơi), `coding.C4` (đổi trạng thái bền vững phải có migration/tương thích), `agent.B5` (chờ owner duyệt trước khi thực thi).
 > **Nguồn phát hiện**: review 2026-09-27 trên working tree hiện tại; mọi mục dưới đây kèm `file:line` đã đối chiếu code + runtime (endpoint CDP `:55976`, 13 target → 3 `page`).
@@ -8,7 +8,7 @@
 ## Bối cảnh
 Lớp này nhìn chung **rất chắc** và cố ý giữ nguyên: tách tầng `cdp-engine.js` (app-agnostic, kết nối ngắn, không giữ ownership) ↔ `postman-*` (app-specific); `postman-ownership.cjs` thuần hàm + có unit test; `readDevToolsPort` trả `null` trung thực thay vì đoán cổng 9222. Plan này **chỉ dọn phần rìa**: tên gây hiểu nhầm, indirection chết, hợp đồng khai báo 2 nơi, và chi phí thừa lúc khởi động.
 
-Mục **#4 (hợp nhất data-dir, bỏ `LEGACY_CDP_DIR`)** đã có plan riêng — xem [`docs/plan/done/unify-datadir-drop-legacy.md`](./done/unify-datadir-drop-legacy.md). Không lặp lại ở đây.
+Mục **#4 (hợp nhất data-dir, bỏ `LEGACY_CDP_DIR`)** đã có plan riêng — xem [`docs/plan/done/unify-datadir-drop-legacy.md`](./unify-datadir-drop-legacy.md). Không lặp lại ở đây.
 Mục **#7 (14 bản `harness-facts.md`)** thuộc repo khác (`akidevrule`) — ghi ở cuối như finding, không có action trong repo này.
 
 ---
