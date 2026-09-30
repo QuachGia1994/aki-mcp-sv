@@ -5,7 +5,7 @@ import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken,
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
 import { log, logErr } from './log.js';
 import { serveStatic } from './http.js';
-import { createLimiter, clientKey } from './rate-limit.js';
+import { failures, registrations, clientKey } from './rate-limit.js';
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 // Only a rejected credential counts: protocol errors and unknown paths happen during normal connects and must never lock the owner out.
@@ -27,8 +27,6 @@ export function startGatekeeper(origin = null, onFatal) {
   // .well-known / authorize / register / token routes answer 503. A runtime attach-after-boot path (updating this)
   // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
   const meta = origin ? metadataHandlers(origin) : null;
-  const failures = createLimiter({ max: 10, windowMs: 10 * 60 * 1000 });
-  const registrations = createLimiter({ max: 100, windowMs: 10 * 60 * 1000 });
   const recordFailure = (key) => {
     if (failures.record(key)) log(`[gatekeeper] rate limit: ${key} refused after repeated failed attempts`);
   };

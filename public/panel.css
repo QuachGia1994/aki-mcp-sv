@@ -159,3 +159,8 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 @media (max-width: 560px) { .row { grid-template-columns: minmax(0, 1fr); } .eco-grid { grid-template-columns: 1fr; } }
 .gh-top { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--muted); text-decoration: none; }
 .gh-top:hover { color: var(--accent); border-color: var(--accent); }
+
+.limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 10px 0; }
+.limits label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.limits input[type=number] { width: 100%; padding: 6px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
+.chk { display: flex; align-items: center; gap: 6px; }

@@ -305,7 +305,47 @@ function rollToken(btn, hard) {
   });
 }
 
+let limitDefaults = {};
+const limitInputs = () => [...document.querySelectorAll('[data-limit]')];
+function fillLimits(limits) {
+  for (const el of limitInputs()) {
+    const v = limits[el.dataset.limit];
+    if (el.type === 'checkbox') el.checked = v; else el.value = v;
+  }
+}
+function readLimitInputs() {
+  const limits = {};
+  for (const el of limitInputs()) limits[el.dataset.limit] = el.type === 'checkbox' ? el.checked : Number(el.value);
+  return limits;
+}
+function renderBlocked(blocked) {
+  const list = document.getElementById('blockedList');
+  if (!blocked.length) { const p = document.createElement('p'); p.className = 'helptext'; p.textContent = 'Nobody is blocked.'; return list.replaceChildren(p); }
+  list.replaceChildren(...blocked.map(({ key, retryAfterSeconds }) => {
+    const row = document.createElement('div');
+    row.className = 'acts';
+    const label = document.createElement('span');
+    label.className = 'mono';
+    label.textContent = `${key} — ${Math.ceil(retryAfterSeconds / 60)} min left`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Release';
+    btn.onclick = () => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', { key }); await loadRateLimit(); return 'released'; });
+    row.append(label, btn);
+    return row;
+  }));
+}
+async function loadRateLimit() {
+  const { limits, defaults, blocked } = await api('GET', '/api/rate-limit');
+  limitDefaults = defaults;
+  fillLimits(limits);
+  renderBlocked(blocked);
+}
+
 const ACTIONS = {
+  saveLimits: (btn) => act(btn, 'msgLimits', async () => (await api('POST', '/api/rate-limit', { limits: readLimitInputs() })).message),
+  resetLimits: () => { fillLimits(limitDefaults); say('msgLimits', 'defaults filled in — press Save to apply', true); },
+  refreshBlocked: (btn) => act(btn, 'msgBlocked', async () => { await loadRateLimit(); return 'refreshed'; }),
+  releaseAll: (btn) => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', {}); await loadRateLimit(); return 'everyone released'; }),
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
   launchPostman: (btn) => act(btn, 'msgPmDaemon', async () => {
@@ -437,4 +477,5 @@ renderSavedIngress(SAVED_INGRESS);
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
+loadRateLimit().catch((e) => say('msgLimits', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });

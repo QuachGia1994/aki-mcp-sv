@@ -183,6 +183,7 @@ ${updateBanner}
   <li class="step"><a href="#s2"><span class="step-n">2</span> Install rules</a></li>
   <li class="step"><a href="#s3"><span class="step-n">3</span> Instructions</a></li>
   <li class="step opt"><a href="#s4"><span class="step-n">4</span> Extension <em>optional</em></a></li>
+  <li class="step opt"><a href="#s7"><span class="step-n">7</span> Limits <em>security</em></a></li>
 </ol>
 </section>
 
@@ -426,6 +427,32 @@ ${field('Widen command', WIDEN_SNIPPET)}
   <button class="primary" data-act="addTrusted">+ Add directory…</button>
   <button data-act="saveTrusted">Save</button>
   <span class="msg" id="msgTrusted"></span>
+</div>
+</section>
+
+<section id="s7"><h2>7 · Connection limits</h2>
+<p class="helptext"><strong>What this protects:</strong> the public address is reachable by anyone who learns it, and the only thing between them and your machine is the passphrase. A caller that keeps presenting <em>wrong</em> credentials is blocked for a while; a caller with a valid token is never counted or blocked, and neither are mistyped URLs (404) or malformed requests (400). Connecting many providers in a row is safe — only wrong credentials count.</p>
+<p class="helptext"><strong>When a block ends:</strong> automatically after the block time below (the counter restarts from zero), immediately when you press Release, or when this app restarts. Callers are told by their public address; if your tunnel does not forward it, all remote callers share one address named <code>loopback</code>, so one attacker could block remote access until you release it. Changes apply from the next request, no restart.</p>
+<label class="chk"><input type="checkbox" data-limit="enabled"> Limits enabled</label>
+<div class="limits">
+  <label>Wrong credentials allowed<input type="number" min="1" data-limit="failMax"></label>
+  <label>…within (seconds)<input type="number" min="1" data-limit="failWindowSeconds"></label>
+  <label>Then blocked for (minutes)<input type="number" min="1" data-limit="blockMinutes"></label>
+  <label>Client registrations allowed<input type="number" min="1" data-limit="registerMax"></label>
+  <label>…within (minutes)<input type="number" min="1" data-limit="registerWindowMinutes"></label>
+  <label>Registered clients stored (max)<input type="number" min="1" data-limit="maxClients"></label>
+</div>
+<div class="acts">
+  <button class="primary" data-act="saveLimits">Save limits</button>
+  <button data-act="resetLimits">Reset to defaults</button>
+  <span class="msg" id="msgLimits"></span>
+</div>
+<h3 class="subh">Blocked right now</h3>
+<div class="flist" id="blockedList"></div>
+<div class="acts">
+  <button data-act="refreshBlocked">Refresh</button>
+  <button data-act="releaseAll">Release everyone</button>
+  <span class="msg" id="msgBlocked"></span>
 </div>
 </section>
 

@@ -14,6 +14,7 @@ import {
 import { log } from './log.js';
 import { readBody, json as httpJson } from './http.js';
 import { esc } from './html.js';
+import { readLimits } from './rate-limit.js';
 
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
@@ -25,7 +26,6 @@ const GEMINI_CALLBACK_PREFIX = 'https://oauth-redirect.googleusercontent.com/r/'
 // redirect_uris=["https://grok.com/connectors-oauth-exchange-code/"]. Note: NOT a /connector/oauth/ path.
 const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
 const CODE_TTL_MS = 5 * 60 * 1000;
-const MAX_DCR_CLIENTS = 500; // /register is unauthenticated and rewrites the whole file per call, so growth must be bounded
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -189,7 +189,7 @@ export async function handleRegister(req, res) {
     clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP client',
   };
   const map = loadDcrClients();
-  if (Object.keys(map).length >= MAX_DCR_CLIENTS) return json(res, 429, { error: 'too_many_clients' });
+  if (Object.keys(map).length >= readLimits().maxClients) return json(res, 429, { error: 'too_many_clients' });
   map[clientId] = entry;
   saveDcrClients(map);
 

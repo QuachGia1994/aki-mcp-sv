@@ -12,6 +12,7 @@ import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
 import { readBody, json, serveStatic, serveFontAwesome } from './http.js';
+import { failures, readLimits, validateLimits, LIMIT_DEFAULTS } from './rate-limit.js';
 import { getLocalVersions, cmpSemver, writeStatusFile, getRuleStatus } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman/postman-mcp.js';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,13 @@ function writeJsonAtomic(file, data) {
 function setFolders(paths) {
   const settings = readSettings();
   settings.folders = paths;
+  writeJsonAtomic(SETTINGS_PATH, settings);
+}
+
+// Connection limits are a security setting like folders: written atomically so a partial write cannot read back as "no limit".
+function setRateLimit(limits) {
+  const settings = readSettings();
+  settings.rateLimit = limits;
   writeJsonAtomic(SETTINGS_PATH, settings);
 }
 
@@ -256,6 +264,15 @@ export const ROUTES = {
   'POST /api/trusted-dirs': async (body) => {
     setTrustedDirs(validateTrustedDirs(body.dirs));
     return { ok: true, message: `saved trusted directories to ${SETTINGS_PATH}` };
+  },
+  'GET /api/rate-limit': async () => ({ limits: readLimits(), defaults: LIMIT_DEFAULTS, blocked: failures.blockedList() }),
+  'POST /api/rate-limit': async (body) => {
+    setRateLimit(validateLimits(body.limits));
+    return { ok: true, message: 'saved — applies from the next request' };
+  },
+  'POST /api/rate-limit/release': async (body) => {
+    failures.release(typeof body.key === 'string' ? body.key : undefined);
+    return { ok: true, message: body.key ? 'released' : 'everyone released' };
   },
   'POST /api/install-rules': async (body, ctx) => {
     const message = await installRules();
