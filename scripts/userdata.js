@@ -16,6 +16,7 @@ export const PASSPHRASE_PATH = path.join(USER_DIR, 'passphrase.txt');
 export const TOKENS_PATH = path.join(USER_DIR, 'tokens.json');
 export const INGRESS_CONFIG_PATH = path.join(USER_DIR, 'ingress.json');
 export const CLOUDFLARED_CRED_PATH = path.join(USER_DIR, 'cloudflared-cred.json');
+export const SECURITY_LOG_PATH = path.join(USER_DIR, 'security.log');
 
 mkdirSync(USER_DIR, { recursive: true, mode: 0o700 });
 

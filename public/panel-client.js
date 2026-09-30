@@ -329,23 +329,110 @@ function renderBlocked(blocked) {
     label.textContent = `${key} — ${Math.ceil(retryAfterSeconds / 60)} min left`;
     const btn = document.createElement('button');
     btn.textContent = 'Release';
-    btn.onclick = () => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', { key }); await loadRateLimit(); return 'released'; });
+    btn.onclick = () => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', { key }); await loadSecurity(); return 'released'; });
     row.append(label, btn);
     return row;
   }));
 }
-async function loadRateLimit() {
-  const { limits, defaults, blocked } = await api('GET', '/api/rate-limit');
+const RELATIVE_UNITS = [['d', 86400], ['h', 3600], ['min', 60]];
+function timeCell(ms, missingText = '—') {
+  if (!ms) return missingText;
+  const span = document.createElement('span');
+  const seconds = Math.max(0, (Date.now() - ms) / 1000);
+  const [unit, size] = RELATIVE_UNITS.find(([, s]) => seconds >= s) || [];
+  span.textContent = unit ? `${Math.floor(seconds / size)} ${unit} ago` : 'just now';
+  span.title = new Date(ms).toLocaleString();
+  return span;
+}
+function mutedNote(text) {
+  const note = document.createElement('div');
+  note.className = 'helptext';
+  note.textContent = text;
+  return note;
+}
+function renderTable(containerId, columns, rows, emptyText, rowClass) {
+  const container = document.getElementById(containerId);
+  if (!rows.length) { const p = document.createElement('p'); p.className = 'helptext'; p.textContent = emptyText; return container.replaceChildren(p); }
+  const table = document.createElement('table');
+  table.className = 'datatable';
+  const headRow = table.createTHead().insertRow();
+  for (const [label] of columns) headRow.insertCell().textContent = label;
+  const body = table.createTBody();
+  for (const row of rows) {
+    const tr = body.insertRow();
+    if (rowClass?.(row)) tr.className = rowClass(row);
+    for (const [, cell] of columns) tr.insertCell().append(cell(row));
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'tablewrap';
+  wrap.append(table);
+  container.replaceChildren(wrap);
+}
+const CLIENT_KIND_LABEL = { claude: 'Claude pre-registered', dcr: 'connector' };
+function clientNameCell({ name, pending }) {
+  const box = document.createElement('div');
+  box.append(name || '—', mutedNote('self-declared'));
+  if (pending) box.append(mutedNote('pending approval — removed after 1 h'));
+  return box;
+}
+function removeClientButton({ clientId, kind, name, signedIn }) {
+  const signOutOnly = kind === 'claude';
+  if (signOutOnly && !signedIn) return '';
+  const btn = document.createElement('button');
+  btn.textContent = signOutOnly ? 'Sign out' : 'Remove';
+  btn.onclick = () => {
+    const what = signOutOnly ? `Sign out ${name}? Its Client ID and secret stay valid, so it can connect again with the passphrase.` : `Remove ${name || 'this client'}? It must connect again with the passphrase.`;
+    if (!confirm(`${what}\n\nIt keeps the current access token until you press Roll token in section 1.`)) return;
+    act(btn, 'msgClients', async () => {
+      const { message } = await api('POST', '/api/clients/remove', { clientId });
+      await loadSecurity();
+      return `${message} — press Roll token in section 1 to cut its access now`;
+    });
+  };
+  return btn;
+}
+function renderClients(clients) {
+  renderTable('clientsList', [
+    ['Name', clientNameCell],
+    ['Kind', (c) => CLIENT_KIND_LABEL[c.kind] || c.kind || '—'],
+    ['Redirect', (c) => c.redirectHost || '—'],
+    ['Signed in', (c) => c.signedIn ? 'yes' : 'no'],
+    ['First seen', (c) => timeCell(c.firstSeenAt, 'before tracking')],
+    ['Last approved', (c) => timeCell(c.approvedAt)],
+    ['Last token', (c) => timeCell(c.tokenAt)],
+    ['Last from', (c) => [c.lastAddress, c.lastAgent].filter(Boolean).join(' · ') || '—'],
+    ['', removeClientButton],
+  ], clients, 'No clients registered yet.', (c) => c.pending ? 'pending' : '');
+}
+function renderSecurityLog({ path, lines }) {
+  document.getElementById('securityLogPath').textContent = path;
+  document.getElementById('securityLog').textContent = lines.length ? lines.join('\n') : 'Nothing logged yet.';
+}
+function renderCallers(callers) {
+  renderTable('callersList', [
+    ['Caller', (c) => c.key],
+    ['Agent', (c) => c.agent || '—'],
+    ['First seen', (c) => timeCell(c.firstSeen)],
+    ['Last seen', (c) => timeCell(c.lastSeen)],
+    ['Requests', (c) => String(c.requests)],
+  ], callers, 'No one has used the token since the last restart.');
+}
+async function loadSecurity() {
+  const { limits, defaults, blocked, clients, callers, log } = await api('GET', '/api/security');
   limitDefaults = defaults;
   fillLimits(limits);
   renderBlocked(blocked);
+  renderClients(clients);
+  renderCallers(callers);
+  renderSecurityLog(log);
 }
 
 const ACTIONS = {
   saveLimits: (btn) => act(btn, 'msgLimits', async () => (await api('POST', '/api/rate-limit', { limits: readLimitInputs() })).message),
   resetLimits: () => { fillLimits(limitDefaults); say('msgLimits', 'defaults filled in — press Save to apply', true); },
-  refreshBlocked: (btn) => act(btn, 'msgBlocked', async () => { await loadRateLimit(); return 'refreshed'; }),
-  releaseAll: (btn) => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', {}); await loadRateLimit(); return 'everyone released'; }),
+  refreshBlocked: (btn) => act(btn, 'msgBlocked', async () => { await loadSecurity(); return 'refreshed'; }),
+  refreshLog: (btn) => act(btn, 'msgLog', async () => { await loadSecurity(); return 'refreshed'; }),
+  releaseAll: (btn) => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', {}); await loadSecurity(); return 'everyone released'; }),
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
   launchPostman: (btn) => act(btn, 'msgPmDaemon', async () => {
@@ -477,5 +564,5 @@ renderSavedIngress(SAVED_INGRESS);
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
-loadRateLimit().catch((e) => say('msgLimits', e.message, false));
+loadSecurity().catch((e) => say('msgLimits', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });

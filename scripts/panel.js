@@ -6,7 +6,9 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkS
 import os from 'node:os';
 import path from 'node:path';
 import { renderPanel, AGY_SERVER_KEY } from './config-page.js';
-import { getOrIssueAccessToken, rotateAccessToken, rotatePassphrase, loadOrCreatePassphrase } from './oauth.js';
+import { getOrIssueAccessToken, rotateAccessToken, rotatePassphrase, loadOrCreatePassphrase, listClients, removeClient } from './oauth.js';
+import { logSecurity, readSecurityLog } from './security-log.js';
+import { listCallers } from './callers.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
 import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
@@ -192,8 +194,7 @@ function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
   updateInfo.mcp.current = local.mcp;
   updateInfo.mcp.updateAvailable = cmpSemver(local.mcp, updateInfo.mcp.latest) < 0;
-  // Rebuild the whole rule branch (installed/unreleasedOnly/state), not just current, so a post-install
-  // reload flips "not installed" -> "installed" and clears the update badge — same source as boot.
+  // Rebuild the whole rule branch (installed/unreleasedOnly/state), not just current, so a post-install reload flips "not installed" -> "installed" and clears the update badge — same source as boot.
   updateInfo.rule = getRuleStatus(updateInfo.rule?.latest ?? null);
   writeStatusFile(updateInfo);
 }
@@ -265,13 +266,17 @@ export const ROUTES = {
     setTrustedDirs(validateTrustedDirs(body.dirs));
     return { ok: true, message: `saved trusted directories to ${SETTINGS_PATH}` };
   },
-  'GET /api/rate-limit': async () => ({ limits: readLimits(), defaults: LIMIT_DEFAULTS, blocked: failures.blockedList() }),
+  'GET /api/security': async () => ({ limits: readLimits(), defaults: LIMIT_DEFAULTS, blocked: failures.blockedList(), clients: listClients(), callers: listCallers(), log: readSecurityLog() }),
+  'POST /api/clients/remove': async (body) => ({ ok: true, message: removeClient(typeof body.clientId === 'string' ? body.clientId : '') }),
   'POST /api/rate-limit': async (body) => {
     setRateLimit(validateLimits(body.limits));
+    logSecurity('connection limits saved');
     return { ok: true, message: 'saved — applies from the next request' };
   },
   'POST /api/rate-limit/release': async (body) => {
-    failures.release(typeof body.key === 'string' ? body.key : undefined);
+    const key = typeof body.key === 'string' ? body.key : undefined;
+    failures.release(key);
+    logSecurity(key ? `released ${key.slice(0, 64)}` : 'released every blocked caller');
     return { ok: true, message: body.key ? 'released' : 'everyone released' };
   },
   'POST /api/install-rules': async (body, ctx) => {

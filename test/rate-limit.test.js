@@ -46,6 +46,9 @@ assert.equal(clientKey(fake('127.0.0.1', { 'cf-connecting-ip': '198.51.100.7' })
 assert.equal(clientKey(fake('::1', { 'x-forwarded-for': 'spoofed, 198.51.100.8' })), '198.51.100.8');
 assert.equal(clientKey(fake('::ffff:127.0.0.1')), 'loopback');
 
+const printed = [];
+const consoleLog = console.log;
+console.log = (...a) => { printed.push(a.join(' ')); consoleLog(...a); };
 const server = startGatekeeper(null);
 await new Promise((resolve) => server.once('listening', resolve));
 const call = (pathname, headers) => new Promise((resolve, reject) => {
@@ -62,6 +65,10 @@ const refused = await call('/mcp', { 'x-forwarded-for': '198.51.100.3', authoriz
 assert.equal(refused.status, 429);
 assert.ok(Number(refused.retryAfter) > 800, 'default block is 15 minutes');
 assert.equal((await call('/mcp', { 'x-forwarded-for': '198.51.100.3', authorization: 'Bearer ' + goodToken })).status, 405, 'valid credentials are never refused');
+await call('/mcp', { 'x-forwarded-for': '198.51.100.3', authorization: 'Bearer ' + goodToken });
+assert.equal(printed.filter((l) => l.includes('token used by new caller 198.51.100.3')).length, 1, 'a new caller is logged once');
+assert.equal(printed.filter((l) => l.includes('/nope') || l.includes('-> 429') || l.includes('GET /mcp')).length, 0, '404, 429 and /mcp access lines are not printed');
+assert.equal(printed.filter((l) => l.includes('blocked after repeated failed attempts')).length, 1, 'a block is logged once');
 
 server.close();
 

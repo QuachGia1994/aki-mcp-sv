@@ -1,8 +1,8 @@
 # Security
 
-> updated 2026-09-30 · v2.1.0
+> updated 2026-10-01 · v2.1.0
 
-The one place for akimcp's whole security picture: stance, every surface and its gate, the connection limits, what each secret on disk unlocks and how to revoke it. README carries a summary and points here. Planned changes (client activity, security-only log, provisional registrations): `docs/plan/client-activity-and-security-log.md`.
+The one place for akimcp's whole security picture: stance, every surface and its gate, the connection limits, who holds access and who uses it, what each secret on disk unlocks and how to revoke it, and what is logged. README carries a summary and points here. Design record for client activity and the security-only log: `docs/plan/done/client-activity-and-security-log.md`.
 
 ## Design stance — convenience first, guardrail second
 
@@ -53,7 +53,7 @@ The two layers that actually block access:
 
 **Whoever knows the passphrase can get a token.** They can register their own client and read the code off the redirect. The passphrase is therefore the real key, and a leaked passphrase is handled as a leaked token (see When something leaks).
 
-Tokens: there is exactly one access token, shared by every client, TTL 1 year (`getOrIssueAccessToken`, design: `docs/plan/single-access-token.md`). Refresh tokens are per authorization, bound to their client, and do not expire. Panel section 1 shows the token and offers *Roll token* (new access token, refresh kept: web AIs refresh silently, pasted local snippets must be re-pasted) and *Roll & sign out all clients* (also clears refresh tokens: every AI reconnects with the passphrase). Both files survive restarts: a connector is long-lived access, not a login session.
+Tokens: there is exactly one access token, shared by every client, TTL 1 year (`getOrIssueAccessToken`, design: `docs/plan/done/single-access-token.md`). Refresh tokens are per authorization, bound to their client, and do not expire. Panel section 1 shows the token and offers *Roll token* (new access token, refresh kept: web AIs refresh silently, pasted local snippets must be re-pasted) and *Roll & sign out all clients* (also clears refresh tokens: every AI reconnects with the passphrase). Both files survive restarts: a connector is long-lived access, not a login session.
 
 The ingress (Tailscale Funnel by default, a `PUBLIC_ORIGIN` edge, or a Cloudflare tunnel via `--tunnel`) only terminates TLS and forwards to the same loopback server; it never changes the trust boundary. Without an ingress, discovery, `/register`, `/authorize` and `/token` return `503` while local `/mcp` keeps serving; attaching one takes effect on restart.
 
@@ -68,7 +68,7 @@ Use the literal `127.0.0.1`, never `localhost`: on macOS `localhost` can resolve
 
 ## Connection limits
 
-`scripts/rate-limit.js`, wired in `scripts/gatekeeper.js`, configured in panel section 7. Only **failures** count, so a caller with valid credentials is never counted or refused.
+`scripts/rate-limit.js`, wired in `scripts/gatekeeper.js`, configured in panel section 7 (Security & connection limits). Only **failures** count, so a caller with valid credentials is never counted or refused.
 
 | Setting (`setting.json` → `rateLimit`) | Default | Meaning |
 |---|---|---|
@@ -103,6 +103,16 @@ Verdict record (`proportion.C1`):
 - **Shell allowlist:** `run_cmd` uses `execFile`, never a shell, and refuses `; & | \``. A binary runs only if it is on the allowlist (inspection-first by default: reads plus a few dev and media helpers; flag-rich binaries that escape read-only, such as `find` and `sort`, are kept out; `git branch`/`tag`/`remote` pass in their read forms only). Bare `git` on the list means every git command. Edited in panel section 6; any command the owner adds is the owner's responsibility.
 - **Trusted script zones:** a script under `shell.allowlistDirs` (default `~/.claude/skills`, `~/.aki/akidevrule`, the folders the akidevrule installer writes) runs without an allowlist row. The check resolves symlinks on both sides, lets `node`/`python3`/… through only with a script path (so `node -e` stays blocked), and excludes shells. Write and run cannot chain: the file tools refuse any path inside a zone (`scripts/roots.js:resolveRealWritable`). Shell commands the owner opts into that write files (`cp`, `git checkout`, …) are outside that guarantee.
 
+## Who holds access, who uses it
+
+Panel section 7 shows two tables and the security log, refreshed with the section's Refresh buttons.
+
+- **Clients** (`listClients()`, `scripts/oauth.js`): every client record, the Claude pair included, with name (self-declared), kind, redirect host, first seen, last approval, last token grant, and the caller address and User-Agent at that moment. The fields live on the client record itself (`firstSeenAt`, `approvedAt`, `tokenAt`, `lastAddress`, `lastAgent`) and are written only on registration, approval and token grant. The client files are written atomically (temp file, then rename). Records from before tracking show "before tracking". **Signed in** means the client holds a refresh token and can renew access on its own.
+- **Dead clients are cleared** (`pruneClients()`, at start and at every `/register`): a DCR client never approved within 1 hour of registering goes, so strangers cannot fill `maxClients` and lock the owner out; any other DCR client goes once it holds no refresh token and has been idle 30 days (records from before tracking count as idle). The 30 days let a connector reconnect with its stored client ID after Roll & sign out all clients.
+- **Remove / Sign out** (`removeClient()`, `POST /api/clients/remove`): drops the client's refresh tokens and forgets a DCR record; the Claude pair is only signed out, since its ID and secret are pasted into claude.ai. The shared access token the client already holds keeps working until Roll token; the other clients renew on their own after that roll.
+- **Active now** (`scripts/callers.js`): callers that used the valid token since the last restart, keyed by caller address, with User-Agent, first and last seen and request count. Memory only, 64 entries, least recently seen evicted. With one shared token this is the only view of `/mcp` usage; it cannot name the client.
+- **The one action for anything unrecognized:** Roll passphrase, then Roll & sign out all clients (section 1). A client can only have been approved with the passphrase.
+
 ## Secrets on disk
 
 All under the data dir (`~/.aki/mcpsv/` by default), mode `0600`, never inside the repo.
@@ -124,22 +134,46 @@ The panel token lives only in memory and changes on every start.
 | Passphrase seen by someone | Roll passphrase, then Roll & sign out all clients | the new passphrase stops new authorizations; the hard roll evicts any token already obtained |
 | Access token seen (screenshot, pasted snippet) | Roll & sign out all clients | a soft roll leaves refresh tokens, which a holder could use to get the new token |
 | Unknown client in the list, or a caller you do not recognize using the token | both rolls, as for the passphrase | a client can only have been authorized with the passphrase |
+| A connector you no longer use | Remove it in section 7, then Roll token | removal ends its refresh; the roll ends the access token it holds |
 | A flood of failed attempts | nothing; the limits handle it | brute force is infeasible; Release in panel section 7 if your own address got blocked |
 
 ## What is logged
 
-Console only (`scripts/log.js`, timestamped), no log file. Today every request prints one gatekeeper line, plus OAuth events (registration rejected, wrong passphrase, approval, token grant, bearer failure) and one line when a caller gets blocked. The planned change to log only security events is in the plan named at the top.
+`[security]` events go through `logSecurity()` (`scripts/security-log.js`): printed to the console and appended to `security.log` in the data dir, which moves to `security.log.1` at 1 MB, so the file pair never exceeds about 2 MB. Panel section 7 shows the newest 200 lines of the current file. Everything else is console only (`scripts/log.js`, timestamped). Only events that change or threaten the security state print, so the log stays readable after weeks and an attacker cannot make it grow at will.
+
+| Printed | Not printed |
+|---|---|
+| `[security]` wrong passphrase (with caller), client approved (name, redirect host, first approval), token granted (grant type, client), passphrase rolled, client removed or signed out from the panel, access token issued or rolled (console only) | `/mcp` 2xx, 202 and 405 access lines |
+| `[security]` `/mcp` rejected bearer (with caller), caller blocked, caller released, limits saved | `/register` 201 (the client appears in the panel; its approval is the event) |
+| `[security]` token used by new caller (first valid request from an address since start) | `429` refusals (the block line already said it) |
+| `[gatekeeper]` access lines for discovery, `/authorize`, `/token` (rare; `CLAUDE.md` RECURRING #1 is diagnosed from them), and every 5xx | `404` on unknown paths (scanner noise) |
+| registration rejected (redirect not allowlisted), token failures | |
+
+Volume: idle, nothing; a normal day, tens of lines; under attack, at most `failMax` failure lines and one block line per address per `blockMinutes`.
+
+## Footprint over a long run
+
+| Thing | Bound |
+|---|---|
+| limiter state | memory, ≤ 10,000 caller keys per limiter |
+| live callers | memory, 64 entries |
+| authorization codes | memory, expired ones swept whenever a new code is added |
+| refresh tokens | one per approval, persisted; tokens of a client that no longer exists are dropped at start |
+| DCR clients | file, ≤ `maxClients`; unapproved ones expire after 1 hour, signed-out ones after 30 idle days |
+| security log | file, ≤ 1 MB plus one rotated copy |
+| disk writes | only on registration, approval, token grant, roll, settings save and a security event |
 
 ## Real limitations
 
-- **One shared access token, no per-client revocation:** a leak is a leak for all; roll instead of revoking one client. It also means `/mcp` traffic cannot be attributed to a client, only to a caller address.
+- **One shared access token, so removing a client is not instant revocation:** Remove ends its refresh, but it keeps the current access token until Roll token; a leak is a leak for all. It also means `/mcp` traffic cannot be attributed to a client, only to a caller address.
 - **No refresh token rotation** for the pre-registered Claude client (the spec's rotation rule targets public clients).
 - **The limiter is in memory and keyed per caller:** a restart clears it, a caller who can forge the forwarding headers picks its own key, and an ingress that forwards no address puts every remote caller in one bucket.
-- **DCR stores one client per connector instance** and nothing prunes them yet; `maxClients` bounds the file.
+- **DCR stores one client per connector instance**; a connector deleted on the provider's side keeps its refresh token here, so it stays listed as signed in until removed in section 7.
+- **Client names are self-declared** by whoever registered; the redirect host (allowlisted) and the first-seen time are the trustworthy columns.
 
 ## Cross-references
-- `docs/plan/client-activity-and-security-log.md` — planned: client activity, live callers, security-only log, provisional registrations
-- `docs/plan/single-access-token.md` — why one shared access token
+- `docs/plan/done/client-activity-and-security-log.md` — decisions behind client activity, live callers, the security-only log and pending-registration expiry
+- `docs/plan/done/single-access-token.md` — why one shared access token
 - `docs/research/claude-ai-oauth-connector.md` — research that drove the Claude pre-registered path
 - `docs/ref/claude-connector.md`, `docs/ref/chatgpt-connector.md` — connector dialogs
 - OpenAI Apps SDK auth: https://developers.openai.com/apps-sdk/build/auth

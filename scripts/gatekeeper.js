@@ -5,11 +5,14 @@ import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken,
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
 import { log, logErr } from './log.js';
 import { serveStatic } from './http.js';
+import { recordCaller } from './callers.js';
+import { logSecurity } from './security-log.js';
 import { failures, registrations, clientKey } from './rate-limit.js';
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 // Only a rejected credential counts: protocol errors and unknown paths happen during normal connects and must never lock the owner out.
 const FAILURE_STATUS = 401;
+const OAUTH_PATHS = /^(\/\.well-known\/|\/authorize$|\/token$)/;
 
 function refuse(res, retryAfterSeconds) {
   res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': String(retryAfterSeconds) });
@@ -28,13 +31,14 @@ export function startGatekeeper(origin = null, onFatal) {
   // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
   const meta = origin ? metadataHandlers(origin) : null;
   const recordFailure = (key) => {
-    if (failures.record(key)) log(`[gatekeeper] rate limit: ${key} refused after repeated failed attempts`);
+    if (failures.record(key)) logSecurity(`caller ${key} blocked after repeated failed attempts`);
   };
 
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0];
     const t0 = Date.now();
-    res.on('finish', () => log(`[gatekeeper] ${req.method} ${req.url} -> ${res.statusCode} ${Date.now() - t0}ms`));
+    const isSecurityAccess = () => OAUTH_PATHS.test(path) || res.statusCode >= 500;
+    res.on('finish', () => { if (isSecurityAccess()) log(`[gatekeeper] ${req.method} ${req.url} -> ${res.statusCode} ${Date.now() - t0}ms`); });
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -83,6 +87,7 @@ export function startGatekeeper(origin = null, onFatal) {
       if (!verifyBearer(req.headers.authorization)) {
         const wait = failures.retryAfterSeconds(key);
         if (wait) return refuse(res, wait);
+        logSecurity(`/mcp rejected bearer from ${key}`);
         recordFailure(key);
         // Advertise the OAuth resource metadata only when an ingress is attached; on pure loopback emit a bare
         // Bearer challenge instead of a bogus "null/.well-known/..." URL.
@@ -93,6 +98,8 @@ export function startGatekeeper(origin = null, onFatal) {
         res.end('unauthorized');
         return;
       }
+      const agent = req.headers['user-agent'] || 'no user-agent';
+      if (recordCaller(key, agent)) logSecurity(`token used by new caller ${key} (${agent.slice(0, 64)})`);
       if (req.method === 'POST') return handleStreamableMcp(req, res);
       if (req.method === 'DELETE') {
         const sid = req.headers['mcp-session-id'];

@@ -73,7 +73,7 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - **OAuth and passphrase state** in `~/.aki/mcpsv/`: generated once and reused on later runs.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
 - Prints the **Remote MCP server URL** and **Passphrase** used on the confirmation page when a client connects.
-- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Ingress · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension · 7 Limits), then the sections follow it: 0 Ingress (optional; a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist, 7 Connection limits (rate limit settings, blocked callers, Release).
+- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Ingress · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension · 7 Security), then the sections follow it: 0 Ingress (optional; a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist, 7 Security & connection limits (rate limit settings, blocked callers and Release, registered clients with Remove, callers active since start, the security log).
 
 The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for every tool — shell, find, search, and file read/write/edit alike — no restart. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
 
@@ -263,10 +263,15 @@ aki-mcp-sv/
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
+│   ├── rate-limit.js             # failure-only limiter: blocks callers after repeated wrong credentials
+│   ├── callers.js                # in-memory list of addresses that used the valid token since start
+│   ├── security-log.js           # [security] events to console + security.log (rotated at 1 MB)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> the in-process tools server (InMemoryTransport)
 │   ├── tools-server.js           # builds the one shared McpServer mounting every tool arm below
+│   ├── stdio.js                  # the same tools server over stdin/stdout, for Antigravity CLI and IDE
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
 │   ├── shell-mcp.js              # allowlist-gated shell tool (inspection-first defaults)
+│   ├── output-shape.js           # trims run_cmd output for the model, saves the full text under ~/.aki/mcpsv/out/
 │   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
@@ -289,6 +294,7 @@ aki-mcp-sv/
 │   ├── roots.js                  # path containment shared by every filesystem-touching tool
 │   ├── tailscale.js              # reads Funnel status — shared by start.js and panel
 │   ├── update-check.js           # checks for newer aki-mcp-sv/akidevrule versions, shown in the panel
+│   ├── rule-version-core.cjs     # AkiDevRule version parsing and compare, shared by the panel and Postman
 │   ├── log.js                    # shared timestamped logger
 │   ├── panel.js                  # loopback-only control panel (:9998), token-gated
 │   ├── config-page.js            # renders the panel page
@@ -380,7 +386,7 @@ Use `aki__find_path` to locate a file or directory — it scans the whole tree i
 - **Remote access** goes through minimal OAuth 2.1: an allowlisted redirect, a 50-bit passphrase at `/authorize`, PKCE S256. Claude uses a pre-issued Client ID/Secret; ChatGPT, Grok and Gemini self-register (DCR). Whoever knows the passphrase can get a token, so treat it like the token.
 - **One shared access token** (1 year) for every client, shown and rolled in panel section 1. *Roll & sign out all clients* is the answer to any leak.
 - **Loopback is not trusted**: the server binds `127.0.0.1` only and still requires the token, so a web page in your browser cannot drive it. The panel binds `127.0.0.1` too and needs its own per-start token.
-- **Wrong credentials get blocked**: default 5 in 60 seconds, then 15 minutes of `429`. Valid tokens are never counted or blocked. Panel section 7 edits every number, lists blocked callers and releases them.
+- **Wrong credentials get blocked**: default 5 in 60 seconds, then 15 minutes of `429`. Valid tokens are never counted or blocked. Panel section 7 edits every number, lists blocked callers and releases them, shows every registered client (with Remove) and who used the token since the last restart, and shows the security log (`security.log` in the data dir, rotated at 1 MB).
 - **Tools reach only the folders you list** (default your home folder plus `~/.aki` and `~/.claude`), and the shell runs only allowlisted commands, without a shell (panel sections 5 and 6). Commands you add are your responsibility.
 - **Secrets** (`passphrase.txt`, `tokens.json`, `oauth-client.json`, `oauth-dcr-clients.json`) live in `~/.aki/mcpsv/`, mode 0600, never in the repo.
 

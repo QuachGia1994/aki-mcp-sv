@@ -3,7 +3,7 @@
 // Claude: pre-registered confidential client (paste Client ID/Secret), or DCR if it self-registers.
 // ChatGPT: RFC 7591 DCR + public client (token_endpoint_auth_method: none) + chatgpt.com redirect URIs.
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import {
   CLIENT_PATH as CLIENT_FILE,
@@ -12,20 +12,24 @@ import {
   TOKENS_PATH as TOKENS_FILE,
 } from './userdata.js';
 import { log } from './log.js';
+import { logSecurity } from './security-log.js';
 import { readBody, json as httpJson } from './http.js';
 import { esc } from './html.js';
-import { readLimits } from './rate-limit.js';
+import { readLimits, clientKey } from './rate-limit.js';
 
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const CHATGPT_LEGACY_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
 const CHATGPT_CALLBACK_PREFIX = 'https://chatgpt.com/connector/oauth/';
-// Gemini custom connected apps redirect through Google's OAuth proxy, not a gemini.google.com path — observed live 2026-08-09:
-// redirect_uri=https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-<numeric>-<host-with-underscores>
+// Gemini custom connected apps redirect through Google's OAuth proxy, not a gemini.google.com path — observed live 2026-08-09: redirect_uri=https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-<numeric>-<host-with-underscores>
 const GEMINI_CALLBACK_PREFIX = 'https://oauth-redirect.googleusercontent.com/r/';
-// Grok self-registers (DCR) with this callback — observed live 2026-08-09 from the register-REJECTED log:
-// redirect_uris=["https://grok.com/connectors-oauth-exchange-code/"]. Note: NOT a /connector/oauth/ path.
+// Grok self-registers (DCR) with this callback — observed live 2026-08-09 from the register-REJECTED log: redirect_uris=["https://grok.com/connectors-oauth-exchange-code/"]. Note: NOT a /connector/oauth/ path.
 const GROK_CALLBACK_PREFIX = 'https://grok.com/connectors-oauth-exchange-code/';
 const CODE_TTL_MS = 5 * 60 * 1000;
+const PENDING_CLIENT_TTL_MS = 3600_000;
+const IDLE_CLIENT_TTL_MS = 30 * 24 * 3600_000;
+const STATIC_CLIENT_NAME = 'Claude (pre-registered)';
+const MAX_LOGGED_TEXT = 64;
+const cut = (text) => String(text ?? '').slice(0, MAX_LOGGED_TEXT);
 const ACCESS_TTL_S = 365 * 24 * 3600;
 // no 0/o/1/l/i — avoid visual ambiguity when typing; 32 chars = power of 2, unbiased byte%32
 const PASSPHRASE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -57,6 +61,7 @@ function loadTokens() {
     console.error(`[oauth] skipping unreadable ${TOKENS_FILE} (${e.message}) — will need to authorize again`);
     return;
   }
+  if (dropRefreshTokens((entry) => !resolveClient(entry.clientId))) saveTokens();
   // Older versions minted a fresh access token per grant and never removed the old ones; keep the first valid one (the one the panel showed, so pasted snippets survive).
   const loaded = accessTokens.size;
   const kept = [...accessTokens].find(([, entry]) => entry.expires >= Date.now());
@@ -68,6 +73,16 @@ function loadTokens() {
   }
 }
 
+function dropRefreshTokens(shouldDrop) {
+  let dropped = 0;
+  for (const [token, entry] of refreshTokens) {
+    if (!shouldDrop(entry)) continue;
+    refreshTokens.delete(token);
+    dropped++;
+  }
+  return dropped;
+}
+
 function saveTokens() {
   const body = { access: Object.fromEntries(accessTokens), refresh: Object.fromEntries(refreshTokens) };
   writeFileSync(TOKENS_FILE, JSON.stringify(body), { mode: 0o600 });
@@ -75,10 +90,17 @@ function saveTokens() {
 
 loadTokens();
 
+// A crash between the temp write and the rename leaves the old file intact, so the Claude secret cannot be lost mid-write.
+function writeFileAtomic(file, content) {
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, content, { mode: 0o600 });
+  renameSync(tmp, file);
+}
+
 export function loadOrCreateClient() {
   if (existsSync(CLIENT_FILE)) return JSON.parse(readFileSync(CLIENT_FILE, 'utf8'));
   const creds = { clientId: randomBytes(16).toString('hex'), clientSecret: randomBytes(32).toString('hex') };
-  writeFileSync(CLIENT_FILE, JSON.stringify(creds), { mode: 0o600 });
+  writeFileAtomic(CLIENT_FILE, JSON.stringify(creds));
   return creds;
 }
 
@@ -93,7 +115,104 @@ function loadDcrClients() {
 }
 
 function saveDcrClients(map) {
-  writeFileSync(DCR_FILE, JSON.stringify(map, null, 2), { mode: 0o600 });
+  writeFileAtomic(DCR_FILE, JSON.stringify(map, null, 2));
+}
+
+function clientDisplayName(client) {
+  return cut(client.isStatic ? STATIC_CLIENT_NAME : client.clientName);
+}
+
+function callerFields(req) {
+  return { lastAddress: clientKey(req), lastAgent: String(req.headers['user-agent'] || '').slice(0, MAX_LOGGED_TEXT) };
+}
+
+// Writes activity back to the file the client came from; the static record also gets firstSeenAt the first time it is touched.
+function updateClientRecord(client, fields) {
+  if (client.isStatic) {
+    const stored = loadOrCreateClient();
+    writeFileAtomic(CLIENT_FILE, JSON.stringify({ ...stored, firstSeenAt: stored.firstSeenAt ?? Date.now(), ...fields }));
+    return;
+  }
+  const map = loadDcrClients();
+  if (!map[client.clientId]) return;
+  Object.assign(map[client.clientId], fields);
+  saveDcrClients(map);
+}
+
+function redirectHostOf(uris) {
+  try {
+    return new URL(uris?.[0]).host;
+  } catch {
+    return null;
+  }
+}
+
+function activityView(record, kind, signedInIds) {
+  const isClaude = kind === 'claude';
+  return {
+    clientId: record.clientId,
+    name: isClaude ? STATIC_CLIENT_NAME : record.clientName ?? null,
+    kind,
+    redirectHost: isClaude ? new URL(CLAUDE_CALLBACK).host : redirectHostOf(record.redirectUris),
+    firstSeenAt: record.firstSeenAt ?? null,
+    approvedAt: record.approvedAt ?? null,
+    tokenAt: record.tokenAt ?? null,
+    lastAddress: record.lastAddress ?? null,
+    lastAgent: record.lastAgent ?? null,
+    pending: kind === 'dcr' && !!record.firstSeenAt && !record.approvedAt,
+    signedIn: signedInIds.has(record.clientId),
+  };
+}
+
+const lastActivityAt = (record) => Math.max(record.tokenAt ?? 0, record.approvedAt ?? 0, record.firstSeenAt ?? 0);
+const signedInClientIds = () => new Set([...refreshTokens.values()].map((entry) => entry.clientId));
+
+/** Display fields only — never secrets. Most recently active first; never-tracked entries last. */
+export function listClients() {
+  const signedInIds = signedInClientIds();
+  const views = [activityView(loadOrCreateClient(), 'claude', signedInIds)];
+  for (const record of Object.values(loadDcrClients())) views.push(activityView(record, 'dcr', signedInIds));
+  return views.sort((a, b) => lastActivityAt(b) - lastActivityAt(a));
+}
+
+// Pending clients go after an hour. Any other client stays while it holds a refresh token, and otherwise for a month past its last activity, so reconnecting after a hard roll still finds it.
+function isDeadClient(record, signedInIds, now) {
+  const idle = now - lastActivityAt(record);
+  if (record.firstSeenAt && !record.approvedAt) return idle > PENDING_CLIENT_TTL_MS;
+  return !signedInIds.has(record.clientId) && idle > IDLE_CLIENT_TTL_MS;
+}
+
+function pruneClients(map) {
+  const signedInIds = signedInClientIds();
+  const dead = new Set(Object.keys(map).filter((id) => isDeadClient(map[id], signedInIds, Date.now())));
+  for (const id of dead) delete map[id];
+  if (dead.size && dropRefreshTokens((entry) => dead.has(entry.clientId))) saveTokens();
+  return dead.size;
+}
+
+function pruneStoredClients() {
+  const map = loadDcrClients();
+  const removed = pruneClients(map);
+  if (!removed) return;
+  saveDcrClients(map);
+  log(`[oauth] removed ${removed} unused clients`);
+}
+
+pruneStoredClients();
+
+/** Drops the client's refresh tokens, and forgets a registered connector. The shared access token it already holds keeps working until rolled. */
+export function removeClient(clientId) {
+  const client = resolveClient(clientId);
+  if (!client) throw new Error('unknown client — refresh the list');
+  if (dropRefreshTokens((entry) => entry.clientId === clientId)) saveTokens();
+  if (!client.isStatic) {
+    const map = loadDcrClients();
+    delete map[clientId];
+    saveDcrClients(map);
+  }
+  const outcome = client.isStatic ? 'signed out' : 'removed';
+  logSecurity(`client ${outcome} from the panel: ${clientDisplayName(client)}`);
+  return outcome;
 }
 
 /** Static Claude client + any clients ChatGPT (or Claude) registered via /register. */
@@ -101,10 +220,7 @@ function resolveClient(clientId) {
   if (!clientId) return null;
   const staticClient = loadOrCreateClient();
   if (clientId === staticClient.clientId) {
-    // The confidential client's ID/secret are deliberately pasted into more than one provider (Claude,
-    // and Gemini which reuses the same paste flow). Each provider sends its own redirect_uri, so this
-    // client accepts any allowlisted callback (isStatic below), not just CLAUDE_CALLBACK — the allowlist
-    // (isAllowedRedirect) is the security boundary, the same one /register enforces for public clients.
+    // The confidential client's ID/secret are deliberately pasted into more than one provider (Claude, and Gemini which reuses the same paste flow). Each provider sends its own redirect_uri, so this client accepts any allowlisted callback (isStatic below), not just CLAUDE_CALLBACK — the allowlist (isAllowedRedirect) is the security boundary, the same one /register enforces for public clients.
     return {
       clientId: staticClient.clientId,
       clientSecret: staticClient.clientSecret,
@@ -128,6 +244,7 @@ export function loadOrCreatePassphrase() {
 // The passphrase file is read per authorize request, so a roll takes effect immediately; existing tokens stay valid.
 export function rotatePassphrase() {
   rmSync(PASSPHRASE_FILE, { force: true });
+  logSecurity('passphrase rolled');
   return loadOrCreatePassphrase();
 }
 
@@ -187,9 +304,14 @@ export async function handleRegister(req, res) {
     redirectUris,
     tokenEndpointAuthMethod: authMethod,
     clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP client',
+    firstSeenAt: Date.now(),
   };
   const map = loadDcrClients();
-  if (Object.keys(map).length >= readLimits().maxClients) return json(res, 429, { error: 'too_many_clients' });
+  const pruned = pruneClients(map);
+  if (Object.keys(map).length >= readLimits().maxClients) {
+    if (pruned) saveDcrClients(map);
+    return json(res, 429, { error: 'too_many_clients' });
+  }
   map[clientId] = entry;
   saveDcrClients(map);
 
@@ -241,8 +363,7 @@ export async function handleAuthorize(req, res, passphrase, origin) {
   const codeChallengeMethod = q.get('code_challenge_method');
   const state = q.get('state') || '';
   const client = resolveClient(clientId);
-  // DCR clients are pinned to the exact redirect_uri they registered; the shared confidential client (isStatic)
-  // accepts any allowlisted callback, since it is pasted into several providers each with its own redirect.
+  // DCR clients are pinned to the exact redirect_uri they registered; the shared confidential client (isStatic) accepts any allowlisted callback, since it is pasted into several providers each with its own redirect.
   const redirectOk = !!client && (client.redirectUris.includes(redirectUri) || (client.isStatic && isAllowedRedirect(redirectUri)));
 
   if (!redirectOk || codeChallengeMethod !== 'S256' || !codeChallenge) {
@@ -274,20 +395,28 @@ export async function handleAuthorize(req, res, passphrase, origin) {
   }
 
   if (!safeEqual(q.get('passphrase'), passphrase)) {
-    log('[oauth] authorize POST: WRONG passphrase');
+    logSecurity(`wrong passphrase from ${clientKey(req)}`);
     res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(errorPage('Wrong passphrase', "That passphrase didn't match."));
     return;
   }
   const code = randomBytes(24).toString('hex');
-  authCodes.set(code, { clientId, redirectUri, codeChallenge, expires: Date.now() + CODE_TTL_MS });
-  log(`[oauth] authorize approved -> code issued (state=${state ? 'yes' : 'no'}), redirecting to ${new URL(redirectUri).host}`);
+  addAuthCode(code, { clientId, redirectUri, codeChallenge, expires: Date.now() + CODE_TTL_MS });
   const redirect = new URL(redirectUri);
+  const firstApproval = client.isStatic ? !loadOrCreateClient().approvedAt : !client.approvedAt;
+  updateClientRecord(client, { approvedAt: Date.now(), ...callerFields(req) });
+  logSecurity(`client approved: ${clientDisplayName(client)} (${redirect.host})${firstApproval ? ' — first approval' : ''}`);
   redirect.searchParams.set('code', code);
   redirect.searchParams.set('iss', origin);
   if (state) redirect.searchParams.set('state', state);
   res.writeHead(302, { Location: redirect.toString() });
   res.end();
+}
+
+function addAuthCode(code, entry) {
+  const now = Date.now();
+  for (const [key, held] of authCodes) if (held.expires < now) authCodes.delete(key);
+  authCodes.set(code, entry);
 }
 
 function authenticateClient(body) {
@@ -331,7 +460,7 @@ export async function handleToken(req, res) {
       log('[oauth] token FAILED: invalid_grant (PKCE code_verifier mismatch)');
       return json(res, 400, { error: 'invalid_grant' });
     }
-    return issueTokens(res, entry.clientId, undefined, 'authorization_code');
+    return issueTokens(req, res, client, undefined, 'authorization_code');
   }
 
   if (grantType === 'refresh_token') {
@@ -340,7 +469,7 @@ export async function handleToken(req, res) {
       log(`[oauth] token FAILED: invalid_grant (${entry ? 'refresh_token belongs to another client' : 'unknown refresh_token — stale after tokens file reset?'})`);
       return json(res, 400, { error: 'invalid_grant' });
     }
-    return issueTokens(res, entry.clientId, body.get('refresh_token'), 'refresh_token');
+    return issueTokens(req, res, client, body.get('refresh_token'), 'refresh_token');
   }
 
   log(`[oauth] token FAILED: unsupported_grant_type (${grantType})`);
@@ -367,31 +496,21 @@ export function rotateAccessToken({ revokeRefresh = false } = {}) {
   return getOrIssueAccessToken(revokeRefresh ? 'hard roll' : 'roll');
 }
 
-function issueTokens(res, clientId, existingRefresh, via) {
+function issueTokens(req, res, client, existingRefresh, via) {
   const accessToken = getOrIssueAccessToken(via);
   const refreshToken = existingRefresh || randomBytes(32).toString('hex');
   if (!existingRefresh) {
-    refreshTokens.set(refreshToken, { clientId });
+    refreshTokens.set(refreshToken, { clientId: client.clientId });
     saveTokens();
   }
-  log(`[oauth] tokens returned via ${via} — client is now authorized`);
+  updateClientRecord(client, { tokenAt: Date.now(), ...callerFields(req) });
+  logSecurity(`token granted (${cut(via)}) to ${clientDisplayName(client)}`);
   const expiresIn = Math.floor((accessTokens.get(accessToken).expires - Date.now()) / 1000);
   json(res, 200, { access_token: accessToken, token_type: 'Bearer', expires_in: expiresIn, refresh_token: refreshToken });
 }
 
 export function verifyBearer(authHeader) {
-  if (!authHeader?.startsWith('Bearer ')) {
-    log('[oauth] bearer check FAILED: no/invalid Authorization header');
-    return false;
-  }
+  if (!authHeader?.startsWith('Bearer ')) return false;
   const entry = accessTokens.get(authHeader.slice(7));
-  if (!entry) {
-    log('[oauth] bearer check FAILED: token not recognized (stale after tokens file reset / restart?)');
-    return false;
-  }
-  if (entry.expires < Date.now()) {
-    log('[oauth] bearer check FAILED: token expired');
-    return false;
-  }
-  return true;
+  return !!entry && entry.expires >= Date.now();
 }

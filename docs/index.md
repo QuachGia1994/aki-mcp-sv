@@ -69,4 +69,4 @@
 - [research/agy-mcp-config-ide-cli.md](research/agy-mcp-config-ide-cli.md) — 2026-09-29 event record behind `fact-agy-mcp-config.md`: bundle and doc reads, IDE launched under CDP, what is still unverified
 - [plan/done/cdp-control-layer-cleanup.md](plan/done/cdp-control-layer-cleanup.md) — shipped 2.2.0: CDP/Postman control layer cleanup: naming, indirection and contract fixes; #4 in its own plan, #7 belongs to another repo
 - [plan/done/chrome-probe-ai-usage-accuracy.md](plan/done/chrome-probe-ai-usage-accuracy.md) — dropped 2026-09-30, not executed: `aki__chrome_probe_ai` was removed instead of made accurate
-- [plan/client-activity-and-security-log.md](plan/client-activity-and-security-log.md) — proposed: per-client activity on the client record, live `/mcp` callers in memory, security-only log, provisional DCR registrations, housekeeping for long runs; not started
+- [plan/done/client-activity-and-security-log.md](plan/done/client-activity-and-security-log.md) — shipped 2026-09-30: per-client activity on the client record, live `/mcp` callers in memory, security-only log, provisional DCR registrations, housekeeping for long runs

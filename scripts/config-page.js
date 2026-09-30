@@ -123,8 +123,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const agyStdioPath = path.join(repoRoot, 'scripts', 'stdio.js');
   const agyJson = JSON.stringify({ mcpServers: { [AGY_SERVER_KEY]: { command: 'node', args: [agyStdioPath] } } });
   const claudeCodeCmd = `claude mcp add --transport http aki-mcp ${localUrl} --header "Authorization: Bearer ${accessToken}"`;
-  // Codex CLI (~/.codex/config.toml) speaks streamable HTTP via a `url` key; `http_headers` carries a static bearer so the
-  // snippet is copy-paste-ready with no shell env var to export first (matches how every other local tab embeds the token).
+  // Codex CLI (~/.codex/config.toml) speaks streamable HTTP via a `url` key; `http_headers` carries a static bearer so the snippet is copy-paste-ready with no shell env var to export first (matches how every other local tab embeds the token).
   const codexToml = `[mcp_servers.aki-mcp]\nurl = "${localUrl}"\nhttp_headers = { "Authorization" = "Bearer ${accessToken}" }`;
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
@@ -183,7 +182,7 @@ ${updateBanner}
   <li class="step"><a href="#s2"><span class="step-n">2</span> Install rules</a></li>
   <li class="step"><a href="#s3"><span class="step-n">3</span> Instructions</a></li>
   <li class="step opt"><a href="#s4"><span class="step-n">4</span> Extension <em>optional</em></a></li>
-  <li class="step opt"><a href="#s7"><span class="step-n">7</span> Limits <em>security</em></a></li>
+  <li class="step opt"><a href="#s7"><span class="step-n">7</span> Security</a></li>
 </ol>
 </section>
 
@@ -430,7 +429,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </div>
 </section>
 
-<section id="s7"><h2>7 · Connection limits</h2>
+<section id="s7"><h2>7 · Security &amp; connection limits</h2>
 <p class="helptext"><strong>What this protects:</strong> the public address is reachable by anyone who learns it, and the only thing between them and your machine is the passphrase. A caller that keeps presenting <em>wrong</em> credentials is blocked for a while; a caller with a valid token is never counted or blocked, and neither are mistyped URLs (404) or malformed requests (400). Connecting many providers in a row is safe — only wrong credentials count.</p>
 <p class="helptext"><strong>When a block ends:</strong> automatically after the block time below (the counter restarts from zero), immediately when you press Release, or when this app restarts. Callers are told by their public address; if your tunnel does not forward it, all remote callers share one address named <code>loopback</code>, so one attacker could block remote access until you release it. Changes apply from the next request, no restart.</p>
 <label class="chk"><input type="checkbox" data-limit="enabled"> Limits enabled</label>
@@ -453,6 +452,20 @@ ${field('Widen command', WIDEN_SNIPPET)}
   <button data-act="refreshBlocked">Refresh</button>
   <button data-act="releaseAll">Release everyone</button>
   <span class="msg" id="msgBlocked"></span>
+</div>
+<h3 class="subh">Clients</h3>
+<p class="helptext">Every AI app that asked to connect. <strong>Signed in</strong> means it can keep renewing access on its own. A connection that was never approved is cleared after 1 hour; one that is no longer signed in is cleared after 30 days without activity. Remove signs a client out, but all clients share one access token, so a removed app keeps working until you press Roll token in <a href="#s1">section 1</a> — the others renew on their own.</p>
+<div id="clientsList"></div>
+<div class="acts"><span class="msg" id="msgClients"></span></div>
+<h3 class="subh">Active now (since last restart)</h3>
+<div id="callersList"></div>
+<p class="helptext">Don't recognize a client or a caller? Roll the passphrase and use Roll &amp; sign out all clients in <a href="#s1">section 1</a>.</p>
+<h3 class="subh">Security log</h3>
+<p class="helptext">Wrong passphrases, rejected tokens, blocks, approvals and new callers — newest first, the last 200 lines. Saved to <span class="mono" id="securityLogPath"></span>; at 1 MB it moves to <span class="mono">security.log.1</span>, so it never grows past about 2 MB.</p>
+<pre class="logbox" id="securityLog"></pre>
+<div class="acts">
+  <button data-act="refreshLog">Refresh</button>
+  <span class="msg" id="msgLog"></span>
 </div>
 </section>
 

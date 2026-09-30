@@ -1,6 +1,6 @@
 # Client activity, security-only log, provisional registrations
 
-**Status:** PROPOSED, not started · 2026-09-30 · current state: `docs/feat/security.md` · governing rules: `coding.C4`, `proportion`, `pattern.A1`, `pattern.A8`
+**Status:** DONE, unreleased (in `CHANGELOG.md` `[Unreleased]`) · 2026-09-30 · current state: `docs/feat/security.md` · governing rules: `coding.C4`, `proportion`, `pattern.A1`, `pattern.A8`
 
 ## Goal chain
 
@@ -85,13 +85,13 @@ Budget after the change: idle, 0 lines; a normal day, tens of lines; under attac
 
 ## Steps
 
-- [ ] `scripts/oauth.js`: atomic write helper for the two client files; `firstSeenAt` on register; `approvedAt`, `tokenAt`, `lastAddress`, `lastAgent` on approve and grant (the caller key comes from `clientKey(req)`); D3 prune before the cap check; D6 authCodes sweep and refresh-token drop; export a `listClients()` that returns display fields only, never secrets.
-- [ ] `scripts/gatekeeper.js`: D2 live-caller map after the Bearer check; D4 access-line filter (one predicate beside the `finish` handler).
-- [ ] `scripts/rate-limit.js` or a new `scripts/activity.js`: only if the live-caller map does not fit cleanly in `gatekeeper.js` (decide by the "and" test).
-- [ ] `scripts/panel.js`: `GET /api/rate-limit` → `GET /api/security` returning `{ limits, defaults, blocked, clients, callers }`; log line on release and on limits save.
-- [ ] `scripts/config-page.js`, `public/panel-client.js`, `public/panel.css`: section 7 renamed "Security & connection limits" with the two tables and the roll pointer; step nav label updated.
-- [ ] Tests (`test/rate-limit.test.js`, or a new `test/security-activity.test.js` added to `npm test`): prune keeps approved and legacy entries and drops stale pending ones; `listClients()` never returns `clientSecret`; a valid Bearer from a new key adds one caller and logs once; the second request logs nothing; `404`, `429` and `/mcp` 2xx print no access line; the caller map never exceeds its cap.
-- [ ] Docs: `docs/feat/security.md` (What is logged, Surfaces, Real limitations, stamp), README Security summary, `CHANGELOG.md` `[Unreleased]`, `docs/index.md`; move this plan to `done/`.
+- [x] `scripts/oauth.js`: atomic write helper for the two client files; `firstSeenAt` on register; `approvedAt`, `tokenAt`, `lastAddress`, `lastAgent` on approve and grant (the caller key comes from `clientKey(req)`); D3 prune before the cap check; D6 authCodes sweep and refresh-token drop; export a `listClients()` that returns display fields only, never secrets.
+- [x] `scripts/gatekeeper.js`: D2 live-caller map after the Bearer check; D4 access-line filter (one predicate beside the `finish` handler).
+- [x] `scripts/rate-limit.js` or a new `scripts/activity.js`: only if the live-caller map does not fit cleanly in `gatekeeper.js` (decide by the "and" test).
+- [x] `scripts/panel.js`: `GET /api/rate-limit` → `GET /api/security` returning `{ limits, defaults, blocked, clients, callers }`; log line on release and on limits save.
+- [x] `scripts/config-page.js`, `public/panel-client.js`, `public/panel.css`: section 7 renamed "Security & connection limits" with the two tables and the roll pointer; step nav label updated.
+- [x] Tests (`test/rate-limit.test.js`, or a new `test/security-activity.test.js` added to `npm test`): prune keeps approved and legacy entries and drops stale pending ones; `listClients()` never returns `clientSecret`; a valid Bearer from a new key adds one caller and logs once; the second request logs nothing; `404`, `429` and `/mcp` 2xx print no access line; the caller map never exceeds its cap.
+- [x] Docs: `docs/feat/security.md` (What is logged, Surfaces, Real limitations, stamp), README Security summary, `CHANGELOG.md` `[Unreleased]`, `docs/index.md`; move this plan to `done/`.
 
 ## Verification
 

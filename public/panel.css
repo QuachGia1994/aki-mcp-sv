@@ -164,3 +164,10 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 .limits label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .limits input[type=number] { width: 100%; padding: 6px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
 .chk { display: flex; align-items: center; gap: 6px; }
+.tablewrap { overflow-x: auto; margin-bottom: 8px; }
+.datatable { border-collapse: collapse; width: 100%; font-size: 12px; }
+.datatable th, .datatable td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.datatable th { color: var(--muted); font-weight: 600; }
+.datatable tr.pending { opacity: .6; }
+.datatable .helptext { margin: 0; font-size: 11px; }
+.logbox { font-family: ui-monospace, Menlo, monospace; font-size: 11px; max-height: 320px; overflow: auto; margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; white-space: pre; }
