@@ -12,9 +12,7 @@ const { register, getDaemonStatus } = await import('../postman-mcp.js');
 const { ROUTES } = await import('../../panel.js');
 const { default: daemonPid } = await import('../postman-daemon-pid.cjs');
 
-// Hermetic: neutralize the real on-disk daemon pid file so a daemon actually running on this
-// machine (e.g. one serving a live session) cannot leak into the baseline. cp.spawn is mocked
-// below for the same reason — the test asserts the module's own behavior, not ambient machine state.
+// Hermetic: neutralize the real on-disk daemon pid file so a daemon actually running on this machine (e.g. one serving a live session) cannot leak into the baseline. cp.spawn is mocked below for the same reason — the test asserts the module's own behavior, not ambient machine state.
 mock.method(daemonPid, 'read', () => null);
 
 // Read-only by default: importing/registering the tool must never spawn or assume a daemon.
@@ -25,9 +23,7 @@ const before = JSON.parse((await handler()).content[0].text);
 assert.equal(before.running, false, 'importing the module must not spawn or assume a daemon');
 assert.equal(before.pid, null);
 
-// Mocked so no real process (and never real Postman) launches from this test. `kill` mirrors
-// Node's real ChildProcess: `.killed` flips and `exitCode` settles, which is what the quit
-// handler waits for before returning stopped.
+// Mocked so no real process (and never real Postman) launches from this test. `kill` mirrors Node's real ChildProcess: `.killed` flips and `exitCode` settles, which is what the quit handler waits for before returning stopped.
 let killCount = 0;
 const spawnMock = mock.method(cp, 'spawn', () => ({
   pid: 4242,

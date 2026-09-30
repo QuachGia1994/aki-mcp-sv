@@ -55,9 +55,7 @@ function selectTarget(targets, filter) {
   return pages.find(test) || null;
 }
 
-// Evaluate JS in a target and return the serialized result — or throw with the page-side message
-// on a thrown exception. `target` may be a target object (from listTargets/findTarget), a target
-// id string, or omitted with a `filter` to locate one.
+// Evaluate JS in a target and return the serialized result — or throw with the page-side message on a thrown exception. `target` may be a target object (from listTargets/findTarget), a target id string, or omitted with a `filter` to locate one.
 export async function evaluate({
   host = DEFAULT_HOST, port, target, filter, expression,
   awaitPromise = true, returnByValue = true, userGesture = true,

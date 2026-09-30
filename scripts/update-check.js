@@ -28,8 +28,7 @@ export function getLocalVersions() {
   return { mcp: readLocalMcp() };
 }
 
-// { mcp:{current,latest,updateAvailable}, rule:{current,latest,updateAvailable,installed,unreleasedOnly,state} }.
-// current is local (always attempted); latest is null on any network/parse failure; mcp.updateAvailable is only true when latest > current.
+// { mcp:{current,latest,updateAvailable}, rule:{current,latest,updateAvailable,installed,unreleasedOnly,state} }. current is local (always attempted); latest is null on any network/parse failure; mcp.updateAvailable is only true when latest > current.
 export async function checkForUpdate({ timeoutMs = 3000 } = {}) {
   const local = getLocalVersions();
   const [mcpPkg, ruleLatest] = await Promise.all([

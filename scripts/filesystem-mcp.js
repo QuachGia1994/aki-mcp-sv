@@ -219,9 +219,7 @@ export function register(server) {
     },
     async ({ path: p }) => {
       try {
-        // mkdir -p: the target and any number of missing parents are created. resolveRealWritableDir
-        // climbs to the nearest existing ancestor for the symlink-safe containment check, so a deep
-        // path whose immediate parent does not exist yet still resolves (resolveRealWritable would reject it).
+        // mkdir -p: the target and any number of missing parents are created. resolveRealWritableDir climbs to the nearest existing ancestor for the symlink-safe containment check, so a deep path whose immediate parent does not exist yet still resolves (resolveRealWritable would reject it).
         const real = await resolveRealWritableDir(p);
         await fs.mkdir(real, { recursive: true });
         return ok(`created ${p}`);

@@ -89,12 +89,7 @@ export async function resolveRealWritable(target) {
   return real;
 }
 
-// mkdir -p variant: the target AND any number of intermediate parents may be missing.
-// resolveRealUnderRoot only tolerates ONE missing level (correct for file writes, which never
-// create parents), so directory creation gets its own resolver instead of loosening the shared one.
-// Climb to the nearest EXISTING ancestor and realpath it: that is the symlink-safe check, because
-// the not-yet-existing segments cannot be symlinks, so once the nearest real ancestor is contained,
-// the path rebuilt from it is safe to create.
+// mkdir -p variant: the target AND any number of intermediate parents may be missing. resolveRealUnderRoot only tolerates ONE missing level (correct for file writes, which never create parents), so directory creation gets its own resolver instead of loosening the shared one. Climb to the nearest EXISTING ancestor and realpath it: that is the symlink-safe check, because the not-yet-existing segments cannot be symlinks, so once the nearest real ancestor is contained, the path rebuilt from it is safe to create.
 export async function resolveRealWritableDir(target) {
   const abs = resolveUnderRoot(target); // tilde/relative expansion + string containment
   const missing = [];

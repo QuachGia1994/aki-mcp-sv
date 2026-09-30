@@ -25,7 +25,7 @@ export function register(server, options = {}) {
     try {
       const result = await assemble(input);
       const header = `[RULES] ${result.parity} · ${result.receipt} · ${result.sources.length} sources`;
-      // The assembled corpus ships once, in `content`. Keep it out of `structuredContent` so the ~90KB blob is not serialized twice on the wire (docs/plan/rule-context-payload-dedup.md).
+      // The assembled corpus ships once, in `content`. Keep it out of `structuredContent` so the ~90KB blob is not serialized twice on the wire (docs/plan/done/rule-context-payload-dedup.md).
       const { context, ...meta } = result;
       return { content: [{ type: 'text', text: context ? `${header}\n\n${context}` : header }], structuredContent: meta };
     } catch (error) {

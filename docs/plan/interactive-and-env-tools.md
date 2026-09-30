@@ -58,6 +58,6 @@ Bổ sung khả năng chạy tiến trình tương tác dài hạn (Node.js/Pyth
 ---
 
 ## Cross-references
-- `docs/plan/2.0.0-improve.md` — kiến trúc single process v2.0.0
+- `docs/plan/done/2.0.0-improve.md` — kiến trúc single process v2.0.0
 - `docs/feat/tools.md` — danh mục các công cụ hiện có trong hệ thống
 - [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) — tham chiếu thiết kế harness native, tinh gọn của DeepSeek

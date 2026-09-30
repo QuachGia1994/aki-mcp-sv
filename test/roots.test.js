@@ -28,9 +28,7 @@ async function run() {
     'a ~/... path that escapes all roots must still throw',
   );
 
-  // create_directory is mkdir -p: resolveRealWritableDir must resolve a target whose parent chain
-  // is missing several levels, where resolveRealWritable (single-level only) rejects it. Regression
-  // for the create_directory bug where a deep path threw "parent directory does not exist".
+  // create_directory is mkdir -p: resolveRealWritableDir must resolve a target whose parent chain is missing several levels, where resolveRealWritable (single-level only) rejects it.
   if (homeInRoots) {
     const base = fs.mkdtempSync(path.join(home, '.aki-mkdirp-test-'));
     try {

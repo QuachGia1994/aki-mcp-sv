@@ -74,9 +74,7 @@ class AutoClickManager {
     this.stats = this._hydrateStats();
   }
 
-  // Merges defaults into whatever survives a non-navigation re-injection (daemon restart,
-  // AKI_UI_V rebuild) instead of an all-or-nothing `||` — a field added after __pmStats
-  // already existed in the page used to stay `undefined` forever until a full page reload.
+  // Merges defaults into whatever survives a non-navigation re-injection (daemon restart, AKI_UI_V rebuild) instead of an all-or-nothing `||`, so a field added after __pmStats already existed in the page is filled in without a full page reload.
   _hydrateStats() {
     const defaults = {};
     this.targets.forEach((t) => { defaults[t.statKey] = 0; });
@@ -125,9 +123,7 @@ class AutoClickManager {
     });
   }
 
-  // Which stat bucket a click counts toward, by priority (continue > run > try again > approve
-  // fallback) — independent of which config flag made the button clickable, same as the
-  // original if/continue-else-run-else-retry-else-approve chain.
+  // Which stat bucket a click counts toward, by priority (continue > run > try again > approve fallback), independent of which config flag made the button clickable.
   _classify(text) {
     const hit = this.byRank.find((t) => t.classifyText && text.includes(t.classifyText));
     return hit || this.targets.find((t) => t.classifyText === null) || this.targets[0];
@@ -154,8 +150,7 @@ function cardCopy(card) {
   return (card.innerText || card.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-// Finds pending permission surfaces and presses their confirm (or, for the folder dialog, decline) slot.
-// docs/ref/postman-permission-popup-test.md
+// Finds pending permission surfaces and presses their confirm (or, for the folder dialog, decline) slot (docs/ref/postman-permission-popup-test.md).
 class PermissionCardClicker {
   constructor(manager, rejectFolder, onFolderRejected) {
     this.manager = manager;

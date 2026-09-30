@@ -48,9 +48,7 @@
     return true;
   }
 
-  // Live-caught: agent openBrowserPage → rspack 946554.g(url, {forceNew}) →
-  // transitionTo('build.browser-tab', {}, {url: encodeURIComponent(url)}, {tabOptions:{forceNew}}).
-  // Module id is hashed per Postman build; find by the unique route string.
+  // Live-caught: agent openBrowserPage → rspack 946554.g(url, {forceNew}) → transitionTo('build.browser-tab', {}, {url: encodeURIComponent(url)}, {tabOptions:{forceNew}}). Module id is hashed per Postman build; find by the unique route string.
   function webpackRequire() {
     if (typeof window.__akiReq === 'function') return window.__akiReq;
     const chunks = window.rspackChunk_postman_app_renderer;
@@ -90,10 +88,7 @@
     return false;
   }
 
-  // Opens a URL in the OS default browser via Postman's own openExternalLink (the same function its
-  // Docs / Support / billing links use), so links leave the app instead of opening an in-app tab.
-  // The defining module's id is hashed per build, so find it by its unique export signature — never a
-  // fixed id — cache the resolved function, and fall back to window.open if the module can't be found.
+  // Opens a URL in the OS default browser via Postman's own openExternalLink (the same function its Docs / Support / billing links use), so links leave the app instead of opening an in-app tab. The defining module's id is hashed per build, so find it by its unique export signature — never a fixed id — cache the resolved function, and fall back to window.open if the module can't be found.
   function openExternalUrl(url) {
     if (!url) return false;
     try {
@@ -260,10 +255,7 @@
 
     const btn = agentSwitchOpenBtn(pending.kind);
     if (!btn) {
-      // The model/settings control lives inside the AI chat panel; if it's collapsed or still loading at
-      // bootstrap, open it and wait instead of silently giving up — this is what made the toggle feel "not
-      // bound" on a fresh start. Only refund the give-up tick while we actually issued an open, so a truly
-      // absent control still expires and can never permanently stall the permission-card loop.
+      // The model/settings control lives inside the AI chat panel; if it's collapsed or still loading at bootstrap, open it and wait instead of silently giving up — this is what made the toggle feel "not bound" on a fresh start. Only refund the give-up tick while we actually issued an open, so a truly absent control still expires and can never permanently stall the permission-card loop.
       if (ensureAiChatOpen()) {
         console.log('[⚡ AutoRun] Opening AI Chat Panel to apply ' + pending.kind + ' toggle...');
         pending.ticks = Math.max(0, pending.ticks - 1);
@@ -319,9 +311,7 @@
     'auto': { label: 'Auto', auto: true },
   };
 
-  // Postman renders the Auto row label as "AutoOptimized for most tasks" (no separator) and the
-  // model-menu button's aria-label as "Auto" while Auto is on. Match a leading "auto" — /^auto\b/
-  // fails on "AutoOptimized" (no word boundary between the two letters).
+  // Postman renders the Auto row label as "AutoOptimized for most tasks" (no separator) and the model-menu button's aria-label as "Auto" while Auto is on. Match a leading "auto" — /^auto\b/ fails on "AutoOptimized" (no word boundary between the two letters).
   const looksAuto = (t) => /^auto/i.test((t || '').trim());
 
   // Opens the AI chat model menu (reusing the same menu-open button as the agent-switch 'thinking' path) and waits a couple of rAF frames for the menu items to mount. Returns the menu element or null.
@@ -343,12 +333,7 @@
 
   function closeModelMenu() { closeAgentMenuIfOpened('thinking'); }
 
-  // Inside an open model menu, reveal the collapsed 'More models' submenu if present.
-  // Reuses the file's rAF frame-wait style. Safe no-op when the button is absent.
-  // "More models" opens on HOVER (onPointerEnter), not click, and renders its items in a
-  // separate portal (aether-portals) outside [data-testid="ai-chat-model-menu"] — so we hover
-  // to open and the caller must re-scan document-wide (see modelMenuItems). Mount is ~instant
-  // but we poll (holding hover) until the item set grows, to be robust.
+  // Inside an open model menu, reveal the collapsed 'More models' submenu if present; a no-op when the button is absent. "More models" opens on HOVER (onPointerEnter), not click, and renders its items in a separate portal (aether-portals) outside [data-testid="ai-chat-model-menu"] — so we hover to open and the caller must re-scan document-wide (see modelMenuItems). Mount is ~instant but we poll (holding hover) until the item set grows, to be robust.
   async function expandMoreModels() {
     const more = document.querySelector('[data-testid="ai-chat-more-models-button"]');
     if (!more) return false;
@@ -364,17 +349,13 @@
     return modelMenuItems().length > before;
   }
 
-  // Scan document-wide (ignore the `menu` arg): the "More models" submenu renders its items
-  // in a portal (aether-portals) OUTSIDE [data-testid="ai-chat-model-menu"], so scoping to the
-  // menu container would miss GPT-5.6 Luna et al. The model menu is modal, so document-wide is safe.
+  // Scan document-wide (ignore the `menu` arg): the "More models" submenu renders its items in a portal (aether-portals) OUTSIDE [data-testid="ai-chat-model-menu"], so scoping to the menu container would miss GPT-5.6 Luna et al. The model menu is modal, so document-wide is safe.
   function modelMenuItems(menu) {
     return [...document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]')]
       .filter((el) => !/enable extended thinking/i.test((el.textContent || '').trim()));
   }
 
-  // Reads the currently active model + thinking state. The model-menu button label is the reliable live
-  // signal ("Auto" while Auto is on, else the model name): Postman sets no aria-checked on the menu items,
-  // and localStorage keeps naming the last concrete model even while Auto is on. No menu open needed.
+  // Reads the currently active model + thinking state. The model-menu button label is the reliable live signal ("Auto" while Auto is on, else the model name): Postman sets no aria-checked on the menu items, and localStorage keeps naming the last concrete model even while Auto is on. No menu open needed.
   async function getCurrentModelSelection() {
     return { modelText: currentModelLabelCheap(), thinking: readPostmanAgentMode().thinking, id: localStorage.getItem('ai-chat-last-selected-model') };
   }
@@ -400,18 +381,14 @@
     return model.auto ? looksAuto(text) : text === model.label;
   }
 
-  // Confirms a live selection is the requested model. Auto is a toggle whose only reliable signal is the
-  // model-button label ("Auto"); localStorage keeps naming the previous concrete id, so while Auto is on
-  // no concrete model may match. For concrete models the live label OR the committed id is authoritative.
+  // Confirms a live selection is the requested model. Auto is a toggle whose only reliable signal is the model-button label ("Auto"); localStorage keeps naming the previous concrete id, so while Auto is on no concrete model may match. For concrete models the live label OR the committed id is authoritative.
   function selectionMatches(selection, model) {
     if (model.auto) return looksAuto(selection.modelText);
     if (looksAuto(selection.modelText)) return false;
     return selection.modelText === model.label || selection.id === model.id;
   }
 
-  // Applies the requested model. Auto is a TOGGLE whose row collapses the menu to just itself while on,
-  // not a peer radio: to pick Auto we press its row; to pick a concrete model while Auto is on we first
-  // toggle Auto off (which re-expands the concrete list), then click the target. Verified via the button label.
+  // Applies the requested model. Auto is a TOGGLE whose row collapses the menu to just itself while on, not a peer radio: to pick Auto we press its row; to pick a concrete model while Auto is on we first toggle Auto off (which re-expands the concrete list), then click the target. Verified via the button label.
   async function selectModel(model) {
     if (!model) return false;
     if (selectionMatches(await getCurrentModelSelection(), model)) return true;
@@ -1345,9 +1322,7 @@
         openNewBrowserTab();
       };
 
-      // One handler for every static external link in the panel (brand akimcp.top, AkiDevRule repo, …):
-      // route them all through the OS default browser instead of a Postman in-app tab. DRY — team View
-      // links bind the same opener where they are re-rendered.
+      // One handler for every static external link in the panel (brand akimcp.top, AkiDevRule repo, …): route them all through the OS default browser instead of a Postman in-app tab. DRY — team View links bind the same opener where they are re-rendered.
       panel.querySelectorAll('[data-aki-ext]').forEach((el) => {
         el.onclick = (e) => {
           e.preventDefault();
