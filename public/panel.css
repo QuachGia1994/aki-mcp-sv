@@ -47,13 +47,13 @@ h3.subh:first-of-type { margin-top: 4px; }
 .copy { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: 12px ui-monospace, Menlo, monospace; }
 .copy .txt { overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .copy .txt::-webkit-scrollbar { display: none; }
-.copy::after { content: '⧉'; flex-shrink: 0; color: var(--muted); }
+.copy::after { content: '\f0c5'; font: 900 12px 'Font Awesome 7 Free'; flex-shrink: 0; color: var(--muted); }
 .copy:hover { border-color: var(--accent); }
 .copy:hover::after { color: var(--accent); }
 .eye { margin-left: 6px; padding: 0 6px; line-height: 1.4; vertical-align: middle; }
 .copy.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .copy.copied { border-color: var(--ok); }
-.copy.copied::after { content: '✓'; color: var(--ok); }
+.copy.copied::after { content: '\f00c'; color: var(--ok); }
 button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
 button:hover { border-color: var(--accent); color: var(--accent); }
 button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }

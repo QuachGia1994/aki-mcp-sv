@@ -106,7 +106,7 @@ function field(label, value, hl = false) {
 
 // Shown masked so a screenshot never carries it; the eye button reveals it, click-to-copy always copies the real value.
 function secretField(label, value) {
-  return `<div class="row"><label>${esc(label)}<button type="button" class="eye" data-eye aria-label="Show ${esc(label)}" title="Show / hide">👁</button></label><code class="copy"><span class="txt" data-v="${esc(value)}">${'•'.repeat(12)}</span></code></div>`;
+  return `<div class="row"><label>${esc(label)}<button type="button" class="eye" data-eye aria-label="Show ${esc(label)}" title="Show / hide"><i class="fa-solid fa-eye"></i></button></label><code class="copy"><span class="txt" data-v="${esc(value)}">${'•'.repeat(12)}</span></code></div>`;
 }
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {
@@ -158,7 +158,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AkiMCP v${esc(String(mcpVer))}${isDev ? ' (dev)' : ''}</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
-<link rel="stylesheet" href="/panel.css"></head><body><main>
+<link rel="stylesheet" href="/vendor/fa/css/all.min.css"><link rel="stylesheet" href="/panel.css"></head><body><main>
 <header class="panel-hero">
   <img class="panel-hero-art" src="/img/akimcp-v2.jpg" alt="" aria-hidden="true">
   <div class="panel-hero-body">
@@ -178,7 +178,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
 ${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
 <ol class="steps-nav">
-  <li class="step${origin ? ' done' : ''}"><a href="#s0"><span class="step-n">${origin ? '✓' : '0'}</span> Ingress</a></li>
+  <li class="step${origin ? ' done' : ''}"><a href="#s0"><span class="step-n">${origin ? '<i class="fa-solid fa-check"></i>' : '0'}</span> Ingress</a></li>
   <li class="step"><a href="#s1"><span class="step-n">1</span> Connectors</a></li>
   <li class="step"><a href="#s2"><span class="step-n">2</span> Install rules</a></li>
   <li class="step"><a href="#s3"><span class="step-n">3</span> Instructions</a></li>
@@ -201,8 +201,8 @@ ${updateBanner}
 <p>Complete these one-time prerequisites in order.</p>
 <p class="helptext">You're viewing this panel, so the first three below are already done; the two Tailscale checks are live.</p>
 <ol class="steps">
-  <li><span class="dot ok">✓</span> Install <span class="mono">@akinet/akimcp</span> (or clone repo).</li>
-  <li><span class="dot ok">✓</span> Started with ${copyEl('akimcp')} (or ${copyEl('npm start')}), running now.</li>
+  <li><span class="dot ok"><i class="fa-solid fa-check"></i></span> Install <span class="mono">@akinet/akimcp</span> (or clone repo).</li>
+  <li><span class="dot ok"><i class="fa-solid fa-check"></i></span> Started with ${copyEl('akimcp')} (or ${copyEl('npm start')}), running now.</li>
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
   <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. ${copyEl('npm start')} enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
 </ol>
@@ -457,7 +457,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </footer>
 </main>
 <nav class="spy" id="spy" aria-label="Sections"></nav>
-<button class="to-top" id="toTop" aria-label="Scroll to top" title="Scroll to top">↑</button>
+<button class="to-top" id="toTop" aria-label="Scroll to top" title="Scroll to top"><i class="fa-solid fa-arrow-up"></i></button>
 <script>
 const TOKEN = ${JSON.stringify(token)};
 const RULES_DIR = ${JSON.stringify(rulesDir)};

@@ -11,7 +11,7 @@ import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } fro
 import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
-import { readBody, json, serveStatic } from './http.js';
+import { readBody, json, serveStatic, serveFontAwesome } from './http.js';
 import { getLocalVersions, cmpSemver, writeStatusFile, getRuleStatus } from './update-check.js';
 import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman/postman-mcp.js';
 import { fileURLToPath } from 'node:url';
@@ -298,7 +298,7 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
       return res.end(renderPanel({ origin, ingress, client, passphrase: loadOrCreatePassphrase(), token, accessToken: getOrIssueAccessToken(), repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, savedIngress: readIngressConfig(), isDev }));
     }
 
-    if (req.method === 'GET' && await serveStatic(res, urlPath)) return;
+    if (req.method === 'GET' && (await serveStatic(res, urlPath) || await serveFontAwesome(res, urlPath))) return;
 
     const handler = ROUTES[route];
     if (!handler) return json(res, 404, { error: 'not found' });

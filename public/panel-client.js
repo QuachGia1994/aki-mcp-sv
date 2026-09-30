@@ -60,6 +60,17 @@ function copyText(text, btn) {
     const old = btn.textContent; btn.textContent = 'copied'; setTimeout(() => (btn.textContent = old), 1200);
   });
 }
+function icon(name) {
+  const i = document.createElement('i');
+  i.className = 'fa-solid fa-' + name;
+  return i;
+}
+
+function setDot(el, ok) {
+  el.replaceChildren(icon(ok ? 'check' : 'xmark'));
+  el.className = 'dot ' + (ok ? 'ok' : 'err');
+}
+
 document.addEventListener('click', (e) => {
   const eye = e.target.closest('[data-eye]');
   if (eye) {
@@ -67,6 +78,7 @@ document.addEventListener('click', (e) => {
     const masked = txt.dataset.shown !== '1';
     txt.textContent = masked ? txt.dataset.v : '•'.repeat(12);
     txt.dataset.shown = masked ? '1' : '0';
+    eye.firstElementChild.className = 'fa-solid fa-' + (masked ? 'eye-slash' : 'eye');
     return;
   }
   const el = e.target.closest('.copy');
@@ -94,13 +106,13 @@ function addPath(value, dirty) {
   if (isProtectedPath(value)) {
     input.readOnly = true;
     const lock = document.createElement('span');
-    lock.textContent = '🔒';
+    lock.append(icon('lock'));
     lock.title = 'Rule-file access, locked so it cannot be revoked by accident.';
     wrap.append(input, lock);
   } else {
     input.oninput = markDirty;
     const del = document.createElement('button');
-    del.textContent = '×';
+    del.append(icon('xmark'));
     del.onclick = () => { wrap.remove(); markDirty(); };
     wrap.append(input, del);
   }
@@ -134,7 +146,7 @@ function addChip(bin) {
   label.textContent = bin; label.title = 'click to restrict to specific subcommands';
   label.onclick = () => { chip.remove(); addRow(bin, []); markAllowDirty(); document.querySelector('#cmdRows .cmdrow:last-child .cmd-subs')?.focus(); };
   const x = document.createElement('button');
-  x.textContent = '×'; x.onclick = () => { chip.remove(); markAllowDirty(); };
+  x.append(icon('xmark')); x.onclick = () => { chip.remove(); markAllowDirty(); };
   chip.append(label, x);
   document.getElementById('cmdChips').append(chip);
 }
@@ -154,7 +166,7 @@ function addRow(bin, subs) {
   any.textContent = 'any'; any.title = 'collapse to a chip (allow any subcommand)';
   any.onclick = () => { row.remove(); addChip(bin); markAllowDirty(); };
   const x = document.createElement('button');
-  x.textContent = '×'; x.title = 'remove'; x.onclick = () => { row.remove(); markAllowDirty(); };
+  x.append(icon('xmark')); x.title = 'remove'; x.onclick = () => { row.remove(); markAllowDirty(); };
   row.append(name, subI, any, x);
   document.getElementById('cmdRows').append(row);
 }
@@ -196,7 +208,7 @@ function addTrustedDir(value, dirty) {
   const input = document.createElement('input');
   input.type = 'text'; input.value = value; input.oninput = markTrustedDirty;
   const del = document.createElement('button');
-  del.textContent = '×'; del.onclick = () => { wrap.remove(); markTrustedDirty(); };
+  del.append(icon('xmark')); del.onclick = () => { wrap.remove(); markTrustedDirty(); };
   wrap.append(input, del);
   document.getElementById('trustedDirs').append(wrap);
   if (dirty) markTrustedDirty();
@@ -244,8 +256,7 @@ async function loadState() {
 async function loadTailscale() {
   const mark = (id, ok) => {
     const el = document.getElementById(id);
-    el.textContent = ok ? '✓' : '✕';
-    el.className = 'dot ' + (ok ? 'ok' : 'err');
+    setDot(el, ok);
   };
   const s = await api('GET', '/api/tailscale');
   mark('tsInstalled', s.installed);
@@ -257,8 +268,7 @@ async function loadTailscale() {
 
 function renderPostmanState(status) {
   const dot = document.getElementById('pmDaemonDot');
-  dot.textContent = status.attached ? '✓' : '✕';
-  dot.className = 'dot ' + (status.attached ? 'ok' : 'err');
+  setDot(dot, status.attached);
   document.getElementById('pmBtnLaunch').hidden = status.running;
   document.getElementById('pmBtnQuit').hidden = !status.running;
   const newWindow = document.getElementById('pmBtnNewWindow');
