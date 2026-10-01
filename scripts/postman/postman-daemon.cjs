@@ -520,6 +520,11 @@ async function shutdown() {
     ]).catch(() => {})
   );
   await Promise.all(teardowns);
+  try {
+    await PostmanSession.closeIfLaunched(controlSession);
+  } catch (e) {
+    console.error(`[postman] failed to close owned Postman: ${e.message}`);
+  }
   for (const client of clients.values()) {
     try { client.close(); } catch { /* already gone */ }
   }

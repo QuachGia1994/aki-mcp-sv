@@ -227,20 +227,24 @@ if (process.env.MCP_SKIP_BROWSER_OPEN) {
   }
 }
 
-function shutdown(code = 0) {
+async function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   // Log clean SIGTERM replacements distinctly from crashes; they previously exited without a trace.
   console.log(`[start] shutting down (exit code ${code})${code === 0 ? ' — clean stop (Ctrl+C, or replaced by a newer instance)' : ' — FATAL error path'}`);
   clearLock();
   cloudflared?.kill();
-  killPostmanDaemon();
   gateServer?.close();
   panel?.close();
+  try {
+    await killPostmanDaemon();
+  } catch (e) {
+    console.error(`[start] Postman cleanup failed: ${e.message}`);
+  }
   process.exit(code);
 }
-process.on('SIGINT', () => shutdown(0));
-process.on('SIGTERM', () => shutdown(0));
+process.on('SIGINT', () => { void shutdown(0); });
+process.on('SIGTERM', () => { void shutdown(0); });
 process.on('exit', () => { cloudflared?.kill(); killPostmanDaemon(); }); // safety net: never leave a child orphaned if this process exits abruptly
 
 // Keep the server alive after stray async errors, which otherwise exit Node >=15 on unhandled rejection.

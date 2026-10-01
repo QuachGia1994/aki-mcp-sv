@@ -70,6 +70,25 @@ class PostmanSession {
     throw new Error(`Postman CDP endpoint did not become ready on port ${lastPort || 'unknown'}: ${lastError ? lastError.message : 'timeout'}`);
   }
 
+  static async closeIfLaunched(session, options = {}) {
+    if (!session?.launched || !session.port) return false;
+    const cdp = options.cdp || CDP;
+    let live;
+    try {
+      live = await PostmanSession.endpoint(session.port, cdp);
+    } catch {
+      return false;
+    }
+    if (JSON.stringify(live.browserIdentity) !== JSON.stringify(session.browserIdentity)) return false;
+    const client = await cdp({ port: session.port });
+    try {
+      await client.Browser.close();
+      return true;
+    } finally {
+      try { await client.close(); } catch {}
+    }
+  }
+
   static async ensureRunning(options = {}) {
     const cdp = options.cdp || CDP;
     const initialPort = options.port || PostmanSession.getDevToolsPort(null);
