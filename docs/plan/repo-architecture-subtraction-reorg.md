@@ -9,9 +9,9 @@
 ## 1. Mục tiêu
 
 1. **Vá ngay lỗ hổng kiểm thử**: Đưa đầy đủ 8/8 bài kiểm thử vào lệnh `npm test` trong `package.json` (hiện chỉ chạy 4/8).
-2. **Loại bỏ trùng lặp & file đặt sai vị trí**: Xóa file prompt trùng lặp 100% byte trong `scripts/aki-pmcontrol/data/`, đưa `dev/plan-bigidea-3-topics.md` về đúng `docs/plan/` và dọn sạch thư mục `dev/`.
+2. **Loại bỏ trùng lặp & file đặt sai vị trí**: Xóa file prompt trùng lặp 100% byte trong `scripts/postman/data/`, đưa `dev/plan-bigidea-3-topics.md` về đúng `docs/plan/` và dọn sạch thư mục `dev/`.
 3. **Tổ chức không gian thư mục `scripts/` theo miền (Domain Grouping)**: Chấm dứt tình trạng 25 file nằm phẳng lẫn lộn; phân tách tường minh thành `scripts/core/`, `scripts/tools/`, `scripts/ui/`, `scripts/postman/`.
-4. **Chuẩn hóa trạng thái Git**: Commit sạch sẽ các file untracked load-bearing (`rule-context` stack và `cdp-probe.js`).
+4. **Chuẩn hóa trạng thái Git**: Commit sạch sẽ các file untracked load-bearing (`rule-context` stack và `postman-probe-dom-contract.js`).
 
 ---
 
@@ -22,7 +22,7 @@
 | **Lệnh `npm test`** | Chạy 4 file test thiếu sót | Chạy trọn vẹn 8/8 test suites (bổ sung `roots`, `shell-mcp`, `rule-context-mcp`, `rule-context`) |
 | **Cấu trúc `scripts/`** | 25 file nằm phẳng lẫn lộn core, tool, UI | Phân 4 miền chuyên biệt: `scripts/core/`, `scripts/tools/`, `scripts/ui/`, `scripts/postman/` |
 | **Thư mục `dev/`** | Tồn tại ad-hoc chứa 1 file plan | Xóa bỏ thư mục `dev/`; file plan được chuyển vào `docs/plan/` |
-| **Dữ liệu prompt Postman** | Tồn tại `scripts/aki-pmcontrol/data/aki-postman-instruction.md` trùng lặp | Xóa bỏ file trùng lặp; fallback đọc trực tiếp từ `assets/prompts/postman.md` |
+| **Dữ liệu prompt Postman** | Tồn tại `scripts/postman/data/aki-postman-instruction.md` trùng lặp | Xóa bỏ file trùng lặp; fallback đọc trực tiếp từ `assets/prompts/postman.md` |
 | **Trạng thái Git** | 11 file untracked chưa được đóng gói | Toàn bộ tính năng `rule-context` và test suites được commit rõ ràng theo conventional commits |
 
 ---
@@ -61,7 +61,7 @@ scripts/
 │   ├── panel.js             (Loopback panel server & REST API)
 │   ├── config-page.js       (SSR HTML renderer)
 │   └── html.js              (HTML escaping helper)
-└── postman/                 (Đổi tên từ scripts/aki-pmcontrol/)
+└── postman/                 (Đổi tên từ scripts/postman/)
     ├── index.js
     ├── package.json
     ├── assets/
@@ -90,13 +90,13 @@ scripts/
 ### Giai đoạn 1: Vá lỗ hổng kiểm thử trong `package.json` (Thực hiện ngay, 0 rủi ro)
 Cập nhật thuộc tính `"test"` trong `package.json`:
 ```json
-"test": "node ./test/streamable-bridge.test.js && node ./test/oauth.test.js && node ./test/postman-mcp.test.js && node ./test/aki-pmcontrol-copy.test.js && node ./test/roots.test.js && node ./test/shell-mcp.test.js && node ./test/rule-context-mcp.test.js && node ./test/rule-context.test.js"
+"test": "node ./test/streamable-bridge.test.js && node ./test/oauth.test.js && node ./test/postman-mcp.test.js && node ./test/postman-daemon-copy.test.js && node ./test/roots.test.js && node ./test/shell-mcp.test.js && node ./test/rule-context-mcp.test.js && node ./test/rule-context.test.js"
 ```
 Chạy `npm test` để xác minh toàn bộ 8 bài test đều PASS.
 
 ### Giai đoạn 2: Xử lý tệp tin dư thừa & tệp tin đặt sai vị trí
-1. Xóa bỏ `scripts/aki-pmcontrol/data/aki-postman-instruction.md`.
-2. Kiểm tra `scripts/aki-pmcontrol/index.js` đảm bảo fallback chain trỏ thẳng vào `scripts/aki-pmcontrol/assets/prompts/postman.md`.
+1. Xóa bỏ `scripts/postman/data/aki-postman-instruction.md`.
+2. Kiểm tra `scripts/postman/postman-daemon.cjs` đảm bảo fallback chain trỏ thẳng vào `scripts/postman/prompts/postman.md`.
 3. Di chuyển `dev/plan-bigidea-3-topics.md` vào `docs/plan/plan-bigidea-3-topics.md`.
 4. Xóa thư mục rỗng `dev/`.
 

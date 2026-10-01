@@ -4,40 +4,49 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { loadAllowlist, loadAllowlistDirs } from './allowlist.js';
-import { getRoots, resolveUnderRoot, containedIn, overlaps } from './roots.js';
+import { resolveUnderRoot, containedIn } from './roots.js';
 import { ok, err, fail } from './mcp-tool.js';
+import { shapeForModel } from './output-shape.js';
 
-// Trust an interpreter's script path, not its binary; shells accept arbitrary code and never qualify by trusted directory.
+// Interpreters run a script file passed as an argument, so trust must follow the script's path, not the interpreter binary (which lives on PATH, outside the trusted zones). Shells (sh/bash/zsh) are excluded on purpose — their argument is arbitrary code, not a file to locate under a zone.
 const INTERPRETERS = new Set(['node', 'python', 'python3', 'bun', 'deno', 'tsx', 'ruby', 'perl', 'php']);
 
-// Bare ls-remote uses the configured remote; a URL argument could invoke git's ext:: process transport.
+// ls-remote requires zero extra args — a repository/URL argument lets git's own ext:: transport helper spawn an arbitrary process before anything "read-only" happens; bare invocation only queries the configured remote.
 const GIT_NO_ARGS_SUBCOMMANDS = new Set(['ls-remote']);
 
-const warnedDirs = new Set();
-// A trusted dir inside a writable filesystem root would let write_file + run_cmd become arbitrary code execution with no allowlist review in between. Drop it, fail-safe, and say why once.
-function activeTrustedDirs() {
-  return loadAllowlistDirs().filter((dir) => {
-    const clash = getRoots().find((root) => overlaps(dir, root));
-    if (clash && !warnedDirs.has(dir)) {
-      warnedDirs.add(dir);
-      process.stderr.write(`[shell] trusted dir ignored — overlaps writable root ${clash} (write+exec = RCE): ${dir}\n`);
-    }
-    return !clash;
-  });
-}
+const COMMAND_TIMEOUT_MS = 10_000;
+const MAX_CAPTURE_BYTES = 32 * 1024 * 1024; // what the process may print before it is stopped; what the model reads is bounded separately by shapeForModel
+
+// A listed git subcommand that also has write forms (branch -D, tag -d, remote set-url, diff --output=<file>) is allowed in its read form only.
+// Bare `git` on the allowlist skips this: it means everything, the owner's call (docs/feat/security.md § Design stance).
+const isListFlag = (a) => a === '-l' || a === '--list';
+const GIT_READ_FORMS = {
+  branch: (a) => a.every((x) => ['-a', '-r', '-v', '-vv', '-l', '--list', '--all', '--remotes', '--verbose', '--show-current'].includes(x)),
+  tag: (a) => a.every((x, i) => ['-l', '--list', '-n'].includes(x) || x.startsWith('--sort=') || (!x.startsWith('-') && a.slice(0, i).some(isListFlag))),
+  remote: (a) => a.length === 0 || (a.length === 1 && a[0] === '-v') || (['show', 'get-url'].includes(a[0]) && a.length === 2 && !a[1].startsWith('-')),
+};
+
+// A zone that does not exist yet (skills not installed) stays as typed; one that is or sits under a symlink (macOS /var, a linked ~/.claude) must compare in real form, or no script inside it would ever match.
+const realOrSelf = (dir) => {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return dir;
+  }
+};
 
 // realpath first so a symlink pointing out of a zone can't masquerade as being inside it; a non-existent path can't be a trusted script, so a throw here is a correct "no".
 function underTrusted(p, dirs) {
   try {
     const abs = fs.realpathSync(path.resolve(p));
-    return dirs.some((dir) => containedIn(abs, dir));
+    return dirs.some((dir) => containedIn(abs, realOrSelf(dir)));
   } catch {
     return false;
   }
 }
 
 function preallowedByDir(bin, args) {
-  const dirs = activeTrustedDirs();
+  const dirs = loadAllowlistDirs();
   if (!dirs.length) return false;
   if (bin.includes('/') || bin.includes('\\')) {
     if (!underTrusted(bin, dirs)) return false;
@@ -60,7 +69,9 @@ export class Shell {
   // No backslash: `execFile` never spawns a shell, so it is an inert literal everywhere and a path separator on Windows.
   static DANGEROUS_CHARS = /[;&|`$<>\n]/;
 
-  // Validate metacharacters outside quotes; execFile passes quoted values literally, matching tokenize()'s quote model.
+  // Only metacharacters OUTSIDE quotes can chain/redirect. execFile never spawns a shell, so a quoted
+  // occurrence (grep -E '^(name|description):' , grep -E 'foo$') is an inert argv literal. Validate a
+  // quote-stripped view — mirrors tokenize()'s quote model so the two agree — not the raw command.
   static unquotedView(command) {
     let out = '';
     let quote = null;
@@ -120,27 +131,29 @@ export class Shell {
     if (bin in allowlist) {
       const allowedSubcommands = allowlist[bin];
       if (!Array.isArray(allowedSubcommands) || allowedSubcommands.includes(args[0])) {
-        if (bin === 'git' && GIT_NO_ARGS_SUBCOMMANDS.has(args[0]) && args.length > 1) {
-          throw new Error(`"git ${args[0]}" only allowed with no further arguments — a repository/URL argument can smuggle code execution via git's transport helpers (ext::, --upload-pack=)`);
+        if (bin === 'git' && Array.isArray(allowedSubcommands)) {
+          if (GIT_NO_ARGS_SUBCOMMANDS.has(args[0]) && args.length > 1) {
+            throw new Error(`"git ${args[0]}" only allowed with no further arguments — a repository/URL argument can smuggle code execution via git's transport helpers (ext::, --upload-pack=). To list a remote's tags use the git tool: op=tags, remote=<configured remote name>.`);
+          }
+          if (args.some((a) => a.startsWith('--output')) || (args[0] in GIT_READ_FORMS && !GIT_READ_FORMS[args[0]](args.slice(1)))) {
+            throw new Error(`"git ${args.join(' ')}" is a write form: only the read forms of "git ${args[0]}" are allowed (e.g. git branch -a, git tag -l 'v*', git remote -v). To allow every git command, add bare "git" in the control panel (section 6).`);
+          }
         }
         return;
       }
     }
     if (preallowedByDir(bin, args)) return; // not named (or the named subcommand is blocked), but it targets a script under a trusted zone
-    throw new Error(`"${bin}${args[0] ? ` ${args[0]}` : ''}" is not in the allowlist`);
+    const listed = Array.isArray(allowlist[bin]) ? ` — "${bin}" is limited to: ${allowlist[bin].join(', ')}` : ' is not in the allowlist';
+    throw new Error(`"${bin}${args[0] ? ` ${args[0]}` : ''}"${listed}. The owner can add it in the control panel, section 6 (Allowed shell commands).`);
   }
 
   run(bin, args, cwd) {
-    const isWindowsScript = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(bin);
-    const executable = isWindowsScript ? (process.env.ComSpec || 'cmd.exe') : bin;
-    const executableArgs = isWindowsScript ? ['/d', '/s', '/c', bin, ...args] : args;
     return new Promise((resolve) => {
-      execFile(executable, executableArgs, { cwd, timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
-        if (error) {
-          resolve(err(stderr || error.message));
-        } else {
-          resolve(ok(stdout || '(no output)'));
-        }
+      execFile(bin, args, { cwd, timeout: COMMAND_TIMEOUT_MS, maxBuffer: MAX_CAPTURE_BYTES, windowsHide: true }, (error, stdout, stderr) => {
+        if (!error) return resolve(ok(shapeForModel(stdout) || '(no output)'));
+        // A failing command's stdout is often the useful part (test failures, grep's partial hits), so it is returned with stderr and the reason.
+        const reason = error.killed ? `timed out after ${COMMAND_TIMEOUT_MS / 1000}s` : typeof error.code === 'number' ? `exit code ${error.code}` : error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'output exceeded the capture limit, the rest was dropped' : error.message;
+        resolve(err(`[${reason}]\n${shapeForModel([stdout, stderr].filter(Boolean).map((s) => s.replace(/\n+$/, '')).join('\n'))}`.trimEnd()));
       });
     });
   }
@@ -165,7 +178,7 @@ export function register(server) {
     'run_cmd',
     {
       title: 'Run Command',
-      description: 'Run one shell command from the allowlist. Ships a read-only default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Use the search tools (find_path/search_content) for file/text lookup — find is not in the set because its own flags escape read-only. Pass cwd (absolute path under an allowed root, or relative to the first configured root) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.',
+      description: 'Run one shell command from the allowlist. Ships an inspection-first default set (ls, cat, grep, head, tail, stat, git status/log/diff/show, …), extendable in the local control panel. Output is cleaned (ANSI codes and progress redraws removed, repeated lines collapsed); past about 20k characters only the start and end are shown, and the full text is saved to a file whose path the output states. A failing command returns its stdout, stderr and exit code. Cheaper dedicated tools first: find_path/search_content for file/text lookup (find is not in the set because its own flags escape read-only), read_text_file for file contents, the git tool for status/diff/log/tags (compact output). Pass cwd (absolute path under an allowed root, or relative to the first configured root) to run inside a specific project directory — this is how you target a repo. No chaining, no redirection — one command per call.',
       inputSchema: { command: z.string(), cwd: z.string().optional() },
     },
     ({ command, cwd }) => shell.execute(command, cwd),

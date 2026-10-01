@@ -1,6 +1,7 @@
 # Tools — the local capability suite (anchored)
 
 > updated 2026-09-25 · v2.1.0
+> updated 2026-09-29 · v2.1.0
 
 The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok / Gemini / Postman) a set of **local capabilities** on the owner's machine — a pair of hands reaching from the browser into the local filesystem, shell, and local agents. Every tool below exists to serve that anchor. This doc records **why each one is here** so a later subtraction audit does not mistake an anchored capability for redundant code and propose removing it.
 
@@ -13,8 +14,24 @@ The product's single purpose: give a remote web AI (claude.ai / ChatGPT / Grok /
 > The third-party `@modelcontextprotocol/server-filesystem` package this replaced also exposed `list_directory`/`directory_tree`/`search_files`/`read_multiple_files`/`read_media_file` — dropped outright rather than prompt-banned, since `find_path`/`search_content` already supersede the listing/search family in practice and the rest had no evidence of real use (`docs/plan/done/2.0.0-improve.md` §7). Cheap to re-add if a real need shows up.
 | `shell` | `run_cmd` | Run an allowlisted command as the user; read-only by default, write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
 | `agy_run` | `agy_run` | Delegate a whole task to an **Antigravity CLI agent** — local by default, or a named loopback worker running under a separate OS login/account context; default mode `plan`, default model `gemini-3.7-flash-medium` | The remote model delegates; a local agent reasons |
+| `shell` | `run_cmd` | Run an allowlisted command as the user; inspection-first by default (reads plus a few dev/media helpers; destructive commands and git write forms refused), write commands opt-in (`docs/plan/done/shell-allowlist.md`) | The remote model, directly |
+| `agy_run` | `agy_run` | Delegate a whole task to a **local Antigravity CLI agent** — default mode `plan` (read-only by mechanism), default model `gemini-3.7-flash-medium` (fast, wide-context discovery tier) | The remote model delegates; a local agent reasons |
 | `kiro` | `kiro_read` | Delegate a whole read-only task to a **local Kiro CLI agent**, hard-locked to `claude-sonnet-4.5`, `--trust-tools=fs_read` | The remote model delegates; a local agent reasons |
-| `postman` (`scripts/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/aki-pmcontrol/` daemon is running (own child or lab-started pid at `~/.aki/cdp-postman/daemon.pid`) and its `data.json`. Origin is a private internal lab; this tree holds the finished copy (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
+| `postman` (`scripts/postman/postman-mcp.js`) | `postman_status` | Reports whether the `scripts/postman/` daemon is running (own child or an externally-started pid at `$AKI_DATA_DIR/daemon.pid`) and its `data.json`. This tree is a frozen copy, not kept in sync with its origin (except `package.json`, a `{"type":"commonjs"}` shim). Launch is a panel action (`POST /api/postman-launch`), not this tool and not boot. | The remote model, directly — read-only, no CDP in the tool |
+
+## Layout of `scripts/postman/` (Postman only)
+
+Everything that exists for Postman alone sits under `scripts/postman/` and every file name starts with `postman-`, because `scripts/` is shared by many providers. App-agnostic CDP code stays outside, in `scripts/cdp-engine.js`.
+
+| Path | Runs in | Holds |
+|---|---|---|
+| `postman-mcp.js` | main server (ESM) | the `aki__postman_*` tools, daemon launch/kill/status |
+| `postman-daemon.cjs` | own Node process (CommonJS, hence `.cjs`, no `package.json` shim) | discovers Postman windows, injects the page bundle, owns the panel↔daemon bindings |
+| `postman-{paths,session,ownership,usage,daemon-pid,instruction-store,rule-update-check}.cjs` | the daemon | Postman paths, CDP session, window ownership, credit usage, PID file, instruction store, rule status (reads the main process's status file for `latest`, never its own network check — SSoT is `scripts/rule-version-core.cjs`) |
+| `page/` | Postman's renderer | `PAGE_FILES` in the daemon: matcher, DOM helpers, `postman-autoclick.js` (permission cards), `postman-page-loop.js` (500 ms task loop), `postman-panel.js` (panel UI, chat/model control; entry, last) |
+| `debug/` | a terminal, by hand | read-only DOM probe and the instruction safety-flag probe (`docs/research/postman-instruction-safety-flag.md`) |
+| `prompts/` | the daemon | bundled prompt texts (`postman.md` is the Postman panel instruction) |
+| `test/` | `npm test` | every Postman-only test; `test/postman.test.js` at the repo root is the single entry that runs them |
 
 ## Two classes — and why the second is not redundant
 
@@ -28,6 +45,20 @@ An audit that only pattern-matches capabilities will call `kiro_read` "redundant
 - **Local trust scoping by mechanism** — `kiro` is locked to `fs_read`; `agy` defaults to `plan`, with broader modes requiring the main allowlist and, for routed workers, the worker's own startup allowlist. A prompt cannot widen either boundary.
 - **Model/tier choice per task** — `agy` reaches a wide-context discovery tier; `kiro` is pinned to a specific Sonnet id for cost/behavior determinism.
 - **Independent AGY account contexts when needed** — `agy_run(worker=...)` routes to a token-authenticated loopback worker. The AKIMCP panel manages fixed role identities, one-UAC identity provisioning, per-role Login/Logout and Start/Stop, Start All/Stop All, and live identity/worker health. Login opens one visible AGY CLI window under the selected role for sign-in and any authorization-code entry; the user closes it before Start. Automatic helpers and daily workers run hidden. Each cross-user worker reuses the main installed `agy.exe` while Windows Credential Manager remains isolated by user SID; AKIMCP never copies AGY OAuth material (`docs/ref/agy-multi-account.md`).
+
+## When a tool earns its place beside `run_cmd`
+
+`run_cmd` can already run anything on the allowlist, so a separate tool exists only if it meets at least one of: saves tokens (compact output for reads); keeps state across calls; carries non-trivial logic; enforces a safety control the allowlist cannot express (SSRF, path containment); or owns a cross-process contract. Otherwise the model uses `run_cmd`. The arms above qualify by providing behavior `run_cmd` cannot. Splitting tools by read/write to carry permissions is not a reason: the owner allows everything anyway, and safety belongs to the allowlist (`feat/security.md` § Design stance). `run_cmd`'s description steers the model to the cheaper dedicated tool.
+
+## Output shaping — what the model reads back from `run_cmd`
+
+The cost of a tool is the tokens its output puts in the remote model's context, so `run_cmd` (and the `git` tool) return shaped text (`scripts/output-shape.js`; research and rejected alternatives: [`research/token-saving-rtk.md`](../research/token-saving-rtk.md)). Rule: nothing is destroyed that cannot be recovered verbatim, and a cut is announced on the first line.
+
+- **Cleaned, losslessly:** ANSI codes removed; carriage-return progress keeps its last redraw; a run of 3 or more identical lines becomes the line plus `[previous line repeated N times in total]`.
+- **Cut, recoverably:** past about 20k characters the model gets the first ~14k and last ~6k at line boundaries. Line 1 states the sizes and the path of the saved raw text, `~/.aki/mcpsv/out/<time>-<id>.txt` (owner-only, newest 20 kept). Read it with `read_text_file` (`head`/`tail`) or find the middle with `search_content`; no extra tool is registered, since every tool costs its schema on every turn. The folder is under the always-allowed `~/.aki` root only while `AKI_MCP_DATA_DIR` stays at its default.
+- **Failures keep their evidence:** a non-zero exit returns `[exit code N]`, then stdout and stderr (test failures print to stdout). A timeout or the 32 MB capture limit says so in the same first line.
+- **`aki__git op=diff`** shows whole files in order and names the omitted ones with their size first; re-request them with `file=<path>`.
+- **Not done on purpose:** field-dropping filters for `ls`/`git log`, noise-directory hiding, test-runner summaries by keyword. Reasons in the research doc.
 
 ## Search ladder — how the model should compose a hunt
 

@@ -18,6 +18,8 @@ const output = await handler({ workingPath: '/tmp/project' });
 assert.equal(output.structuredContent.status, 'ok');
 assert.match(output.content[0].text, /^\[RULES\] practical-effective · sha256:[a-f0-9]{64} · 1 sources\n\nrules$/);
 assert.equal(output.isError, undefined);
+assert.equal('context' in output.structuredContent, false, 'corpus must ship only in content, never duplicated into structuredContent');
+assert.equal(output.structuredContent.sources.length, 1, 'provenance is preserved in structuredContent');
 
 let errorHandler;
 register({ registerTool(_n, _d, h) { errorHandler = h; } }, { assemble: async () => { throw new Error('boom'); } });

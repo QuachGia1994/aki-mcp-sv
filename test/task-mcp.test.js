@@ -10,12 +10,7 @@ import {
   taskStart,
   taskManage,
   isProcessAlive,
-  killProcessGroup,
   readLogTail,
-  loadTasks,
-  saveTask,
-  saveTasks,
-  TASK_LOGS_DIR,
 } from '../scripts/task-mcp.js';
 
 async function sleep(ms) {

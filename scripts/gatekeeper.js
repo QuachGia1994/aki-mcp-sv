@@ -5,8 +5,19 @@ import { loadOrCreatePassphrase, metadataHandlers, handleAuthorize, handleToken,
 import { handleStreamableMcp, terminateSession } from './streamable-bridge.js';
 import { log, logErr } from './log.js';
 import { serveStatic } from './http.js';
+import { recordCaller } from './callers.js';
+import { logSecurity } from './security-log.js';
+import { failures, registrations, clientKey } from './rate-limit.js';
 
 const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
+// Only a rejected credential counts: protocol errors and unknown paths happen during normal connects and must never lock the owner out.
+const FAILURE_STATUS = 401;
+const OAUTH_PATHS = /^(\/\.well-known\/|\/authorize$|\/token$)/;
+
+function refuse(res, retryAfterSeconds) {
+  res.writeHead(429, { 'Content-Type': 'text/plain', 'Retry-After': String(retryAfterSeconds) });
+  res.end('too many failed attempts, try again later');
+}
 
 // origin: the public https origin (Tailscale MagicDNS / Cloudflare) or null. Local-First: the /mcp engine binds
 // 127.0.0.1 and serves local clients with or without a public ingress; OAuth discovery metadata only exists once
@@ -14,16 +25,20 @@ const STATIC_ALIASES = { '/favicon.ico': '/favicon/favicon.ico' };
 // down instead of leaking an orphaned hub.
 export function startGatekeeper(origin = null, onFatal) {
   const port = Number(process.env.GATEKEEPER_PORT || 9999);
-  const passphrase = loadOrCreatePassphrase();
+  loadOrCreatePassphrase();
   // Public OAuth discovery metadata only exists when an ingress is attached; on pure loopback it stays null and the
   // .well-known / authorize / register / token routes answer 503. A runtime attach-after-boot path (updating this)
   // is intentionally not built yet — ingress is resolved at boot in start.js, so a newly-saved ingress applies on restart.
   const meta = origin ? metadataHandlers(origin) : null;
+  const recordFailure = (key) => {
+    if (failures.record(key)) logSecurity(`caller ${key} blocked after repeated failed attempts`);
+  };
 
   const server = http.createServer(async (req, res) => {
     const path = (req.url || '').split('?')[0];
     const t0 = Date.now();
-    res.on('finish', () => log(`[gatekeeper] ${req.method} ${req.url} -> ${res.statusCode} ${Date.now() - t0}ms`));
+    const isSecurityAccess = () => OAUTH_PATHS.test(path) || res.statusCode >= 500;
+    res.on('finish', () => { if (isSecurityAccess()) log(`[gatekeeper] ${req.method} ${req.url} -> ${res.statusCode} ${Date.now() - t0}ms`); });
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -33,6 +48,13 @@ export function startGatekeeper(origin = null, onFatal) {
       res.writeHead(204);
       res.end();
       return;
+    }
+
+    const key = clientKey(req);
+    if (path !== '/mcp') {
+      const wait = failures.retryAfterSeconds(key);
+      if (wait) return refuse(res, wait);
+      res.on('finish', () => { if (res.statusCode === FAILURE_STATUS) recordFailure(key); });
     }
 
     // OAuth discovery + authorize are only meaningful with a public ingress (web clients). Local clients send the
@@ -47,11 +69,14 @@ export function startGatekeeper(origin = null, onFatal) {
     }
     if (path === '/register' && req.method === 'POST') {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
+      const wait = registrations.retryAfterSeconds(key);
+      if (wait) return refuse(res, wait);
+      registrations.record(key);
       return handleRegister(req, res);
     }
     if (path === '/authorize' && (req.method === 'GET' || req.method === 'POST')) {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
-      return handleAuthorize(req, res, passphrase, origin);
+      return handleAuthorize(req, res, loadOrCreatePassphrase(), origin);
     }
     if (path === '/token' && req.method === 'POST') {
       if (!origin) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Remote ingress not configured — local MCP is active at /mcp'); }
@@ -60,6 +85,10 @@ export function startGatekeeper(origin = null, onFatal) {
 
     if (path === '/mcp') {
       if (!verifyBearer(req.headers.authorization)) {
+        const wait = failures.retryAfterSeconds(key);
+        if (wait) return refuse(res, wait);
+        logSecurity(`/mcp rejected bearer from ${key}`);
+        recordFailure(key);
         // Advertise the OAuth resource metadata only when an ingress is attached; on pure loopback emit a bare
         // Bearer challenge instead of a bogus "null/.well-known/..." URL.
         res.writeHead(401, {
@@ -69,6 +98,8 @@ export function startGatekeeper(origin = null, onFatal) {
         res.end('unauthorized');
         return;
       }
+      const agent = req.headers['user-agent'] || 'no user-agent';
+      if (recordCaller(key, agent)) logSecurity(`token used by new caller ${key} (${agent.slice(0, 64)})`);
       if (req.method === 'POST') return handleStreamableMcp(req, res);
       if (req.method === 'DELETE') {
         const sid = req.headers['mcp-session-id'];

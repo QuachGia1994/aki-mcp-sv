@@ -27,7 +27,7 @@ For the `D:\LacViet` dispatch examples below, edit the existing `~/.aki/mcpsv/se
 
 ## First-time setup
 
-1. Open the AKIMCP panel and go to **7 · AGY multi-account pool**.
+1. Open the AKIMCP panel and go to **8 · AGY multi-account pool**.
 2. Click **Initialize**. This creates/repairs the four worker entries in `~/.aki/mcpsv/setting.json` with the dedicated default workspace root and generates four random worker bearer secrets in `~/.aki/mcpsv/agy-pool-secrets.json`. Existing unrelated settings and custom worker roots are preserved; the four role identities are fixed.
 3. Keep the fixed identities: Advisor uses the current Windows user; Executor/Experiment/Reviewer use `agy-executor`, `agy-experiment`, and `agy-reviewer`. Set any common custom root now, as described above.
 4. When the panel shows **Create role identities**, click it even if the Windows users already exist: it also provisions the common workspace and its permissions. Windows may show one UAC consent dialog; automatic CMD/PowerShell helpers stay hidden. A random internal Windows password is DPAPI-protected under the current user. Provisioning grants the role users read/execute on the shared AGY install, Executor/Experiment Modify on the common workspace root, and Reviewer read/execute there.

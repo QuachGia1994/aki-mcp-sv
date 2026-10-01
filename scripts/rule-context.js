@@ -179,7 +179,7 @@ export async function assembleRuleContext(input = {}, suppliedDeps = {}) {
       try { await remember(candidate); await load(candidate, name === 'CLAUDE.local.md' ? 'local' : 'project', 0, false); }
       catch { /* optional candidate */ }
     }
-  } else warnings.push({ code: 'PROJECT_CONTEXT_NOT_LOADED' });
+  } else warnings.push({ code: 'PROJECT_CONTEXT_NOT_LOADED', message: 'No workingPath given; project CLAUDE/AGENTS chain skipped (normal for global-only work).' });
 
   const context = chunks.join('').trimEnd();
   const canonical = JSON.stringify({ mode, workingRoot, sources, context });

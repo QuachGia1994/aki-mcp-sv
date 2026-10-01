@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { opendirSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { getRoots, resolveUnderRoot } from './roots.js';
+import { resolveUnderRoot } from './roots.js';
 import { ok, fail } from './mcp-tool.js';
 
 const SKIP_DIRS = new Set([

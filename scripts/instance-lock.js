@@ -1,7 +1,7 @@
 // Single-instance discipline: a second `akimcp` launch reuses the running instance's panel
 // instead of racing it for the same ports and dying with a token 403 the user can't decode
 // (docs/plan/done/2.0.0-improve.md follow-up). The lock file records enough for that second
-// launch to find, verify, and — if it's an older version — replace the running instance.
+// launch to find, verify, and replace a different version or source checkout.
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { USER_DIR } from './userdata.js';
@@ -26,8 +26,8 @@ export function isPidAlive(pid) {
   }
 }
 
-export function writeLock({ pid, panelPort, gatePort, token, version }) {
-  writeFileSync(LOCK_PATH, JSON.stringify({ pid, panelPort, gatePort, token, version, startedAt: new Date().toISOString() }), { mode: 0o600 });
+export function writeLock({ pid, panelPort, gatePort, token, version, sourceRoot }) {
+  writeFileSync(LOCK_PATH, JSON.stringify({ pid, panelPort, gatePort, token, version, sourceRoot, startedAt: new Date().toISOString() }), { mode: 0o600 });
 }
 
 export function clearLock() {

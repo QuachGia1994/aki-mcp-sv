@@ -5,16 +5,19 @@ import { execFile, spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { renderPanel } from './config-page.js';
-import { getOrIssueAccessToken } from './oauth.js';
+import { renderPanel, AGY_SERVER_KEY } from './config-page.js';
+import { getOrIssueAccessToken, rotateAccessToken, rotatePassphrase, loadOrCreatePassphrase, listClients, removeClient } from './oauth.js';
+import { logSecurity, readSecurityLog } from './security-log.js';
+import { listCallers } from './callers.js';
 import { loadAllowlist, loadAllowlistDirs, readSettings, DEFAULT_ALLOWLIST } from './allowlist.js';
-import { getRoots, overlaps } from './roots.js';
+import { getRoots } from './roots.js';
 import { funnelStatus } from './tailscale.js';
 import { SETTINGS_PATH, USER_DIR, INGRESS_CONFIG_PATH, CLOUDFLARED_CRED_PATH, readIngressConfig } from './userdata.js';
-import { readBody, json, serveStatic } from './http.js';
-import { getLocalVersions, cmpSemver, writeStatusFile } from './update-check.js';
-import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman-mcp.js';
 import { getAgyPoolStatus, getAgyPoolUsage, initializeAgyPool, provisionAgyRoleUsers, loginAgyPoolRole, logoutAgyPoolRole, startAgyPool, stopAgyPool, startAgyPoolRole, stopAgyPoolRole } from './agy-pool-manager.js';
+import { readBody, json, serveStatic, serveFontAwesome } from './http.js';
+import { failures, readLimits, validateLimits, LIMIT_DEFAULTS } from './rate-limit.js';
+import { getLocalVersions, cmpSemver, writeStatusFile, getRuleStatus } from './update-check.js';
+import { getDaemonStatus, launchPostmanDaemon, killPostmanDaemon, requestNewWindow } from './postman/postman-mcp.js';
 import { fileURLToPath } from 'node:url';
 
 const IS_WIN = process.platform === 'win32';
@@ -25,6 +28,7 @@ const RULES_CLONE_DIR = path.join(os.homedir(), '.aki', 'akidevrule-src');
 const RULES_REPO_URL = 'https://github.com/lacvietanh/akidevrule.git';
 
 function writeJsonAtomic(file, data) {
+  mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
   renameSync(tmp, file);
@@ -34,6 +38,13 @@ function writeJsonAtomic(file, data) {
 function setFolders(paths) {
   const settings = readSettings();
   settings.folders = paths;
+  writeJsonAtomic(SETTINGS_PATH, settings);
+}
+
+// Connection limits are a security setting like folders: written atomically so a partial write cannot read back as "no limit".
+function setRateLimit(limits) {
+  const settings = readSettings();
+  settings.rateLimit = limits;
   writeJsonAtomic(SETTINGS_PATH, settings);
 }
 
@@ -167,11 +178,18 @@ async function installRules() {
 // Check cleanliness at click-time; the tree may have changed since page load.
 async function pullUpdate() {
   if (!existsSync(path.join(REPO_ROOT, '.git'))) {
-    throw new Error('installed via npm: run `npm i -g @akinet/akimcp` in your terminal to update');
+    throw new Error('this runtime is not a Git checkout — start AKIMCP from your local fork before updating');
   }
   const dirty = (await run('git', ['-C', REPO_ROOT, 'status', '--porcelain'])).trim();
   if (dirty && dirty !== '(no output)') {
-    throw new Error('working tree has uncommitted changes — commit or stash them first, then pull');
+    throw new Error('working tree has uncommitted changes — commit them before updating');
+  }
+  let hasUpstream = true;
+  try { await run('git', ['-C', REPO_ROOT, 'remote', 'get-url', 'upstream']); } catch { hasUpstream = false; }
+  if (hasUpstream) {
+    await run('git', ['-C', REPO_ROOT, 'fetch', 'upstream', 'main']);
+    await run('git', ['-C', REPO_ROOT, 'merge', '--no-edit', 'upstream/main']);
+    return 'merged upstream/main into the local fork — restart akimcp to load the new code';
   }
   await run('git', ['-C', REPO_ROOT, 'pull', '--ff-only']);
   return 'pulled latest — restart akimcp to load the new code';
@@ -187,12 +205,13 @@ function trustedDirStatus() {
 }
 
 // Refresh the on-disk version after rule install so reload does not show stale updates.
+// A rule install updates the on-disk corpus but not the boot-time updateInfo, so without this a reload re-rendered a stale "update available" banner. Recompute current from disk against the boot-time latest.
 function refreshLocalVersions(updateInfo) {
   const local = getLocalVersions();
-  for (const key of ['mcp', 'rule']) {
-    updateInfo[key].current = local[key];
-    updateInfo[key].updateAvailable = cmpSemver(local[key], updateInfo[key].latest) < 0;
-  }
+  updateInfo.mcp.current = local.mcp;
+  updateInfo.mcp.updateAvailable = cmpSemver(local.mcp, updateInfo.mcp.latest) < 0;
+  // Rebuild the whole rule branch (installed/unreleasedOnly/state), not just current, so a post-install reload flips "not installed" -> "installed" and clears the update badge — same source as boot.
+  updateInfo.rule = getRuleStatus(updateInfo.rule?.latest ?? null);
   writeStatusFile(updateInfo);
 }
 
@@ -282,20 +301,20 @@ export const ROUTES = {
     // Same call shell/find_path/search_content enforce with (roots.js:getRoots()), so the list can never show a set that isn't the live one.
     paths: getRoots(),
     allowlist: loadAllowlist(),
-    trustedDirs: trustedDirStatus(),
-    ruleFiles: existsSync(RULES_DIR) ? readdirSync(RULES_DIR).filter((f) => /^(index|RULE-.+|METHOD-.+)\.md$/.test(f)).sort() : [],
+    trustedDirs: loadAllowlistDirs(),
     ingressConfig: readIngressConfig(),
   }),
   'GET /api/tailscale': async () => funnelStatus(process.env.GATEKEEPER_PORT || '9999'),
-  // Same function aki__postman_status calls (scripts/postman-mcp.js) — one status shape, two readers.
+  // Same function aki__postman_status calls (scripts/postman/postman-mcp.js) — one status shape, two readers.
   'GET /api/postman-status': async () => getDaemonStatus(),
   // Deterministic Alibaba OCR delegation step: returns reviewable files/ref metadata only; the host agent performs the actual review.
   'POST /api/alibaba-review': async () => launchAlibabaReview(),
   // launchPostmanDaemon handles repeated clicks.
+  // The one launch action (panel Postman tab button) — spawn-or-recognize lives in launchPostmanDaemon itself (scripts/postman/postman-mcp.js), so N clicks here behave like one, same as every other panel action.
   'POST /api/postman-launch': async () => launchPostmanDaemon(),
   // Quit returns the real post-kill status (running/pid), never a placeholder "stopping…".
   'POST /api/postman-quit': async () => killPostmanDaemon(),
-  // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman-mcp.js).
+  // New window shown only while running — asks the already-running daemon to fire the same mediator trigger its own injected panel button uses (requestNewWindow, scripts/postman/postman-mcp.js).
   'POST /api/postman-new-window': async () => requestNewWindow(),
   'GET /api/agy-pool': async () => getAgyPoolStatus(),
   'GET /api/agy-pool/usage': async () => getAgyPoolUsage(),
@@ -308,6 +327,42 @@ export const ROUTES = {
   'POST /api/agy-pool/stop': async () => stopAgyPool(),
   'POST /api/agy-pool/start-role': async (body) => startAgyPoolRole(body.role),
   'POST /api/agy-pool/stop-role': async (body) => stopAgyPoolRole(body.role),
+  // Servers go to mcp_config.json, permissions to settings.json — docs/ref/fact-agy-mcp-config.md § CLI-1, CLI-3, CLI-4.
+  // The panel's instance token is not a /mcp access token (401), hence stdio. Idempotent: merges, never clobbers other entries.
+  'POST /api/agy-apply-mcp': async () => {
+    // (A) MCP server -> ~/.gemini/config/mcp_config.json as a stdio entry.
+    const mcpConfigPath = path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json');
+    let mcpConfig = {};
+    if (existsSync(mcpConfigPath)) {
+      try {
+        mcpConfig = JSON.parse(readFileSync(mcpConfigPath, 'utf8')) || {};
+      } catch {
+        throw new Error(`${mcpConfigPath} is not valid JSON — fix or remove it, then retry`);
+      }
+    }
+    mcpConfig.mcpServers = mcpConfig.mcpServers || {};
+    mcpConfig.mcpServers[AGY_SERVER_KEY] = { command: 'node', args: [path.join(REPO_ROOT, 'scripts', 'stdio.js')] };
+    writeJsonAtomic(mcpConfigPath, mcpConfig);
+
+    // (B) Pre-allow -> ~/.gemini/antigravity-cli/settings.json (permissions only; agy does NOT read MCP servers here).
+    // Also drop any stale akimcp server entry a previous (wrong) version wrote under mcpServers here.
+    const settingsPath = path.join(os.homedir(), '.gemini', 'antigravity-cli', 'settings.json');
+    let settings = {};
+    if (existsSync(settingsPath)) {
+      try {
+        settings = JSON.parse(readFileSync(settingsPath, 'utf8')) || {};
+      } catch {
+        throw new Error(`${settingsPath} is not valid JSON — fix or remove it, then retry`);
+      }
+    }
+    if (settings.mcpServers && settings.mcpServers[AGY_SERVER_KEY]) delete settings.mcpServers[AGY_SERVER_KEY];
+    settings.permissions = settings.permissions || { allow: [], deny: [] };
+    settings.permissions.allow = settings.permissions.allow || [];
+    settings.permissions.allow = [...new Set([...settings.permissions.allow, `mcp(${AGY_SERVER_KEY}/*)`])];
+    writeJsonAtomic(settingsPath, settings);
+
+    return { ok: true, message: 'Applied — akimcp (stdio) → ~/.gemini/config/mcp_config.json + pre-allow → antigravity-cli/settings.json. Restart agy to pick it up.' };
+  },
   // No hub restart: setFolders writes setting.json, and roots.js reads it fresh per call — a save takes effect on the next shell/find_path/search_content call, same as the allowlist.
   'POST /api/paths': async (body) => {
     setFolders(validatePaths(body.paths));
@@ -322,12 +377,34 @@ export const ROUTES = {
     setTrustedDirs(validateTrustedDirs(body.dirs));
     return { ok: true, message: `saved trusted directories to ${SETTINGS_PATH}` };
   },
+  'GET /api/security': async () => ({ limits: readLimits(), defaults: LIMIT_DEFAULTS, blocked: failures.blockedList(), clients: listClients(), callers: listCallers(), log: readSecurityLog() }),
+  'POST /api/clients/remove': async (body) => ({ ok: true, message: removeClient(typeof body.clientId === 'string' ? body.clientId : '') }),
+  'POST /api/rate-limit': async (body) => {
+    setRateLimit(validateLimits(body.limits));
+    logSecurity('connection limits saved');
+    return { ok: true, message: 'saved — applies from the next request' };
+  },
+  'POST /api/rate-limit/release': async (body) => {
+    const key = typeof body.key === 'string' ? body.key : undefined;
+    failures.release(key);
+    logSecurity(key ? `released ${key.slice(0, 64)}` : 'released every blocked caller');
+    return { ok: true, message: body.key ? 'released' : 'everyone released' };
+  },
   'POST /api/install-rules': async (body, ctx) => {
     const message = await installRules();
     refreshLocalVersions(ctx.updateInfo);
     return { ok: true, message };
   },
   // No refresh: a repo pull only lands on disk; the process keeps the old version until restart, so the banner stays as a restart reminder and clears on the next boot.
+  // The page reloads after this so every server-rendered snippet carries the new token; the token itself is never returned.
+  'POST /api/roll-token': async (body) => {
+    rotateAccessToken({ revokeRefresh: body.hard === true });
+    return { ok: true, message: body.hard === true ? 'rolled — every client must re-authorize' : 'rolled — re-paste the token into local snippets' };
+  },
+  'POST /api/roll-passphrase': async () => {
+    rotatePassphrase();
+    return { ok: true, message: 'rolled — the old passphrase no longer authorizes; connected AIs keep working' };
+  },
   'POST /api/pull-update': async () => ({ ok: true, message: await pullUpdate() }),
   // Ingress is decided at start.js boot, not live-switchable — saving here never restarts anything, only records the pick for the next `npm start`.
   'POST /api/ingress/cloudflared': async (body) => {
@@ -351,10 +428,10 @@ export function startPanel({ port, token, origin, ingress, client, passphrase, u
         return res.end('wrong token — open the URL printed in your terminal');
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(renderPanel({ origin, ingress, client, passphrase, token, accessToken: getOrIssueAccessToken(), repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, savedIngress: readIngressConfig(), isDev }));
+      return res.end(renderPanel({ origin, ingress, client, passphrase: loadOrCreatePassphrase(), token, accessToken: getOrIssueAccessToken(), repoRoot: REPO_ROOT, rulesDir: RULES_DIR, userDir: USER_DIR, updateInfo, savedIngress: readIngressConfig(), isDev }));
     }
 
-    if (req.method === 'GET' && await serveStatic(res, urlPath)) return;
+    if (req.method === 'GET' && (await serveStatic(res, urlPath) || await serveFontAwesome(res, urlPath))) return;
 
     const handler = ROUTES[route];
     if (!handler) return json(res, 404, { error: 'not found' });

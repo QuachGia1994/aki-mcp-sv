@@ -1,6 +1,6 @@
 # aki-mcp-sv (`@akinet/akimcp`)
 
-Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 39 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
+Turn Claude on the web, ChatGPT, Grok, and Postman into secure operators for your local machine. AKIMCP v2 exposes a governed suite of 36 tools for files, shell, search, Git, SQLite, browser automation, DevTools, background tasks, localhost services, clipboard, notifications, ports, and Postman control through one OAuth-gated MCP endpoint. *(Gemini support remains experimental.)*
 
 One command opens a much larger operating surface: build and edit projects from the browser, inspect databases and local APIs, drive browser workflows, manage long-running jobs, debug through DevTools, and control Postman without giving every client unrestricted shell access.
 
@@ -73,7 +73,7 @@ Nothing needs preparing beforehand; `npm start` handles it:
 - **OAuth and passphrase state** in `~/.aki/mcpsv/`: generated once and reused on later runs.
 - **Funnel**: checks `tailscale funnel status`; if port `9999` isn't on yet, runs `tailscale funnel --bg 9999` (idempotent: never toggles an already-enabled port).
 - Prints the **Remote MCP server URL** and **Passphrase** used on the confirmation page when a client connects.
-- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Ingress · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension), then the sections follow it: 0 Remote ingress (a 3-tab picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist, 7 AGY multi-account pool. In section 3, checked rule/method files are encoded into the copied prompt; Audit Flow and Deep Think are selected by default and auto-apply when relevant, so `/akirule`, `/akithink`, and `/akiflow` are not required in each session.
+- Opens the **control panel** at `http://127.0.0.1:9998/?t=<token>`. A step header maps the flow (0 Ingress · 1 Connectors · 2 Install rules · 3 Instructions · 4 Extension · 7 Security · 8 AGY Pool), then the sections follow it: 0 Ingress (optional; a 3-tab ingress picker: Tailscale + Funnel / Owned public origin / Hosted domain), 1 Connectors, 2 Install akidevrule, 3 Instructions prompt, 4 Browser utilities, 5 allowed Folders, 6 shell allowlist, 7 Security & connection limits (rate limit settings, blocked callers and Release, registered clients with Remove, callers active since start, the security log), 8 AGY multi-account pool.
 
 The default allowed root is your **home directory** (`$HOME`, or `%USERPROFILE%` on Windows): the one folder guaranteed to exist on any machine and to hold the projects you actually want Claude to reach. In plain terms, that means the whole home folder (Desktop, Documents, Downloads, Photos, everything under it), not just the projects you meant to share. Add/remove folders from **panel section 5**: click "+ Add folder…" and type an absolute path (`/Users/you/projects` or `C:\Users\you\projects`). Saving takes effect immediately for every tool — shell, find, search, and file read/write/edit alike — no restart. To change the root from the start: `MCP_DATA_DIR=/other/path npm start` (or `set MCP_DATA_DIR=D:\work` then `npm start` on Windows cmd).
 
@@ -93,8 +93,8 @@ Claude discovers OAuth automatically. No Client ID or Client Secret is needed.
 
 Why not token-in-URL: `docs/ref/claude-connector.md`, `docs/research/claude-ai-oauth-connector.md`.
 
-claude.ai connects and calls the in-house `aki__*` tool suite (39 tools):
-- **Chromium Remote & Profiles**: `aki__chrome_profiles`, `aki__chrome_launch`, `aki__chrome_tabs`, `aki__chrome_interact`, `aki__chrome_probe_ai`, `aki__chrome_stop` (stealth port-0 clone, auto-port fallback, React/Vue synthetic typing, scroll-to-center click, and AI quota probe)
+claude.ai connects and calls the in-house `aki__*` tool suite (36 tools):
+- **Chromium Remote & Profiles**: `aki__chrome_profiles`, `aki__chrome_launch`, `aki__chrome_tabs`, `aki__chrome_interact`, `aki__chrome_stop` (stealth port-0 clone, auto-port fallback, React/Vue synthetic typing, scroll-to-center click)
 - **DevTools & CDP**: `aki__devtools_targets`, `aki__devtools_eval`, `aki__devtools_screenshot`
 - **OS Native Integration**: `aki__notify_user` (desktop notification banner & chime sound), `aki__clipboard_read`, `aki__clipboard_write` (system clipboard read/write bridge)
 - **Localhost & Intranet Fetch**: `aki__local_fetch` (SSRF-protected HTTP client for local backend APIs and LAN services)
@@ -102,7 +102,7 @@ claude.ai connects and calls the in-house `aki__*` tool suite (39 tools):
 - **Filesystem**: `aki__read_text_file`, `aki__write_file`, `aki__edit_file`, `aki__create_directory`, `aki__move_file`, `aki__get_file_info`, `aki__list_allowed_directories`
 - **Search & Execution**: `aki__find_path`, `aki__search_content`, `aki__run_cmd`
 - **Dev Servers & Ports**: `aki__port_status`, `aki__kill_port`
-- **Git Operations**: `aki__git_status`, `aki__git_diff`, `aki__git_log`
+- **Git (read-only)**: `aki__git` with `op` = `status` | `diff` | `log` | `tags` (local, or a remote's via `ls-remote --tags`); compact output, cheaper than `run_cmd`. Writes go through `run_cmd`
 - **SQLite Database**: `aki__sqlite_schema`, `aki__sqlite_query`
 - **Agent & Context**: `aki__agy_run` (local AGY or a named multi-account loopback worker), `aki__kiro_read`, `aki__akidevrule_context`
 - **Postman Control**: `aki__postman_status`, `aki__postman_eval`, `aki__postman_rename_conversation`, `aki__postman_panel_fullwidth`
@@ -133,13 +133,13 @@ Postman's AI Agent (Flows / Connected Accounts) has no OAuth redirect for third-
 
 1. In the panel's Postman tab, click the filled JSON to copy. It targets the local loopback endpoint (`http://127.0.0.1:9999/mcp`) and carries a real minted access token — not the passphrase. Postman runs on this machine, so it connects with zero latency and needs no tunnel.
 2. In Postman, add a new MCP server (Settings → Connected Accounts) and paste the JSON.
-3. Paste the panel's prompt into each new chat, since Postman doesn't persist one across sessions.
+3. Send the instruction into each new chat, since Postman doesn't persist one across sessions: after **Launch**, the **Aki MCP for Postman** overlay's *Prompt instruction* box has **Send now**, or tick *Auto-inject into each new chat* (off by default). It is a separate, Postman-specific text (`scripts/postman/prompts/postman.md`), worded as a polite request because Postman's safety check flags directive-style instructions.
 
 The Postman tab also has a **Launch** button that attaches control to the Postman desktop app itself — auto-clicking Approve/Continue/Run/Try again and toggling Thinking/Auto-run inside the Postman window, on top of opening it if it isn't already running. **Quit** stops that control daemon; **New window** asks it to open another Postman window. None of this runs at `npm start` boot — it starts only when Launch is clicked. The in-app overlay it injects is the **Aki MCP for Postman** panel (opened from a status-bar button): it shows the running version and an `akimcp.top` link under the title, keeps the **New Browser Tab** control in the **ANTI-BOT** section, and opens every external link — `akimcp.top`, the AkiDevRule **Repo** button, and each team's **View** — in your OS default browser through Postman's own link handler.
 
 ## Connecting local IDEs (Cursor, Claude Code, AGY, Codex)
 
-Local tools run on the same machine as AKIMCP, so they connect **straight to the loopback engine** at `http://127.0.0.1:9999/mcp` — no tunnel, no internet, zero WAN round-trip, and they keep working fully offline. The Gatekeeper binds `127.0.0.1:9999` from the moment you run `akimcp`, whether or not a public ingress is configured. Bearer-token auth is still enforced (see [Security](#security)); grab the token from the panel at `http://127.0.0.1:9998` (the Postman tab shows the filled JSON), or copy a config below and replace `YOUR_LOCAL_ACCESS_TOKEN`. (Ports are defaults; `--dev` mode uses `9997`/`9996` — the panel always shows the live values.)
+Local tools run on the same machine as AKIMCP, so they connect **straight to the loopback engine** at `http://127.0.0.1:9999/mcp` — no tunnel, no internet, zero WAN round-trip, and they keep working fully offline. The Gatekeeper binds `127.0.0.1:9999` from the moment you run `akimcp`, whether or not a public ingress is configured. Bearer-token auth is still enforced (see [Security](#security)); grab the token from the panel at `http://127.0.0.1:9998` (the Postman tab shows the filled JSON; one access token serves every client, and panel section 1 can roll it if it leaks), or copy a config below and replace `YOUR_LOCAL_ACCESS_TOKEN`. (Ports are defaults; `--dev` mode uses `9997`/`9996` — the panel always shows the live values.)
 
 **Cursor** — `~/.cursor/mcp.json` (or Settings → MCP Servers):
 
@@ -160,18 +160,20 @@ Local tools run on the same machine as AKIMCP, so they connect **straight to the
 claude mcp add --transport http aki-mcp http://127.0.0.1:9999/mcp --header "Authorization: Bearer YOUR_LOCAL_ACCESS_TOKEN"
 ```
 
-**Antigravity (AGY) CLI / IDE** — `~/.gemini/antigravity-cli/mcp_config.json`:
+**Antigravity (AGY) CLI and IDE** — no token: they spawn `scripts/stdio.js` (the same tools, over stdio). Click **Apply to AGY CLI** in the panel's AGY tab, or merge this into `~/.gemini/config/mcp_config.json` (the file both read) and restart:
 
 ```json
 {
   "mcpServers": {
-    "aki-mcp": {
-      "httpUrl": "http://127.0.0.1:9999/mcp",
-      "headers": { "Authorization": "Bearer YOUR_LOCAL_ACCESS_TOKEN" }
+    "akimcp": {
+      "command": "node",
+      "args": ["/absolute/path/to/aki-mcp-sv/scripts/stdio.js"]
     }
   }
 }
 ```
+
+The button also pre-allows the server for the CLI; the IDE asks for its own approval on the first tool call. Details: [`docs/ref/fact-agy-mcp-config.md`](docs/ref/fact-agy-mcp-config.md).
 
 **Codex CLI** — append to `~/.codex/config.toml` (don't overwrite; Codex reaches the local engine over streamable HTTP, token inlined so there's no env var to export):
 
@@ -223,9 +225,11 @@ tools-server.js — one shared McpServer, in-process (InMemoryTransport, no chil
                                   search-mcp.js       (find_path/search_content, whole-tree in one call)
                                   shell-mcp.js        (allowlisted commands, curated to read-only)
                                   agy-mcp.js          (Antigravity CLI, local or named role worker; plan by default)
+                                  shell-mcp.js        (allowlisted commands, inspection-first defaults)
+                                  agy-mcp.js          (Antigravity CLI, read-only plan mode)
                                   kiro-mcp.js         (kiro_read, read-only, needs kiro-cli on PATH)
                                   filesystem-mcp.js   (native read/write/edit inside the allowed folders)
-                                  postman-mcp.js      (Postman daemon status/eval/rename/panel tools)
+                                  postman/postman-mcp.js (Postman daemon status/eval/rename/panel tools)
                                   rule-context-mcp.js (akidevrule_context handshake tool)
                                   chrome-mcp.js       (profile clone, stealth launch, tabs, interact)
                                   chrome-profile.js   (Chrome/Brave/Edge profile clone + cookie decrypt)
@@ -257,11 +261,16 @@ aki-mcp-sv/
 │   └── akimcp.js                 # global CLI entry point (`npm i -g @akinet/akimcp`), imports scripts/start.js
 ├── scripts/
 │   ├── start.js                 # orchestrates gatekeeper + panel, single process
+│   ├── instance-lock.js          # single-instance lock: a second launch reuses (or replaces an older) running instance
 │   ├── open-browser.js           # cross-platform "open default browser" — the one per-OS seam, no external dep
 │   ├── gatekeeper.js             # OAuth-gated reverse proxy, public port
 │   ├── oauth.js                  # minimal authorization server (pre-registered client + RFC 7591 DCR)
+│   ├── rate-limit.js             # failure-only limiter: blocks callers after repeated wrong credentials
+│   ├── callers.js                # in-memory list of addresses that used the valid token since start
+│   ├── security-log.js           # [security] events to console + security.log (rotated at 1 MB)
 │   ├── streamable-bridge.js      # Streamable HTTP shim <-> the in-process tools server (InMemoryTransport)
 │   ├── tools-server.js           # builds the one shared McpServer mounting every tool arm below
+│   ├── stdio.js                  # the same tools server over stdin/stdout, for Antigravity CLI and IDE
 │   ├── http.js                   # shared HTTP helpers: readBody / json / serveStatic (+ MIME)
 │   ├── shell-mcp.js              # allowlist-gated shell tool (curated to read-only)
 │   ├── agy-mcp.js                # local AGY execution + named worker routing
@@ -270,28 +279,31 @@ aki-mcp-sv/
 │   ├── agy-pool-config.js        # four-role config + local control-secret initialization
 │   ├── agy-pool-manager.js       # fixed-role provision/login/logout/status/start/stop + Windows runas launcher
 │   ├── agy-provision-users.ps1   # one-UAC creation/repair of the three fixed AGY role identities
+│   ├── shell-mcp.js              # allowlist-gated shell tool (inspection-first defaults)
+│   ├── output-shape.js           # trims run_cmd output for the model, saves the full text under ~/.aki/mcpsv/out/
+│   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
 │   ├── kiro-mcp.js               # Kiro arm: kiro_read (read-only) tool, sonnet-4.5 locked, needs kiro-cli on PATH
 │   ├── filesystem-mcp.js         # native read/write/edit tools, symlink-safe path containment
-│   ├── postman-mcp.js            # postman_status/eval/rename/panel_fullwidth tools + daemon launch/kill path
 │   ├── rule-context-mcp.js       # akidevrule_context MCP tool (schema, registration, output mapping)
 │   ├── rule-context.js           # pure rule-context assembler used by rule-context-mcp.js
-│   ├── chrome-mcp.js             # chrome_profiles/launch/tabs/interact/probe_ai/stop tools
+│   ├── chrome-mcp.js             # chrome_profiles/launch/tabs/interact/stop tools
 │   ├── chrome-profile.js         # clones real browser profiles (Keychain/DPAPI cookie decryption)
 │   ├── cdp-mcp.js                # devtools_targets/eval/screenshot tools over CDP
 │   ├── cdp-engine.js             # app-agnostic CDP launch/target/eval engine shared by chrome-mcp/postman-mcp
 │   ├── fetch-mcp.js              # aki__local_fetch: SSRF-protected localhost/LAN HTTP client
 │   ├── task-mcp.js               # aki__task_start/task_manage: detached background task runner
 │   ├── port-mcp.js               # aki__port_status/kill_port: TCP port inspection + kill
-│   ├── git-mcp.js                # aki__git_status/diff/log: scope-checked git tools
+│   ├── git-mcp.js                # aki__git (op: status/diff/log/tags): read-only, compact
 │   ├── system-mcp.js             # aki__notify_user, clipboard_read/write
 │   ├── sqlite-mcp.js             # aki__sqlite_schema/query: read-only node:sqlite inspector
-│   ├── aki-pmcontrol/            # finished copy of a private internal lab: CDP-driven Postman desktop control
+│   ├── postman/                  # everything Postman-only: postman-mcp.js tools + daemon launch, postman-daemon.cjs (CDP control), page/, debug/, prompts/, test/
 │   ├── mcp-tool.js               # shared MCP tool-result envelope: ok / err / fail
 │   ├── allowlist.js              # default command set + settings reader — shared by server and panel
 │   ├── search-mcp.js             # find_path / search_content — whole tree in one call
 │   ├── roots.js                  # path containment shared by every filesystem-touching tool
 │   ├── tailscale.js              # reads Funnel status — shared by start.js and panel
 │   ├── update-check.js           # checks for newer aki-mcp-sv/akidevrule versions, shown in the panel
+│   ├── rule-version-core.cjs     # AkiDevRule version parsing and compare, shared by the panel and Postman
 │   ├── log.js                    # shared timestamped logger
 │   ├── panel.js                  # loopback-only control panel (:9998), token-gated
 │   ├── config-page.js            # renders the panel page
@@ -312,9 +324,10 @@ Your data lives outside the repo, at `~/.aki/mcpsv/` (the same convention CLIs l
 ├── tokens.json           # access/refresh tokens (0600)
 ├── agy-pool-secrets.json # local bearer secrets for named AGY workers (0600)
 └── prompts/              # per-provider chat prompts (aki-pmcontrol), seeded from scripts/aki-pmcontrol/assets/prompts/
+└── prompts/              # editable copy of the shared summarize-for-handoff prompt (Postman daemon), seeded from scripts/postman/prompts/
 ```
 
-`scripts/aki-pmcontrol/assets/prompts/` in the repo is the bundled **default, read-only** source for those prompts — the daemon copies a file from there into `~/.aki/mcpsv/prompts/` on first launch only, and never writes back into the repo.
+`scripts/postman/prompts/` in the repo holds the bundled prompts. The Postman instruction (`postman.md`) is served read-only straight from there; the shared summarize prompt is copied into `~/.aki/mcpsv/prompts/` on first launch only so it can be edited, and nothing is ever written back into the repo.
 
 A clone stays exactly as checked out: editing folders/allowlist from the panel never produces a diff in the repo.
 
@@ -324,7 +337,7 @@ Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads i
 
 ### Multiple AGY accounts at once
 
-`aki__agy_run` can optionally target a named loopback worker. The control panel's **7 · AGY multi-account pool** section manages four fixed roles (`advisor`, `executor`, `experiment`, `reviewer`) from one window. Advisor uses the current Windows account; the other three use fixed low-privilege identities (`agy-executor`, `agy-experiment`, `agy-reviewer`) that the panel can create/repair through one UAC flow. All four workers default to the dedicated `~/.aki/mcpsv/agy-workspaces` root; for one-UAC provisioning on another project directory, set **all four** `agy.workers.<role>.root` values to the same directory in `setting.json` before **Create role identities**. Click **Login** for a role to open one visible AGY CLI window under that identity, complete sign-in or paste an authorization code in the CLI, close the window, then click **Start**. To change an account, use **Logout → Login**. Automatic helpers and daily workers run hidden. The panel shows each available AGY account name (the email before `@`) beside its 5-hour and weekly quota bars. Cross-user workers reuse the main installed `agy.exe`, so three extra AGY installs and persistent browser/CDP sessions are not required. Worker-side mode gates keep advisor/reviewer `plan`-only while executor/experiment may explicitly allow `accept-edits`. Setup: [AGY multi-account pool](docs/ref/agy-multi-account.md).
+`aki__agy_run` can optionally target a named loopback worker. The control panel's **8 · AGY multi-account pool** section manages four fixed roles (`advisor`, `executor`, `experiment`, `reviewer`) from one window. Advisor uses the current Windows account; the other three use fixed low-privilege identities (`agy-executor`, `agy-experiment`, `agy-reviewer`) that the panel can create/repair through one UAC flow. All four workers default to the dedicated `~/.aki/mcpsv/agy-workspaces` root; for one-UAC provisioning on another project directory, set **all four** `agy.workers.<role>.root` values to the same directory in `setting.json` before **Create role identities**. Click **Login** for a role to open one visible AGY CLI window under that identity, complete sign-in or paste an authorization code in the CLI, close the window, then click **Start**. To change an account, use **Logout → Login**. Automatic helpers and daily workers run hidden. The panel shows each available AGY account name (the email before `@`) beside its 5-hour and weekly quota bars. Cross-user workers reuse the main installed `agy.exe`, so three extra AGY installs and persistent browser/CDP sessions are not required. Worker-side mode gates keep advisor/reviewer `plan`-only while executor/experiment may explicitly allow `accept-edits`. Setup: [AGY multi-account pool](docs/ref/agy-multi-account.md).
 
 The four-account pool currently requires Windows. On macOS and Linux, use the local `aki__agy_run` path without `worker`; the panel's role provisioning and Login flow are not implemented there.
 
@@ -385,16 +398,14 @@ Use `aki__find_path` to locate a file or directory — it scans the whole tree i
 
 ## Security
 
-Minimal OAuth 2.1: Claude uses a pre-issued confidential Client ID/Secret; ChatGPT uses DCR (`POST /register`) as a public client (`token_endpoint_auth_method: none`) with `chatgpt.com` redirect URIs allowlisted. Full writeup: `docs/ref/security-model.md`.
+**Convenience first, guardrail second.** AKIMCP is not a fortress and adds no permission layer to configure; its guardrail stops weak or overeager models from doing damage without per-call approval prompts. The whole picture (every surface and its gate, connection limits, what each secret unlocks and how to revoke it) is in [`docs/feat/security.md`](docs/feat/security.md).
 
-- `$MCP_DATA_DIR` (default `$HOME`, reaching your whole home folder: Desktop, Documents, Downloads, Photos, everything under it, not just projects) is every tool's main root, plus `~/.aki` and `~/.claude` (for native rule files) — read fresh from `~/.aki/mcpsv/setting.json` on every call, so a panel edit takes effect on the next call, no restart. `~/.claude` is granted at the folder level, so session tokens and chat history inside it are also in the connector's reach (a known tradeoff; the panel row is locked and can't be removed there: edit `~/.aki/mcpsv/setting.json`'s `folders` list directly if you want it out).
-- The shell MCP is hand-written (`shell-mcp.js`), enforcing the allowlist in code (`execFile`, never through a shell, `; & | \`` blocked). The default set is read-only, defined in `allowlist.js` — flag-rich binaries whose own flags escape read-only (`find -delete`/`-exec`, `sort -o <path>`) are deliberately kept out of it (issue #2), so a default connector cannot write, delete, or exec through the shell tool; the `find_path`/`search_content` tools cover the read-only lookup they were used for. The panel shows exactly that set as your starting point for edits, saved to `~/.aki/mcpsv/setting.json` → `shell.allowlist`. **Any command you add is your own responsibility**: adding an obvious write command (e.g. `git commit`) widens the surface further. A command can run in any directory under the allowed roots via the `cwd` parameter, used instead of `cd`/`-C` to target a specific repo.
-- `gatekeeper.js` is the single public entry point; every tool runs in-process behind it, nothing else listens on any port.
-- `panel.js` writes config and runs commands on your machine, so it **only binds to `127.0.0.1`** and is never exposed via Funnel. Its token is regenerated every `npm start` and required both in the page's query string and in the `x-panel-token` header on every API call, blocking other browser tabs from POSTing to it.
-- `~/.aki/mcpsv/passphrase.txt` (the `/authorize` consent passphrase) and `~/.aki/mcpsv/oauth-client.json` (client ID/secret) are mode 0600, live outside the repo (never reach git), and are only ever shared once, pasted into the connector dialog.
-- Access/refresh tokens live in `~/.aki/mcpsv/tokens.json` (mode 0600) and survive restarts: a connector is long-lived file access, not a login session, so losing tokens on every `npm start` would just force pointless re-authentication. Access token TTL is 1 year, refresh tokens don't expire. Revoke by deleting `~/.aki/mcpsv/tokens.json` and restarting.
-- Each ChatGPT connector instance self-registers one client into `~/.aki/mcpsv/oauth-dcr-clients.json` (mode 0600). Registration is open but not a way in on its own: only `claude.ai` and `chatgpt.com` redirect URIs are accepted, and a registered client still has to pass the passphrase consent screen and PKCE before it gets a token. Revoke those registrations by deleting that file and restarting.
-- Funnel stays enabled in the background for the whole project; `npm start` is the only thing you actively start/stop.
+- **Remote access** goes through minimal OAuth 2.1: an allowlisted redirect, a 50-bit passphrase at `/authorize`, PKCE S256. Claude uses a pre-issued Client ID/Secret; ChatGPT, Grok and Gemini self-register (DCR). Whoever knows the passphrase can get a token, so treat it like the token.
+- **One shared access token** (1 year) for every client, shown and rolled in panel section 1. *Roll & sign out all clients* is the answer to any leak.
+- **Loopback is not trusted**: the server binds `127.0.0.1` only and still requires the token, so a web page in your browser cannot drive it. The panel binds `127.0.0.1` too and needs its own per-start token.
+- **Wrong credentials get blocked**: default 5 in 60 seconds, then 15 minutes of `429`. Valid tokens are never counted or blocked. Panel section 7 edits every number, lists blocked callers and releases them, shows every registered client (with Remove) and who used the token since the last restart, and shows the security log (`security.log` in the data dir, rotated at 1 MB).
+- **Tools reach only the folders you list** (default your home folder plus `~/.aki` and `~/.claude`), and the shell runs only allowlisted commands, without a shell (panel sections 5 and 6). Commands you add are your responsibility.
+- **Secrets** (`passphrase.txt`, `tokens.json`, `oauth-client.json`, `oauth-dcr-clients.json`) live in `~/.aki/mcpsv/`, mode 0600, never in the repo.
 
 ### How this differs from Desktop Commander
 
@@ -408,7 +419,7 @@ This project targets a different scenario: exposing local access to Claude **on 
 - **Minimal attack surface**: only the exact commands you've approved can run, nothing more.
 - **Granular down to the subcommand**: `git` is scoped to `status/log/diff/show`, something a blocklist can't express cleanly.
 - **Neutralizes prompt injection**: exposed to the open internet, a hard whitelist means a malicious or injected instruction has nothing to escalate to — there's no unlisted command for it to reach for.
-- **Read-only by construction**: the built-in set is read-only — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2); adding a write command is a deliberate edit to `~/.aki/mcpsv/setting.json`, not the removal of a ban.
+- **Inspection-first by construction**: the built-in set is reads plus a few dev/media helpers — flag-rich binaries that could escape it via their own flags (`find`, `sort`) are kept out (issue #2), and git's write forms are refused; adding a write command is a deliberate edit (panel section 6 or `~/.aki/mcpsv/setting.json`), not the removal of a ban.
 
 ## Screenshots
 <img width="899" height="1035" alt="image" src="https://github.com/user-attachments/assets/c7504913-7ff0-4802-b607-b6a6220e82c2" />

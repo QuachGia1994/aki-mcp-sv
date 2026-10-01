@@ -2,7 +2,7 @@
 // Works against ANY Chromium/Electron target that exposes a --remote-debugging-port (Chrome,
 // Postman, VS Code, Slack, …). It knows NOTHING about Postman: app-specific selectors and named
 // actions live in the caller (see postman-mcp.js). Every call opens one short-lived connection and
-// closes it — it never adopts or holds ownership, so it coexists with the aki-pmcontrol daemon's
+// closes it — it never adopts or holds ownership, so it coexists with the Postman daemon's
 // long-lived owned session on the same endpoint (CDP permits multiple concurrent clients).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -14,8 +14,10 @@ import CDP from 'chrome-remote-interface';
 const DEFAULT_HOST = '127.0.0.1';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// DevToolsActivePort records the live port; unknown app names become support-directory names.
-export function devToolsPortFile(app = 'postman') {
+// Where each known app writes its live DevToolsActivePort file (first line = the actual port a
+// running instance bound to — authoritative, unlike a guessed 9222). A caller that already knows
+// the port passes it directly and skips this. Unknown app => treat the arg as the support-dir name.
+function devToolsPortFile(app = 'postman') {
   const home = os.homedir();
   const NAMES = { postman: 'Postman', code: 'Code', slack: 'Slack' };
   const dirName = NAMES[app] || app;
@@ -24,7 +26,9 @@ export function devToolsPortFile(app = 'postman') {
   return path.join(home, '.config', dirName, 'DevToolsActivePort');
 }
 
-// Never guess 9222 when the live port is unknown; that could target another process.
+// Returns the port an app is actually listening on, or null. Never silently falls back to 9222:
+// a null result is an honest "unknown", which the caller can surface instead of targeting the
+// wrong process (the "silent 9222" trap in postman-session.getDevToolsPort()).
 export function readDevToolsPort(app = 'postman') {
   try {
     const first = fs.readFileSync(devToolsPortFile(app), 'utf8').trim().split('\n')[0];
@@ -51,7 +55,7 @@ function selectTarget(targets, filter) {
   return pages.find(test) || null;
 }
 
-// Accept a target object, id, or filter; propagate page-side exceptions.
+// Evaluate JS in a target and return the serialized result — or throw with the page-side message on a thrown exception. `target` may be a target object (from listTargets/findTarget), a target id string, or omitted with a `filter` to locate one.
 export async function evaluate({
   host = DEFAULT_HOST, port, target, filter, expression,
   awaitPromise = true, returnByValue = true, userGesture = true,
@@ -64,9 +68,6 @@ export async function evaluate({
   }
   if (!resolved) throw new Error(`no matching CDP target on ${host}:${port}`);
   const client = await CDP({ host, port, target: resolved.webSocketDebuggerUrl || resolved.id });
-  // A CDP socket error needs a listener or Node exits; the pending command still rejects.
-  client.on('error', (e) => console.error(`[cdp] client socket error (ignored): ${e?.message || e}`));
-  client.on('disconnect', () => {});
   try {
     await client.Runtime.enable().catch(() => {});
     const { result, exceptionDetails } = await client.Runtime.evaluate({ expression, awaitPromise, returnByValue, userGesture, includeCommandLineAPI: true });
@@ -83,37 +84,9 @@ export async function evaluate({
   }
 }
 
-// A CDP endpoint may answer before its SPA mounts; gate one-shot actions on readyExpression.
-export async function waitForTarget({
-  host = DEFAULT_HOST, port, filter, readyExpression,
-  timeoutMs = 15000, pollMs = 150,
-} = {}) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  do {
-    try {
-      // Scan every matching window; only one may host the requested DOM.
-      const pages = (await CDP.List({ host, port })).filter((t) => t.type === 'page');
-      const test = !filter ? () => true
-        : filter instanceof RegExp ? (t) => filter.test(`${t.url} ${t.title}`)
-        : typeof filter === 'function' ? filter
-        : (t) => `${t.url} ${t.title}`.includes(String(filter));
-      const candidates = pages.filter(test);
-      for (const target of candidates) {
-        if (!readyExpression) return target;
-        const probe = await evaluate({ host, port, target, expression: `!!(${readyExpression})` })
-          .catch((e) => { lastError = e; return { value: false }; });
-        if (probe.value) return target;
-      }
-    } catch (e) {
-      lastError = e;
-    }
-    await sleep(pollMs);
-  } while (Date.now() < deadline);
-  throw new Error(`waitForTarget timed out on ${host}:${port}${lastError ? ` (${lastError.message})` : ''}`);
-}
-
-// Detach so the launched app outlives this process; wait for its CDP endpoint.
+// Launch any Electron/Chromium app with remote debugging enabled, then wait until its CDP endpoint
+// answers. `execPath` = the app binary; `args` are appended after the debug flags. Non-invasive:
+// detached + unref so the app outlives this process. Returns the endpoint it came up on.
 export async function launch({ execPath, args = [], port = 9222, host = DEFAULT_HOST, timeoutMs = 20000 } = {}) {
   if (!execPath) throw new Error('launch requires execPath');
   const flags = [`--remote-debugging-port=${port}`, '--disable-blink-features=AutomationControlled', ...args];
@@ -133,7 +106,9 @@ export async function launch({ execPath, args = [], port = 9222, host = DEFAULT_
   throw new Error(`launched ${execPath} but its CDP endpoint never came up on ${host}:${port}${lastError ? ` (${lastError.message})` : ''}`);
 }
 
-// Probe every renderer until the requested DOM mounts, regardless of target URL.
+// Find the first page target whose in-page probe returns truthy. Robust for multi-window apps
+// (Postman opens several renderers) where the right window is identified by its DOM/mediator, not
+// its url. Polls until timeout so it also waits for the SPA to mount (fixes false-ready).
 export async function findTarget({ host = DEFAULT_HOST, port, probeExpression, timeoutMs = 15000, pollMs = 200 } = {}) {
   if (!probeExpression) throw new Error('findTarget requires a probeExpression');
   const deadline = Date.now() + timeoutMs;
@@ -166,9 +141,6 @@ export async function screenshot({
   }
   if (!resolved) throw new Error(`no matching CDP target on ${host}:${port}`);
   const client = await CDP({ host, port, target: resolved.webSocketDebuggerUrl || resolved.id });
-  // A CDP socket error needs a listener or Node exits; the pending command still rejects.
-  client.on('error', (e) => console.error(`[cdp] client socket error (ignored): ${e?.message || e}`));
-  client.on('disconnect', () => {});
   try {
     await client.Page.enable().catch(() => {});
     const params = { format };
@@ -299,84 +271,10 @@ export async function activateTab({ host = DEFAULT_HOST, port, targetId } = {}) 
   });
 }
 
-export async function probeAi({ host = DEFAULT_HOST, port, target, filter } = {}) {
-  const expression = `
-    (async () => {
-      const href = location.href;
-      if (href.includes('claude.ai')) {
-        try {
-          const orgs = await fetch('/api/organizations', { credentials: 'include' }).then(r => r.json());
-          const org = Array.isArray(orgs) ? orgs[0] : null;
-          if (!org) return { provider: 'claude', loggedIn: false };
-          let usage = null;
-          try {
-            usage = await fetch('/api/organizations/' + org.id + '/usage', { credentials: 'include' }).then(r => r.json());
-          } catch {}
-          return {
-            provider: 'claude',
-            loggedIn: true,
-            orgName: org.name,
-            plan: org.plan || 'free',
-            usage: usage || null,
-          };
-        } catch (e) {
-          return { provider: 'claude', loggedIn: false, error: e.message };
-        }
-      }
-      if (href.includes('chatgpt.com')) {
-        try {
-          const session = await fetch('/api/auth/session', { credentials: 'include' }).then(r => r.json());
-          if (!session || !session.user) return { provider: 'chatgpt', loggedIn: false };
-          let usage = null;
-          if (session.accessToken) {
-            try {
-              usage = await fetch('/backend-api/wham/usage', {
-                headers: { Authorization: 'Bearer ' + session.accessToken },
-                credentials: 'include'
-              }).then(r => r.json());
-            } catch {}
-          }
-          return {
-            provider: 'chatgpt',
-            loggedIn: true,
-            email: session.user.email,
-            name: session.user.name,
-            plan: session.accountPlan || 'free',
-            usage: usage || null,
-          };
-        } catch (e) {
-          return { provider: 'chatgpt', loggedIn: false, error: e.message };
-        }
-      }
-      if (href.includes('grok.com')) {
-        try {
-          const res = await fetch('/rest/rate-limits', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ requestKind: 'DEFAULT', modelName: 'grok-3' }),
-            credentials: 'include'
-          }).then(r => r.json());
-          return {
-            provider: 'grok',
-            loggedIn: !res.error,
-            rateLimits: res,
-          };
-        } catch (e) {
-          return { provider: 'grok', loggedIn: false, error: e.message };
-        }
-      }
-      return { provider: 'unknown', url: href, title: document.title };
-    })()
-  `;
-  return evaluate({ host, port, target, filter, expression });
-}
-
 export default {
-  devToolsPortFile,
   readDevToolsPort,
   listTargets,
   evaluate,
-  waitForTarget,
   findTarget,
   launch,
   screenshot,
@@ -385,5 +283,4 @@ export default {
   openTab,
   closeTab,
   activateTab,
-  probeAi,
 };

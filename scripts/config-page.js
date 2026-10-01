@@ -3,6 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { esc } from './html.js';
 
+// SSoT for the AGY server identity: the mcpServers key AND the mcp(<key>/*) pre-allow name; set directly, not left to AGY's hyphen-dropping normalization (docs/ref/fact-agy-mcp-config.md § CLI-5).
+export const AGY_SERVER_KEY = 'akimcp';
+
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const AKI_DIR = path.join(os.homedir(), '.aki');
 const MCP_NAME = 'Aki MCP Server from local Shell & FileSystem';
@@ -25,6 +28,11 @@ const TAILSCALE_DOWNLOAD_URL = 'https://tailscale.com/download';
 const TAILSCALE_FUNNEL_URL = 'https://tailscale.com/docs/features/tailscale-funnel';
 const WIDEN_SNIPPET = "document.querySelectorAll('.max-w-3xl').forEach(el => el.classList.replace('max-w-3xl', 'max-w-7xl'));";
 const DEFAULT_RULES = ['index.md', 'RULE-agent-behavior.md', 'RULE-coding.md', 'RULE-pattern-core.md', 'METHOD-audit-flow.md', 'METHOD-deep-think.md'];
+// The paste-in instruction is static on purpose: tool details live in each tool's description and the /akirule how-to in aki__akidevrule_context, so only the two musts stay here (a client-side instruction is the one place that can insist).
+const WEB_PROMPT = [
+  'Always use the akimcp tools (aki__*) for local files, shell and browser.',
+  'You MUST follow /akirule in every chat, in full, from your first action on. Never skip it, even for a small task.',
+].join('\n');
 
 // Footer mirrors akitao.com's own (same products, order, and 20px icons hotlinked from that site) but recolored in this panel's tokens so it follows the light/dark theme.
 const SITE = 'https://akitao.com';
@@ -75,8 +83,31 @@ const socialLink = ([label, url, path]) =>
 
 const copyEl = (value, hl = false, id) => `<code class="copy${hl ? ' hl' : ''}"${id ? ` id="${esc(id)}"` : ''} title="click to copy"><span class="txt">${esc(value)}</span></code>`;
 
+// Local-time "YYYY-MM-DD HH:mm:ss", not toLocaleString() — that renders differently per OS/locale.
+function formatDateTime(d) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+
+function formatUptime(totalSec) {
+  let sec = Math.floor(totalSec);
+  const days = Math.floor(sec / 86400); sec %= 86400;
+  const hours = Math.floor(sec / 3600); sec %= 3600;
+  const mins = Math.floor(sec / 60);
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (days || hours) parts.push(`${hours}h`);
+  parts.push(`${mins}m`);
+  return parts.join(' ');
+}
+
 function field(label, value, hl = false) {
   return `<div class="row"><label>${esc(label)}</label>${copyEl(value, hl)}</div>`;
+}
+
+// Shown masked so a screenshot never carries it; the eye button reveals it, click-to-copy always copies the real value.
+function secretField(label, value) {
+  return `<div class="row"><label>${esc(label)}<button type="button" class="eye" data-eye aria-label="Show ${esc(label)}" title="Show / hide"><i class="fa-solid fa-eye"></i></button></label><code class="copy"><span class="txt" data-v="${esc(value)}">${'•'.repeat(12)}</span></code></div>`;
 }
 
 export function renderPanel({ origin, ingress = 'funnel', client, passphrase, token, accessToken, repoRoot, rulesDir, userDir, updateInfo = {}, savedIngress = null, isDev = false }) {
@@ -87,11 +118,12 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
     mcpServers: { 'aki-mcp-sv': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } },
   });
   const cursorJson = JSON.stringify({ mcpServers: { 'aki-mcp': { url: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
-  // AGY CLI (Gemini-CLI lineage) uses `httpUrl` for streamable HTTP; the Antigravity IDE (Windsurf lineage) uses `serverUrl`.
-  const agyJson = JSON.stringify({ mcpServers: { 'aki-mcp': { httpUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
-  const agyIdeJson = JSON.stringify({ mcpServers: { 'aki-mcp': { serverUrl: localUrl, headers: { Authorization: `Bearer ${accessToken}` } } } });
+  // stdio, because our /mcp is Bearer-gated and agy's SSE transport has no headers; CLI and IDE read the same file, so one entry serves both — docs/ref/fact-agy-mcp-config.md § CLI-1, CLI-2, IDE-1.
+  const agyStdioPath = path.join(repoRoot, 'scripts', 'stdio.js');
+  const agyJson = JSON.stringify({ mcpServers: { [AGY_SERVER_KEY]: { command: 'node', args: [agyStdioPath] } } });
   const claudeCodeCmd = `claude mcp add --transport http aki-mcp ${localUrl} --header "Authorization: Bearer ${accessToken}"`;
   // Embed the bearer in Codex's HTTP config, matching the other local tabs.
+  // Codex CLI (~/.codex/config.toml) speaks streamable HTTP via a `url` key; `http_headers` carries a static bearer so the snippet is copy-paste-ready with no shell env var to export first (matches how every other local tab embeds the token).
   const codexToml = `[mcp_servers.aki-mcp]\nurl = "${localUrl}"\nhttp_headers = { "Authorization" = "Bearer ${accessToken}" }`;
   const funnelMode = ingress === 'funnel';
   // Tab 3 (Hosted domain) never becomes the active ingress here — the service it needs is a separate, not-yet-built project.
@@ -100,16 +132,32 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
   const mcpUpd = updateInfo.mcp || {};
   const ruleUpd = updateInfo.rule || {};
   const mcpVer = mcpUpd.current || '?';
-  const ruleVer = ruleUpd.current || '?';
+  // Process identity for the header — computed fresh per render from the running process, never cached.
+  const pid = process.pid;
+  const startedAt = new Date(Date.now() - process.uptime() * 1000);
+  const startedLabel = `${formatDateTime(startedAt)} (up ${formatUptime(process.uptime())})`;
+  // AkiDevRule install/version badge for section 2 — mirrors the Postman panel's rule-status widget.
+  const ruleState = ruleUpd.state || (ruleUpd.current ? 'current' : 'missing');
+  const ruleCur = ruleUpd.current ? `v${esc(String(ruleUpd.current))}` : '';
+  const ruleLatest = ruleUpd.latest ? `v${esc(String(ruleUpd.latest))}` : '';
+  const RULE_BADGE = {
+    missing: `<span class="rulebadge err">Not installed</span>${ruleLatest ? `<span class="rulebadge-note">latest ${ruleLatest}</span>` : ''}`,
+    update: `<span class="rulebadge warn">Update available: ${ruleCur} → ${ruleLatest}</span>`,
+    ahead: `<span class="rulebadge ok">Installed ${ruleCur}</span><span class="rulebadge-note">ahead of release</span>`,
+    unknown: `<span class="rulebadge ok">Installed ${ruleCur || '(version unknown)'}</span><span class="rulebadge-note">update check failed</span>`,
+    current: `<span class="rulebadge ok">Installed ${ruleCur}</span>`,
+  };
+  const ruleBadge = RULE_BADGE[ruleState] || RULE_BADGE.unknown;
+  const ruleBtnLabel = ruleState === 'missing' ? 'Install' : ruleState === 'update' ? 'Update' : 'Install / update';
   // "Own update on top, rule update below" per the request; the rule row carries the re-paste warning because updating the corpus makes every pasted instruction stale.
   const updateBanner = (mcpUpd.updateAvailable || ruleUpd.updateAvailable) ? `<div class="updbar">
-  ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>@akinet/akimcp</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> <button class="primary" data-act="pullUpdate">Pull &amp; restart</button><span class="msg" id="msgUpd"></span></div>` : ''}
-  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span><div class="updwarn">⚠ After updating, RE-PASTE the section-3 Instructions into the custom-instructions setting of EACH AI: Claude / Grok / ChatGPT / Gemini.</div></div>` : ''}
+  ${mcpUpd.updateAvailable ? `<div class="updrow"><strong>@akinet/akimcp</strong> <span class="mono">${esc(String(mcpUpd.current))} → ${esc(String(mcpUpd.latest))}</span> <button class="primary" data-act="pullUpdate">Merge upstream</button><span class="msg" id="msgUpd"></span></div>` : ''}
+  ${ruleUpd.updateAvailable ? `<div class="updrow updrule"><strong>akidevrule</strong> <span class="mono">${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))}</span> <button class="primary" data-act="updateRules">Install / update</button><span class="msg" id="msgUpdRule"></span></div>` : ''}
 </div>` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(MCP_NAME)} · panel${isDev ? ' (dev)' : ''}</title>
+<title>AkiMCP v${esc(String(mcpVer))}${isDev ? ' (dev)' : ''}</title>
 <link rel="icon" href="/favicon/favicon.ico" sizes="any"><meta name="theme-color" content="#ff4800">
-<link rel="stylesheet" href="/panel.css"></head><body><main>
+<link rel="stylesheet" href="/vendor/fa/css/all.min.css"><link rel="stylesheet" href="/panel.css"></head><body><main>
 <header class="panel-hero">
   <img class="panel-hero-art" src="/img/akimcp-v2.jpg" alt="" aria-hidden="true">
   <div class="panel-hero-body">
@@ -121,7 +169,7 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
       <span class="version-badge" aria-label="AKIMCP version ${esc(String(mcpVer))}">v${esc(String(mcpVer))}</span>
     </div>
     <p class="sub">Secure local files and shell access for Claude, ChatGPT, Grok, and Gemini through OAuth 2.1.</p>
-    <p class="panel-meta"><span>Local panel</span><span>127.0.0.1</span><span>${esc(ingressLabel)}</span></p>
+    <p class="panel-meta"><span>Local panel</span><span>127.0.0.1</span><span>${esc(ingressLabel)}</span><span>PID ${pid}</span><span>Started ${esc(startedLabel)}</span></p>
   </div>
   <a class="gh-top" href="${MCP_REPO_URL}" target="_blank" rel="noopener" aria-label="View AKIMCP on GitHub" title="View on GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${SVG.github}"/></svg></a>
 </header>
@@ -129,11 +177,13 @@ export function renderPanel({ origin, ingress = 'funnel', client, passphrase, to
 ${updateBanner}
 <section class="stepper"><h2>Setup steps</h2>
 <ol class="steps-nav">
-  <li class="step${origin ? ' done' : ''}"><a href="#s0"><span class="step-n">${origin ? '✓' : '0'}</span> Ingress</a></li>
+  <li class="step${origin ? ' done' : ''}"><a href="#s0"><span class="step-n">${origin ? '<i class="fa-solid fa-check"></i>' : '0'}</span> Ingress</a></li>
   <li class="step"><a href="#s1"><span class="step-n">1</span> Connectors</a></li>
   <li class="step"><a href="#s2"><span class="step-n">2</span> Install rules</a></li>
   <li class="step"><a href="#s3"><span class="step-n">3</span> Instructions</a></li>
   <li class="step opt"><a href="#s4"><span class="step-n">4</span> Extension <em>optional</em></a></li>
+  <li class="step opt"><a href="#s7"><span class="step-n">7</span> Security</a></li>
+  <li class="step opt"><a href="#s8"><span class="step-n">8</span> AGY Pool</a></li>
 </ol>
 </section>
 
@@ -152,8 +202,8 @@ ${updateBanner}
 <p>Complete these one-time prerequisites in order.</p>
 <p class="helptext">You're viewing this panel, so the first three below are already done; the two Tailscale checks are live.</p>
 <ol class="steps">
-  <li><span class="dot ok">✓</span> Install <span class="mono">@akinet/akimcp</span> (or clone repo).</li>
-  <li><span class="dot ok">✓</span> Started with ${copyEl('akimcp')} (or ${copyEl('npm start')}), running now.</li>
+  <li><span class="dot ok"><i class="fa-solid fa-check"></i></span> Install <span class="mono">@akinet/akimcp</span> (or clone repo).</li>
+  <li><span class="dot ok"><i class="fa-solid fa-check"></i></span> Started with ${copyEl('akimcp')} (or ${copyEl('npm start')}), running now.</li>
   <li><span class="dot" id="tsInstalled">…</span> <a href="${TAILSCALE_DOWNLOAD_URL}" target="_blank" rel="noopener">Install Tailscale</a> and sign in.</li>
   <li><span class="dot" id="tsFunnel">…</span> Enable <a href="${TAILSCALE_FUNNEL_URL}" target="_blank" rel="noopener">Funnel</a> for your tailnet, free on every plan. ${copyEl('npm start')} enables it automatically; it only prints a link for you to approve once, when the tailnet hasn't allowed it yet.</li>
 </ol>
@@ -199,7 +249,10 @@ ${field('Re-sync command', 'tailscale funnel --https=443 off && tailscale serve 
 <p class="helptext">One AKIMCP endpoint, two paths. <strong>Local tools</strong> (Postman, Cursor, Claude Code, AGY) connect directly over <span class="mono">127.0.0.1</span> — zero latency, no tunnel, works offline; each tab below carries a ready-to-paste local config. <strong>Web AIs</strong> (Claude, Grok, ChatGPT, Gemini) use the MCP URL below and ${origin ? 'are reachable now.' : 'need a public ingress — set it up in <a href="#s0">Section 0</a> first (the MCP URL fills in once ingress is active).'}</p>
 ${field('MCP Name', MCP_NAME)}
 ${field('MCP URL', url, true)}
-${field('Passphrase', passphrase)}
+${secretField('Passphrase', passphrase)}
+${secretField('Access token', accessToken)}
+<div class="acts"><button data-act="rollToken">Roll token</button><button data-act="rollTokenHard">Roll &amp; sign out all clients</button><button data-act="rollPassphrase">Roll passphrase</button><span class="msg" id="msgRoll"></span></div>
+<p class="helptext">One access token serves every client. <strong>Roll token</strong> replaces it: web AIs refresh on their own, but any token pasted into a local snippet below must be re-pasted. <strong>Roll &amp; sign out all clients</strong> also revokes refresh, so every AI must reconnect with the passphrase; use it if the token may have leaked. <strong>Roll passphrase</strong> issues a new one: the old passphrase stops authorizing new connections, while already-connected AIs keep working; use it if the passphrase may have leaked.</p>
 
 <nav class="tabs" role="tablist">
   <span class="tab-group-label">Local · direct 0ms</span>
@@ -292,11 +345,14 @@ ${field('Passphrase', passphrase)}
 
 <div class="tabpane" id="tab-agy">
   <h3 class="subh">Connect Antigravity (AGY) — local, 0ms</h3>
-  <p class="helptext">Using several AGY Pro accounts at once? The <a href="#s7">AGY multi-account pool</a> below manages Advisor / Executor / Experiment / Reviewer from this same panel.</p>
+  <p class="helptext">Using several AGY Pro accounts at once? The <a href="#s8">AGY multi-account pool</a> below manages Advisor / Executor / Experiment / Reviewer from this same panel.</p>
   <p class="helptext"><strong>CLI (<span class="mono">agy</span>):</strong> merge the entry below under the existing <span class="mono">mcpServers</span> key in <span class="mono">~/.gemini/antigravity-cli/settings.json</span> — don't overwrite the file, it also holds your model &amp; permissions. Uses <span class="mono">httpUrl</span> (streamable HTTP).</p>
+  <p class="helptext"><strong>CLI (<span class="mono">agy</span>) and IDE:</strong> both read this file: merge the entry below under the existing <span class="mono">mcpServers</span> key in <span class="mono">~/.gemini/config/mcp_config.json</span>, but don't overwrite the file. It registers a <span class="mono">stdio</span> command that spawns <span class="mono">scripts/stdio.js</span> (the local <span class="mono">/mcp</span> is Bearer-gated, so stdio is the transport that works without a token). The pre-allow below writes <span class="mono">antigravity-cli/settings.json</span> and covers the CLI only; the IDE asks for its own approval on the first tool call.</p>
   ${copyEl(agyJson, true, 'agyJson')}
-  <p class="helptext"><strong>IDE:</strong> paste into <span class="mono">~/.gemini/config/mcp_config.json</span> (or <span class="mono">.agents/mcp_config.json</span> per workspace). The IDE uses <span class="mono">serverUrl</span> instead of <span class="mono">httpUrl</span>.</p>
-  ${copyEl(agyIdeJson, true, 'agyIdeJson')}
+  <div class="acts">
+    <button class="primary" data-act="agyApply">Apply to AGY CLI (mcp_config.json)</button>
+    <span class="msg" id="msgAgy"></span>
+  </div>
 </div>
 
 <div class="tabpane" id="tab-codex">
@@ -307,31 +363,29 @@ ${field('Passphrase', passphrase)}
 </section>
 
 <section id="s2"><h2>2 · Install AkiDevRule (optional)</h2>
-<p class="helptext">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session. Choose which files load in section 3 below.</p>
+<p class="helptext">Pins how the AI writes, self-corrects, and names things into rule files loaded only when needed, so it stops re-guessing every session.</p>
 ${field('Install command', RULES_INSTALL_CMD)}
 <p class="helptext">Runs on Mac/Linux/Windows — only needs <span class="mono">Node.js 18+</span>. Re-run the command above to update, or add <span class="mono">--check</span> to print installed-vs-latest without changing anything. From a local clone: <span class="mono">node install.mjs</span> (or launchers <span class="mono">install.sh</span> / <span class="mono">install.ps1</span>). No sudo; installs into every detected <span class="mono">~/.claude*</span> profile plus <span class="mono">~/.aki</span>, removable with rm -rf.</p>
 <div class="acts">
-  <button class="primary" data-act="installRules">Install / update</button>
+  <button class="primary" data-act="installRules">${ruleBtnLabel}</button>
   <a class="btnlink" href="${RULES_REPO_URL}" target="_blank" rel="noopener">View repo ↗</a>
+  ${ruleBadge}
   <span class="msg" id="msgRules"></span>
 </div>
 </section>
 
 <section id="s3"><h2>3 · Instructions: choose rules &amp; copy the prompt</h2>
 <p class="helptext">Choose which rule files load, then copy the Instructions into the custom-instructions setting of each AI (links below). Checked files are encoded into the prompt; selected contextual methods auto-apply when relevant, so slash commands are not required.</p>
+<section id="s3"><h2>3 · Instructions: copy the prompt</h2>
+<p class="helptext">Paste it once into the custom-instructions setting of each AI (links below). It is static: tool details and the rule context come from the server itself, so it never needs re-pasting.</p>
 <div class="acts">
   <a class="btnlink" href="${SETTINGS_URL}" target="_blank" rel="noopener"><img src="/img/providers/claude.png" class="provider-icon" alt="">Claude ↗</a>
   <a class="btnlink" href="${esc(GROK_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/grok.png" class="provider-icon" alt="">Grok ↗</a>
   <a class="btnlink" href="${esc(CHATGPT_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gpt.png" class="provider-icon" alt="">ChatGPT ↗</a>
   <a class="btnlink" href="${esc(GEMINI_SETTINGS_URL)}" target="_blank" rel="noopener"><img src="/img/providers/gemini.png" class="provider-icon" alt="">Gemini ↗</a>
 </div>
-<label style="display:flex;gap:6px;align-items:center;font-size:13px;margin:12px 0 10px">
-  <input type="checkbox" id="loadRules" checked> Require reading rules at the start of every session
-</label>
-${ruleUpd.updateAvailable ? `<div class="updwarn" id="s3warn" style="margin:0 0 10px">⚠ akidevrule ${esc(String(ruleUpd.current))} → ${esc(String(ruleUpd.latest))} available — update in section 2, then re-paste these Instructions into the custom-instructions setting of each AI (Claude / Grok / ChatGPT / Gemini).</div>` : ''}
-<div class="checks" id="ruleChecks"></div>
-<textarea id="prompt" readonly style="min-height:130px"></textarea>
-<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button><span class="msg" id="promptCount"></span></div>
+<textarea id="prompt" readonly style="min-height:110px;margin-top:12px">${esc(WEB_PROMPT)}</textarea>
+<div class="acts"><button class="primary" onclick="copyText(document.getElementById('prompt').value, this)">copy prompt</button></div>
 </section>
 
 <section id="s4"><h2>4 · Browser utilities <span class="done-tag" style="color:var(--muted);border-color:var(--line)">optional</span></h2>
@@ -358,7 +412,8 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </section>
 
 <section id="s6"><h2>6 · Allowed shell commands</h2>
-<p class="helptext">Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access.</p>
+<p class="helptext"><strong>This is a guardrail for weak or overeager models, not a lock against you.</strong> It lets them work without approval prompts while keeping them off destructive commands; convenience comes first, so widen it freely for your own needs. Commands run as your user, so they can read what you can. Chips allow any subcommand; click a chip to restrict it to specific subcommands. Adding write commands (${copyEl('rm')}, ${copyEl('git commit')}…) widens access. A restricted <code>git</code> row lets <code>branch</code>, <code>tag</code> and <code>remote</code> run in their read forms only; press <em>any</em> to allow every git command.</p>
+<p class="helptext"><strong>What each limit covers:</strong> this list bounds the shell command tool only. Section 5 (folders) bounds the file, search and git tools and where shell commands may run. The AGY and Kiro tools run in a locked mode of their own. Details: <code>docs/feat/tools.md</code>.</p>
 <input type="text" id="cmdFilter" placeholder="filter commands…">
 <div class="chips" id="cmdChips"></div>
 <div class="flist" id="cmdRows"></div>
@@ -370,7 +425,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </div>
 
 <h3 class="subh">Trusted script directories</h3>
-<p class="helptext">Scripts under these folders run without a command row above, for Aki-authored skills and scripts. A folder that overlaps a writable folder from section 5 is disabled (write + run = code execution).</p>
+<p class="helptext">Scripts under these folders run without a command row above, so installed Aki skills work out of the box. The file tools cannot write into them, so the AI can't plant a script and run it; keep them to folders only an installer writes.</p>
 <div class="flist" id="trustedDirs"></div>
 <div class="acts">
   <button class="primary" data-act="addTrusted">+ Add directory…</button>
@@ -379,7 +434,47 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </div>
 </section>
 
-<section id="s7"><h2>7 · AGY multi-account pool</h2>
+<section id="s7"><h2>7 · Security &amp; connection limits</h2>
+<p class="helptext"><strong>What this protects:</strong> the public address is reachable by anyone who learns it, and the only thing between them and your machine is the passphrase. A caller that keeps presenting <em>wrong</em> credentials is blocked for a while; a caller with a valid token is never counted or blocked, and neither are mistyped URLs (404) or malformed requests (400). Connecting many providers in a row is safe — only wrong credentials count.</p>
+<p class="helptext"><strong>When a block ends:</strong> automatically after the block time below (the counter restarts from zero), immediately when you press Release, or when this app restarts. Callers are told by their public address; if your tunnel does not forward it, all remote callers share one address named <code>loopback</code>, so one attacker could block remote access until you release it. Changes apply from the next request, no restart.</p>
+<label class="chk"><input type="checkbox" data-limit="enabled"> Limits enabled</label>
+<div class="limits">
+  <label>Wrong credentials allowed<input type="number" min="1" data-limit="failMax"></label>
+  <label>…within (seconds)<input type="number" min="1" data-limit="failWindowSeconds"></label>
+  <label>Then blocked for (minutes)<input type="number" min="1" data-limit="blockMinutes"></label>
+  <label>Client registrations allowed<input type="number" min="1" data-limit="registerMax"></label>
+  <label>…within (minutes)<input type="number" min="1" data-limit="registerWindowMinutes"></label>
+  <label>Registered clients stored (max)<input type="number" min="1" data-limit="maxClients"></label>
+</div>
+<div class="acts">
+  <button class="primary" data-act="saveLimits">Save limits</button>
+  <button data-act="resetLimits">Reset to defaults</button>
+  <span class="msg" id="msgLimits"></span>
+</div>
+<h3 class="subh">Blocked right now</h3>
+<div class="flist" id="blockedList"></div>
+<div class="acts">
+  <button data-act="refreshBlocked">Refresh</button>
+  <button data-act="releaseAll">Release everyone</button>
+  <span class="msg" id="msgBlocked"></span>
+</div>
+<h3 class="subh">Clients</h3>
+<p class="helptext">Every AI app that asked to connect. <strong>Signed in</strong> means it can keep renewing access on its own. A connection that was never approved is cleared after 1 hour; one that is no longer signed in is cleared after 30 days without activity. Remove signs a client out, but all clients share one access token, so a removed app keeps working until you press Roll token in <a href="#s1">section 1</a> — the others renew on their own.</p>
+<div id="clientsList"></div>
+<div class="acts"><span class="msg" id="msgClients"></span></div>
+<h3 class="subh">Active now (since last restart)</h3>
+<div id="callersList"></div>
+<p class="helptext">Don't recognize a client or a caller? Roll the passphrase and use Roll &amp; sign out all clients in <a href="#s1">section 1</a>.</p>
+<h3 class="subh">Security log</h3>
+<p class="helptext">Wrong passphrases, rejected tokens, blocks, approvals and new callers — newest first, the last 200 lines. Saved to <span class="mono" id="securityLogPath"></span>; at 1 MB it moves to <span class="mono">security.log.1</span>, so it never grows past about 2 MB.</p>
+<pre class="logbox" id="securityLog"></pre>
+<div class="acts">
+  <button data-act="refreshLog">Refresh</button>
+  <span class="msg" id="msgLog"></span>
+</div>
+</section>
+
+<section id="s8"><h2>8 · AGY multi-account pool</h2>
 <p class="helptext">The four-account pool currently requires Windows. On macOS or Linux, use the local AGY connection above without a named worker.</p>
 <p class="helptext">Four AGY CLI accounts. For each role, click <strong>Login</strong>, sign in directly in the visible AGY CLI, close that window, then click <strong>Start</strong>. Setup and workers run in the background.</p>
 <p class="helptext">Quota bars show the remaining 5-hour and weekly limits for Gemini and Claude/GPT on each running account. The AGY label shows the signed-in email before @ when available. Recheck refreshes the numbers; the AGY tab also updates them while open.</p>
@@ -430,7 +525,7 @@ ${field('Widen command', WIDEN_SNIPPET)}
 </footer>
 </main>
 <nav class="spy" id="spy" aria-label="Sections"></nav>
-<button class="to-top" id="toTop" aria-label="Scroll to top" title="Scroll to top">↑</button>
+<button class="to-top" id="toTop" aria-label="Scroll to top" title="Scroll to top"><i class="fa-solid fa-arrow-up"></i></button>
 <script>
 const TOKEN = ${JSON.stringify(token)};
 const RULES_DIR = ${JSON.stringify(rulesDir)};
@@ -439,9 +534,6 @@ const AKI_DIR = ${JSON.stringify(AKI_DIR)};
 const USER_DIR = ${JSON.stringify(userDir)};
 const REPO_ROOT = ${JSON.stringify(repoRoot)};
 const MCP_NAME = ${JSON.stringify(MCP_NAME)};
-const DEFAULT_RULES = ${JSON.stringify(DEFAULT_RULES)};
-const MCP_VERSION = ${JSON.stringify(mcpVer)};
-const RULE_VERSION = ${JSON.stringify(ruleVer)};
 const SAVED_INGRESS = ${JSON.stringify(savedIngress)};
 </script>
 <script src="/panel-client.js"></script>

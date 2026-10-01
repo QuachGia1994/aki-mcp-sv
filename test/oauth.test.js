@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { once } from 'node:events';
-import { TOKENS_PATH } from '../scripts/userdata.js';
-import { getOrIssueAccessToken, verifyBearer } from '../scripts/oauth.js';
-import { startPanel } from '../scripts/panel.js';
+import os from 'node:os';
+import path from 'node:path';
 
-const snapshot = existsSync(TOKENS_PATH) ? readFileSync(TOKENS_PATH) : null;
+// userdata.js reads AKI_MCP_DATA_DIR at import, so the env is set before oauth.js loads; the real ~/.aki/mcpsv is never touched.
+const dir = mkdtempSync(path.join(os.tmpdir(), 'aki-oauth-test-'));
+process.env.AKI_MCP_DATA_DIR = dir;
+const { TOKENS_PATH } = await import('../scripts/userdata.js');
+const { getOrIssueAccessToken, verifyBearer } = await import('../scripts/oauth.js');
+const { startPanel } = await import('../scripts/panel.js');
 
-function restoreTokens() {
-  if (snapshot === null) {
-    if (existsSync(TOKENS_PATH)) unlinkSync(TOKENS_PATH);
-  } else {
-    writeFileSync(TOKENS_PATH, snapshot, { mode: 0o600 });
-  }
-}
+const removeDataDir = () => rmSync(dir, { recursive: true, force: true });
 
 async function run() {
   try {
@@ -71,14 +69,14 @@ async function run() {
 
     console.log('PASS: getOrIssueAccessToken reuses a valid token, persists it, and GET / prefills Postman JSON with that verifyBearer-accepted token');
   } finally {
-    restoreTokens();
+    removeDataDir();
   }
 }
 
 run().then(
   () => process.exit(0),
   (error) => {
-    restoreTokens();
+    removeDataDir();
     console.error(error);
     process.exit(1);
   },

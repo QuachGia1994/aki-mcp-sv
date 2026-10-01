@@ -1,9 +1,10 @@
-// Structured Git operations (git_status / git_diff / git_log).
-// Validated against allowed directory roots with smart context truncation.
-// Served names are prefixed aki__ by tools-server.js.
+// One read-only git tool (op: status | diff | log | tags): fixed argv per op, compact output, scope-checked against the allowed roots.
+// It exists beside run_cmd only for the token saving — parsed status, file-bounded diff (docs/feat/tools.md § When a tool earns its place).
+// Served name is prefixed aki__ by tools-server.js.
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
-import { ok, err, fail } from './mcp-tool.js';
+import { ok, fail } from './mcp-tool.js';
+import { shapeForModel, MAX_SHOWN } from './output-shape.js';
 import { resolveUnderRoot } from './roots.js';
 
 function gitCmd(args, cwd) {
@@ -13,14 +14,6 @@ function gitCmd(args, cwd) {
       resolve(stdout || '');
     });
   });
-}
-
-function truncateDiff(text, maxChars = 30_000) {
-  if (text.length <= maxChars) return text;
-  const head = text.slice(0, 15_000);
-  const tail = text.slice(-10_000);
-  const omitted = text.length - 25_000;
-  return `${head}\n\n[... diff truncated (${omitted} characters omitted) ...]\n\n${tail}`;
 }
 
 export function parsePorcelainStatus(output) {
@@ -56,81 +49,75 @@ export function parsePorcelainStatus(output) {
   return { branch, tracking, clean, staged, unstaged, untracked };
 }
 
+// Whole files in order, skipping any that no longer fit; the omitted ones are named first (an end notice gets missed), with size, for a file= re-request.
+export function capDiffByFile(diff, budget = MAX_SHOWN) {
+  if (diff.length <= budget) return diff;
+  const files = diff.split(/^(?=diff --git )/m);
+  const shown = [];
+  const omitted = [];
+  let used = 0;
+  for (const chunk of files) {
+    const name = /^diff --git a\/(.+?) b\//.exec(chunk)?.[1] ?? '(unnamed)';
+    if (used + chunk.length <= budget || shown.length === 0) {
+      shown.push(chunk);
+      used += chunk.length;
+    } else {
+      const lines = chunk.split('\n');
+      omitted.push(`${name} (+${lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length} -${lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length})`);
+    }
+  }
+  const notice = omitted.length ? `[diff: ${shown.length} of ${files.length} files shown. Omitted, ask again with file=<path>: ${omitted.join(', ')}]\n` : '';
+  return notice + shapeForModel(shown.join(''));
+}
+
+const REMOTE_NAME = /^[A-Za-z0-9._-]+$/; // a configured remote's name, never a URL: a URL argument can smuggle code execution through git's transport helpers (ext::)
+
+const OPS = {
+  async status({ cwd }) {
+    return JSON.stringify(parsePorcelainStatus(await gitCmd(['status', '--porcelain=v1', '-b'], cwd)), null, 2);
+  },
+  async diff({ cwd, staged, file }) {
+    const args = ['diff'];
+    if (staged) args.push('--cached');
+    if (file) args.push('--', file);
+    const diff = await gitCmd(args, cwd);
+    if (!diff.trim()) return staged ? 'No staged changes.' : 'Working tree clean (no diff).';
+    return capDiffByFile(diff);
+  },
+  async log({ cwd, limit = 10 }) {
+    const raw = await gitCmd(['log', `-n${limit}`, '--pretty=format:%h%x09%an%x09%ad%x09%s', '--date=short'], cwd);
+    const commits = raw.trim().split('\n').filter(Boolean).map((line) => {
+      const [hash, author, date, ...rest] = line.split('\t');
+      return { hash, author, date, message: rest.join('\t') };
+    });
+    return JSON.stringify(commits, null, 2);
+  },
+  async tags({ cwd, remote }) {
+    if (!remote) return (await gitCmd(['tag', '--sort=-creatordate'], cwd)).trim() || 'No tags.';
+    if (!REMOTE_NAME.test(remote)) throw new Error('remote must be a configured remote name (e.g. origin), not a URL');
+    return (await gitCmd(['ls-remote', '--tags', remote], cwd)).trim() || 'No tags on the remote.';
+  },
+};
+
 export function register(server) {
   server.registerTool(
-    'git_status',
+    'git',
     {
-      title: 'Get structured git status',
+      title: 'Read-only git',
       description:
-        'Get clean structured Git status (current branch, upstream tracking, staged files, unstaged files, untracked files). Scope-checked against allowed roots.',
+        'Read-only git with compact output, cheaper in tokens than run_cmd. op=status: branch, upstream, staged/unstaged/untracked as JSON. op=diff: working-tree diff (staged=true for the index, file= to narrow); a big diff shows whole files first and names the omitted ones so you can ask for them with file=. op=log: last commits as JSON (limit, max 50). op=tags: local tags newest first, or the remote\'s tags when remote=<configured remote name>. Anything that writes (commit, push, branch, tag creation) goes through run_cmd.',
       inputSchema: {
+        op: z.enum(Object.keys(OPS)).describe('status | diff | log | tags'),
         repoPath: z.string().optional().describe('Repository directory path (defaults to root)'),
+        staged: z.boolean().optional().describe('diff: show the staged (cached) diff'),
+        file: z.string().optional().describe('diff: specific file path'),
+        limit: z.number().int().min(1).max(50).optional().describe('log: number of commits (default 10)'),
+        remote: z.string().optional().describe('tags: configured remote name, to list its tags instead of local ones'),
       },
     },
-    async ({ repoPath }) => {
+    async ({ op, repoPath, ...opts }) => {
       try {
-        const cwd = resolveUnderRoot(repoPath);
-        const raw = await gitCmd(['status', '--porcelain=v1', '-b'], cwd);
-        const parsed = parsePorcelainStatus(raw);
-        return ok(JSON.stringify(parsed, null, 2));
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
-
-  server.registerTool(
-    'git_diff',
-    {
-      title: 'Get git diff with smart truncation',
-      description:
-        'Inspect working tree or staged diffs. Supports filtering by file and automatically truncates oversized diffs to preserve LLM context budget.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository directory path (defaults to root)'),
-        staged: z.boolean().optional().describe('Show staged (cached) diff instead of working tree diff'),
-        file: z.string().optional().describe('Specific file path to diff'),
-      },
-    },
-    async ({ repoPath, staged, file }) => {
-      try {
-        const cwd = resolveUnderRoot(repoPath);
-        const args = ['diff'];
-        if (staged) args.push('--cached');
-        if (file) args.push('--', file);
-        const diff = await gitCmd(args, cwd);
-        if (!diff.trim()) return ok(staged ? 'No staged changes.' : 'Working tree clean (no diff).');
-        return ok(truncateDiff(diff));
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
-
-  server.registerTool(
-    'git_log',
-    {
-      title: 'Get recent git commit history',
-      description:
-        'Get structured commit history (hash, author, date, message) without terminal pager formatting.',
-      inputSchema: {
-        repoPath: z.string().optional().describe('Repository directory path (defaults to root)'),
-        limit: z.number().int().min(1).max(50).optional().describe('Number of commits to return (default 10, max 50)'),
-      },
-    },
-    async ({ repoPath, limit = 10 }) => {
-      try {
-        const cwd = resolveUnderRoot(repoPath);
-        const format = '%h%x09%an%x09%ad%x09%s';
-        const raw = await gitCmd(['log', `-n${limit}`, `--pretty=format:${format}`, '--date=short'], cwd);
-        const commits = raw
-          .trim()
-          .split('\n')
-          .filter(Boolean)
-          .map((line) => {
-            const [hash, author, date, ...rest] = line.split('\t');
-            return { hash, author, date, message: rest.join('\t') };
-          });
-        return ok(JSON.stringify(commits, null, 2));
+        return ok(shapeForModel(await OPS[op]({ cwd: resolveUnderRoot(repoPath), ...opts })));
       } catch (e) {
         return fail(e);
       }

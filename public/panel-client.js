@@ -60,10 +60,31 @@ function copyText(text, btn) {
     const old = btn.textContent; btn.textContent = 'copied'; setTimeout(() => (btn.textContent = old), 1200);
   });
 }
+function icon(name) {
+  const i = document.createElement('i');
+  i.className = 'fa-solid fa-' + name;
+  return i;
+}
+
+function setDot(el, ok) {
+  el.replaceChildren(icon(ok ? 'check' : 'xmark'));
+  el.className = 'dot ' + (ok ? 'ok' : 'err');
+}
+
 document.addEventListener('click', (e) => {
+  const eye = e.target.closest('[data-eye]');
+  if (eye) {
+    const txt = eye.closest('.row').querySelector('.txt');
+    const masked = txt.dataset.shown !== '1';
+    txt.textContent = masked ? txt.dataset.v : '•'.repeat(12);
+    txt.dataset.shown = masked ? '1' : '0';
+    eye.firstElementChild.className = 'fa-solid fa-' + (masked ? 'eye-slash' : 'eye');
+    return;
+  }
   const el = e.target.closest('.copy');
   if (!el) return;
-  navigator.clipboard.writeText((el.querySelector('.txt') || el).textContent).then(() => {
+  const txt = el.querySelector('.txt') || el;
+  navigator.clipboard.writeText(txt.dataset.v ?? txt.textContent).then(() => {
     el.classList.add('copied');
     setTimeout(() => el.classList.remove('copied'), 1000);
   });
@@ -111,13 +132,13 @@ function addPath(value, dirty) {
   if (isProtectedPath(value)) {
     input.readOnly = true;
     const lock = document.createElement('span');
-    lock.textContent = '🔒';
+    lock.append(icon('lock'));
     lock.title = 'Rule-file access, locked so it cannot be revoked by accident.';
     wrap.append(input, lock);
   } else {
     input.oninput = markDirty;
     const del = document.createElement('button');
-    del.textContent = '×';
+    del.append(icon('xmark'));
     del.onclick = () => { wrap.remove(); markDirty(); };
     wrap.append(input, del);
   }
@@ -151,7 +172,7 @@ function addChip(bin) {
   label.textContent = bin; label.title = 'click to restrict to specific subcommands';
   label.onclick = () => { chip.remove(); addRow(bin, []); markAllowDirty(); document.querySelector('#cmdRows .cmdrow:last-child .cmd-subs')?.focus(); };
   const x = document.createElement('button');
-  x.textContent = '×'; x.onclick = () => { chip.remove(); markAllowDirty(); };
+  x.append(icon('xmark')); x.onclick = () => { chip.remove(); markAllowDirty(); };
   chip.append(label, x);
   document.getElementById('cmdChips').append(chip);
 }
@@ -161,6 +182,7 @@ function addRow(bin, subs) {
   const row = document.createElement('div');
   row.className = 'cmdrow'; row.dataset.bin = bin;
   if (ALWAYS_RISK[bin]) { row.classList.add('risk-hi'); row.title = '⚠ ' + ALWAYS_RISK[bin]; }
+  if (bin === 'git') row.title = 'branch, tag and remote allow their read forms only; press "any" to allow every git command';
   const name = document.createElement('span');
   name.className = 'cmd-bin'; name.textContent = bin;
   const subI = document.createElement('input');
@@ -170,7 +192,7 @@ function addRow(bin, subs) {
   any.textContent = 'any'; any.title = 'collapse to a chip (allow any subcommand)';
   any.onclick = () => { row.remove(); addChip(bin); markAllowDirty(); };
   const x = document.createElement('button');
-  x.textContent = '×'; x.title = 'remove'; x.onclick = () => { row.remove(); markAllowDirty(); };
+  x.append(icon('xmark')); x.title = 'remove'; x.onclick = () => { row.remove(); markAllowDirty(); };
   row.append(name, subI, any, x);
   document.getElementById('cmdRows').append(row);
 }
@@ -201,48 +223,26 @@ function collectAllowlist() {
   return map;
 }
 
+// Editable trust zones: scripts under them run without a command row, and the file tools cannot write into them.
 function markTrustedDirty() {
   document.querySelector('[data-act="saveTrusted"]').classList.add('primary');
   say('msgTrusted', 'unsaved changes', false);
 }
 
-function addTrustedDir(value, conflict, dirty) {
+function addTrustedDir(value, dirty) {
   const wrap = document.createElement('div');
-  const mark = document.createElement('span');
-  if (conflict) { mark.className = 'dot err'; mark.textContent = '✕'; mark.title = 'disabled: overlaps writable folder ' + conflict + ' (write + run = code execution)'; }
-  else if (value) { mark.className = 'dot ok'; mark.textContent = '✓'; mark.title = 'active'; }
-  else { mark.className = 'dot'; }
   const input = document.createElement('input');
   input.type = 'text'; input.value = value; input.oninput = markTrustedDirty;
   const del = document.createElement('button');
-  del.textContent = '×'; del.onclick = () => { wrap.remove(); markTrustedDirty(); };
-  wrap.append(mark, input, del);
+  del.append(icon('xmark')); del.onclick = () => { wrap.remove(); markTrustedDirty(); };
+  wrap.append(input, del);
   document.getElementById('trustedDirs').append(wrap);
   if (dirty) markTrustedDirty();
 }
 
 function renderTrustedDirs(dirs) {
   document.getElementById('trustedDirs').innerHTML = '';
-  for (const d of dirs) addTrustedDir(d.dir, d.conflict, false);
-}
-
-function renderRuleChecks(files) {
-  const checks = document.getElementById('ruleChecks');
-  checks.innerHTML = '';
-  if (!files.length) {
-    checks.innerHTML = '<span class="empty">akidevrule isn\'t installed yet; install it in section 2 above, or skip and use the prompt without rules.</span>';
-    return;
-  }
-  // index.md is the rule map — always first, and locked so it can't be unchecked.
-  const sorted = [...files].sort((a, b) => (a === 'index.md' ? -1 : b === 'index.md' ? 1 : 0));
-  for (const f of sorted) {
-    const label = document.createElement('label');
-    const locked = f === 'index.md';
-    const checked = locked || DEFAULT_RULES.includes(f);
-    label.innerHTML = '<input type="checkbox" value="' + f + '"' + (checked ? ' checked' : '') + (locked ? ' disabled' : '') + '>';
-    label.append(document.createTextNode(f.replace(/^(RULE|METHOD)-/, '').replace(/\.md$/, '') + (locked ? ' 🔒' : '')));
-    checks.append(label);
-  }
+  for (const dir of dirs) addTrustedDir(dir, false);
 }
 
 // Built via DOM nodes, not innerHTML, so the user-typed origin can never be interpreted as markup.
@@ -275,19 +275,14 @@ async function loadState() {
   renderAllowlist(s.allowlist);
   renderTrustedDirs(s.trustedDirs || []);
   s.paths.forEach((p) => addPath(p));
-  renderRuleChecks(s.ruleFiles);
-  document.getElementById('ruleChecks').onchange = buildPrompt;
-  document.getElementById('loadRules').onchange = buildPrompt;
   document.getElementById('newCmd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.addCmd(); } };
   document.getElementById('cmdFilter').oninput = (e) => filterCommands(e.target.value);
-  buildPrompt();
 }
 
 async function loadTailscale() {
   const mark = (id, ok) => {
     const el = document.getElementById(id);
-    el.textContent = ok ? '✓' : '✕';
-    el.className = 'dot ' + (ok ? 'ok' : 'err');
+    setDot(el, ok);
   };
   const s = await api('GET', '/api/tailscale');
   mark('tsInstalled', s.installed);
@@ -299,8 +294,7 @@ async function loadTailscale() {
 
 function renderPostmanState(status) {
   const dot = document.getElementById('pmDaemonDot');
-  dot.textContent = status.attached ? '✓' : '✕';
-  dot.className = 'dot ' + (status.attached ? 'ok' : 'err');
+  setDot(dot, status.attached);
   document.getElementById('pmBtnLaunch').hidden = status.running;
   document.getElementById('pmBtnQuit').hidden = !status.running;
   const newWindow = document.getElementById('pmBtnNewWindow');
@@ -314,7 +308,7 @@ function postmanStatusMessage(status) {
   const cdp = endpoint && endpoint.port ? ' · CDP ' + (endpoint.host || '127.0.0.1') + ':' + endpoint.port : '';
   const runtime = 'daemon PID ' + status.daemonPid + cdp;
   if (!status.attached) return 'waiting for a Postman window · ' + runtime;
-  const count = status.attachedWindowCount || 0;
+  const count = status.attachedPageCount || 0;
   return status.mode + ' · attached to ' + count + ' Postman window' + (count === 1 ? '' : 's') + ' · ' + runtime;
 }
 
@@ -470,7 +464,147 @@ async function loadAgyPool() {
   return status;
 }
 
+// Snippets and the token field are server-rendered, so a reload is what refreshes them all at once.
+function rollToken(btn, hard) {
+  const warning = hard
+    ? 'Roll the access token AND sign out every connected AI? Each must reconnect with the passphrase.'
+    : 'Roll the access token? Tokens pasted into local snippets stop working until re-pasted.';
+  if (!confirm(warning)) return;
+  return act(btn, 'msgRoll', async () => {
+    const { message } = await api('POST', '/api/roll-token', { hard });
+    setTimeout(() => location.reload(), 800);
+    return message + ' — reloading';
+  });
+}
+
+let limitDefaults = {};
+const limitInputs = () => [...document.querySelectorAll('[data-limit]')];
+function fillLimits(limits) {
+  for (const el of limitInputs()) {
+    const v = limits[el.dataset.limit];
+    if (el.type === 'checkbox') el.checked = v; else el.value = v;
+  }
+}
+function readLimitInputs() {
+  const limits = {};
+  for (const el of limitInputs()) limits[el.dataset.limit] = el.type === 'checkbox' ? el.checked : Number(el.value);
+  return limits;
+}
+function renderBlocked(blocked) {
+  const list = document.getElementById('blockedList');
+  if (!blocked.length) { const p = document.createElement('p'); p.className = 'helptext'; p.textContent = 'Nobody is blocked.'; return list.replaceChildren(p); }
+  list.replaceChildren(...blocked.map(({ key, retryAfterSeconds }) => {
+    const row = document.createElement('div');
+    row.className = 'acts';
+    const label = document.createElement('span');
+    label.className = 'mono';
+    label.textContent = `${key} — ${Math.ceil(retryAfterSeconds / 60)} min left`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Release';
+    btn.onclick = () => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', { key }); await loadSecurity(); return 'released'; });
+    row.append(label, btn);
+    return row;
+  }));
+}
+const RELATIVE_UNITS = [['d', 86400], ['h', 3600], ['min', 60]];
+function timeCell(ms, missingText = '—') {
+  if (!ms) return missingText;
+  const span = document.createElement('span');
+  const seconds = Math.max(0, (Date.now() - ms) / 1000);
+  const [unit, size] = RELATIVE_UNITS.find(([, s]) => seconds >= s) || [];
+  span.textContent = unit ? `${Math.floor(seconds / size)} ${unit} ago` : 'just now';
+  span.title = new Date(ms).toLocaleString();
+  return span;
+}
+function mutedNote(text) {
+  const note = document.createElement('div');
+  note.className = 'helptext';
+  note.textContent = text;
+  return note;
+}
+function renderTable(containerId, columns, rows, emptyText, rowClass) {
+  const container = document.getElementById(containerId);
+  if (!rows.length) { const p = document.createElement('p'); p.className = 'helptext'; p.textContent = emptyText; return container.replaceChildren(p); }
+  const table = document.createElement('table');
+  table.className = 'datatable';
+  const headRow = table.createTHead().insertRow();
+  for (const [label] of columns) headRow.insertCell().textContent = label;
+  const body = table.createTBody();
+  for (const row of rows) {
+    const tr = body.insertRow();
+    if (rowClass?.(row)) tr.className = rowClass(row);
+    for (const [, cell] of columns) tr.insertCell().append(cell(row));
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'tablewrap';
+  wrap.append(table);
+  container.replaceChildren(wrap);
+}
+const CLIENT_KIND_LABEL = { claude: 'Claude pre-registered', dcr: 'connector' };
+function clientNameCell({ name, pending }) {
+  const box = document.createElement('div');
+  box.append(name || '—', mutedNote('self-declared'));
+  if (pending) box.append(mutedNote('pending approval — removed after 1 h'));
+  return box;
+}
+function removeClientButton({ clientId, kind, name, signedIn }) {
+  const signOutOnly = kind === 'claude';
+  if (signOutOnly && !signedIn) return '';
+  const btn = document.createElement('button');
+  btn.textContent = signOutOnly ? 'Sign out' : 'Remove';
+  btn.onclick = () => {
+    const what = signOutOnly ? `Sign out ${name}? Its Client ID and secret stay valid, so it can connect again with the passphrase.` : `Remove ${name || 'this client'}? It must connect again with the passphrase.`;
+    if (!confirm(`${what}\n\nIt keeps the current access token until you press Roll token in section 1.`)) return;
+    act(btn, 'msgClients', async () => {
+      const { message } = await api('POST', '/api/clients/remove', { clientId });
+      await loadSecurity();
+      return `${message} — press Roll token in section 1 to cut its access now`;
+    });
+  };
+  return btn;
+}
+function renderClients(clients) {
+  renderTable('clientsList', [
+    ['Name', clientNameCell],
+    ['Kind', (c) => CLIENT_KIND_LABEL[c.kind] || c.kind || '—'],
+    ['Redirect', (c) => c.redirectHost || '—'],
+    ['Signed in', (c) => c.signedIn ? 'yes' : 'no'],
+    ['First seen', (c) => timeCell(c.firstSeenAt, 'before tracking')],
+    ['Last approved', (c) => timeCell(c.approvedAt)],
+    ['Last token', (c) => timeCell(c.tokenAt)],
+    ['Last from', (c) => [c.lastAddress, c.lastAgent].filter(Boolean).join(' · ') || '—'],
+    ['', removeClientButton],
+  ], clients, 'No clients registered yet.', (c) => c.pending ? 'pending' : '');
+}
+function renderSecurityLog({ path, lines }) {
+  document.getElementById('securityLogPath').textContent = path;
+  document.getElementById('securityLog').textContent = lines.length ? lines.join('\n') : 'Nothing logged yet.';
+}
+function renderCallers(callers) {
+  renderTable('callersList', [
+    ['Caller', (c) => c.key],
+    ['Agent', (c) => c.agent || '—'],
+    ['First seen', (c) => timeCell(c.firstSeen)],
+    ['Last seen', (c) => timeCell(c.lastSeen)],
+    ['Requests', (c) => String(c.requests)],
+  ], callers, 'No one has used the token since the last restart.');
+}
+async function loadSecurity() {
+  const { limits, defaults, blocked, clients, callers, log } = await api('GET', '/api/security');
+  limitDefaults = defaults;
+  fillLimits(limits);
+  renderBlocked(blocked);
+  renderClients(clients);
+  renderCallers(callers);
+  renderSecurityLog(log);
+}
+
 const ACTIONS = {
+  saveLimits: (btn) => act(btn, 'msgLimits', async () => (await api('POST', '/api/rate-limit', { limits: readLimitInputs() })).message),
+  resetLimits: () => { fillLimits(limitDefaults); say('msgLimits', 'defaults filled in — press Save to apply', true); },
+  refreshBlocked: (btn) => act(btn, 'msgBlocked', async () => { await loadSecurity(); return 'refreshed'; }),
+  refreshLog: (btn) => act(btn, 'msgLog', async () => { await loadSecurity(); return 'refreshed'; }),
+  releaseAll: (btn) => act(btn, 'msgBlocked', async () => { await api('POST', '/api/rate-limit/release', {}); await loadSecurity(); return 'everyone released'; }),
   tailscale: (btn) => act(btn, 'msgTs', loadTailscale),
   // Buttons flip only from the handler's real running/pid — never before spawn/kill returns.
   launchPostman: (btn) => act(btn, 'msgPmDaemon', async () => {
@@ -560,7 +694,7 @@ const ACTIONS = {
     btn.classList.remove('primary');
     return message;
   }),
-  addTrusted: () => { addTrustedDir('', null, true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
+  addTrusted: () => { addTrustedDir('', true); document.querySelector('#trustedDirs input:last-of-type')?.focus(); },
   saveTrusted: (btn) => act(btn, 'msgTrusted', async () => {
     const dirs = [...document.querySelectorAll('#trustedDirs input')].map((i) => i.value.trim()).filter(Boolean);
     const { message } = await api('POST', '/api/trusted-dirs', { dirs });
@@ -583,10 +717,20 @@ const ACTIONS = {
   }),
   installRules: (btn) => act(btn, 'msgRules', async () => {
     const { message } = await api('POST', '/api/install-rules');
-    renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
-    buildPrompt();
-    return message;
+    setTimeout(() => location.reload(), 800);
+    return message + ' — reloading';
   }),
+  rollToken: (btn) => rollToken(btn, false),
+  rollTokenHard: (btn) => rollToken(btn, true),
+  rollPassphrase: (btn) => {
+    if (!confirm('Roll the passphrase? The old one stops working for new connections; connected AIs are not signed out.')) return;
+    return act(btn, 'msgRoll', async () => {
+      const { message } = await api('POST', '/api/roll-passphrase');
+      setTimeout(() => location.reload(), 800);
+      return message + ' — reloading';
+    });
+  },
+  agyApply: (btn) => act(btn, 'msgAgy', async () => (await api('POST', '/api/agy-apply-mcp')).message),
   pullUpdate: (btn) => act(btn, 'msgUpd', async () => (await api('POST', '/api/pull-update')).message),
   saveTunnel: (btn) => act(btn, 'msgTunnel', async () => {
     const fileInput = document.getElementById('tunnelCredFile');
@@ -606,13 +750,9 @@ const ACTIONS = {
   }),
   updateRules: (btn) => act(btn, 'msgUpdRule', async () => {
     const { message } = await api('POST', '/api/install-rules');
-    renderRuleChecks((await api('GET', '/api/state')).ruleFiles);
-    buildPrompt();
-    // The banner and section-3 warning both claimed a stale corpus; the update just cleared it.
-    document.querySelector('.updrule')?.remove();
-    document.getElementById('s3warn')?.remove();
-    if (!document.querySelector('.updbar .updrow')) document.querySelector('.updbar')?.remove();
-    return message;
+    // Reload so the server re-renders the section-2 badge, hero version pill and update-bar from fresh state.
+    setTimeout(() => location.reload(), 800);
+    return message + ' — reloading';
   }),
   registerDomain: (btn) => act(btn, 'msgDomain', async () => {
     const subdomain = document.getElementById('subdomainInput').value.trim();
@@ -662,6 +802,7 @@ renderSavedIngress(SAVED_INGRESS);
 // One failed /api/state leaves three sections blank, so the failure is reported next to each of them.
 loadState().catch((e) => ['msgPaths', 'msgAllow', 'msgTrusted', 'msgRules'].forEach((id) => say(id, e.message, false)));
 loadTailscale().then((m) => say('msgTs', m, m.startsWith('ready'))).catch((e) => say('msgTs', e.message, false));
+loadSecurity().catch((e) => say('msgLimits', e.message, false));
 loadPostmanDaemon().catch((e) => { document.getElementById('msgPmDaemon').textContent = e.message; });
 loadAgyPool().catch((e) => say('msgAgyPool', e.message, false));
 AGY_ROLES.forEach(agyUsageRoot);

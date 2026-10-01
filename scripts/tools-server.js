@@ -8,7 +8,7 @@ import { register as registerAgy } from './agy-mcp.js';
 import { register as registerKiro } from './kiro-mcp.js';
 import { register as registerSearch } from './search-mcp.js';
 import { register as registerFilesystem } from './filesystem-mcp.js';
-import { register as registerPostman } from './postman-mcp.js';
+import { register as registerPostman } from './postman/postman-mcp.js';
 import { register as registerCdp } from './cdp-mcp.js';
 import { register as registerPort } from './port-mcp.js';
 import { register as registerGit } from './git-mcp.js';

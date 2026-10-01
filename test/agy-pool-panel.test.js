@@ -24,7 +24,9 @@ const html = renderPanel({
   isDev: true,
 });
 
-assert.match(html, /7 · AGY multi-account pool/);
+assert.match(html, /7 · Security &amp; connection limits/);
+assert.match(html, /8 · AGY multi-account pool/);
+assert.ok(html.indexOf('7 · Security &amp; connection limits') < html.indexOf('8 · AGY multi-account pool'), 'Security section 7 must render before AGY section 8');
 assert.match(html, /Create role identities/);
 for (const role of ['advisor', 'executor', 'experiment', 'reviewer']) {
   assert.match(html, new RegExp(`data-agy-role="${role}"`));
@@ -32,7 +34,7 @@ for (const role of ['advisor', 'executor', 'experiment', 'reviewer']) {
   assert.match(html, new RegExp(`id="agyAccount-${role}"`), `${role} must show the AGY account separately from its Windows user`);
   assert.doesNotMatch(html, new RegExp(`<input[^>]+id="agyUser-${role}"`), 'role identities must not be editable');
 }
-const poolSection = html.split('<section id="s7">')[1].split('</section>')[0];
+const poolSection = html.split('<section id="s8">')[1].split('</section>')[0];
 assert.match(poolSection, /click <strong>Login<\/strong>, sign in directly in the visible AGY CLI, close that window, then click <strong>Start<\/strong>/);
 assert.doesNotMatch(poolSection, /OAuth URL|OAuth code|Paste Google OAuth code|Submit code|agyOauth-|agyCode-|<form\b|data-act="submitAgyCode"/);
 assert.match(client, /'AGY: ' \+ accountHandle/, 'account label must use the email local part returned by the worker');

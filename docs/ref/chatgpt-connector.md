@@ -32,6 +32,6 @@ That's it. ChatGPT self-registers as an OAuth client via DCR (RFC 7591, PKCE, no
 - `scripts/config-page.js` — panel ChatGPT tab (section 1)
 - `scripts/oauth.js` — `handleRegister` (DCR endpoint), `metadataHandlers` (well-known)
 - `scripts/gatekeeper.js` — routes `/.well-known/openid-configuration` → `authorizationServer`
-- `docs/ref/security-model.md` — OAuth model (Claude pre-registered; ChatGPT DCR)
+- `docs/feat/security.md` — OAuth model (Claude pre-registered; ChatGPT DCR)
 - `docs/plan/done/audit-1.1.0-todo.md` §A1–A2 — original DCR blocker and fix
 - `docs/plan/done/merge-pr1-windows-chatgpt.md` — how ChatGPT DCR was merged

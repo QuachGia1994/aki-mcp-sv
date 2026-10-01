@@ -47,12 +47,13 @@ h3.subh:first-of-type { margin-top: 4px; }
 .copy { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; cursor: pointer; font: 12px ui-monospace, Menlo, monospace; }
 .copy .txt { overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
 .copy .txt::-webkit-scrollbar { display: none; }
-.copy::after { content: '⧉'; flex-shrink: 0; color: var(--muted); }
+.copy::after { content: '\f0c5'; font: 900 12px 'Font Awesome 7 Free'; flex-shrink: 0; color: var(--muted); }
 .copy:hover { border-color: var(--accent); }
 .copy:hover::after { color: var(--accent); }
+.eye { margin-left: 6px; padding: 0 6px; line-height: 1.4; vertical-align: middle; }
 .copy.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .copy.copied { border-color: var(--ok); }
-.copy.copied::after { content: '✓'; color: var(--ok); }
+.copy.copied::after { content: '\f00c'; color: var(--ok); }
 button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
 button:hover { border-color: var(--accent); color: var(--accent); }
 button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
@@ -112,9 +113,6 @@ textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
 .updbar { border: 1px solid var(--accent); border-left: 4px solid var(--accent); background: var(--card); border-radius: 10px; padding: 12px 16px; margin: 0 0 14px; }
 .updrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .updrow + .updrow { margin-top: 10px; }
-.updwarn { flex-basis: 100%; color: var(--err); font-size: 12px; font-weight: 600; margin: 2px 0 0; }
-.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 4px 12px; margin-bottom: 12px; }
-.checks label { display: flex; gap: 6px; align-items: center; font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
 .flist { display: flex; flex-direction: column; margin-bottom: 8px; }
 .flist > * { display: flex; align-items: center; margin-bottom: 3px; }
 .flist input[type=text] { margin-right: 4px; }
@@ -135,6 +133,11 @@ details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 details.adv summary:hover { color: var(--accent); }
 .msg { font-size: 12px; margin-left: 4px; }
 .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+.rulebadge { font: 700 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+.rulebadge.ok { color: var(--ok); border-color: var(--ok); }
+.rulebadge.warn { color: var(--accent); border-color: var(--accent); }
+.rulebadge.err { color: var(--err); border-color: var(--err); }
+.rulebadge-note { color: var(--muted); font-size: 11.5px; margin-left: 6px; }
 a { color: var(--accent); }
 .btnlink { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .btnlink:hover { border-color: var(--accent); }
@@ -173,3 +176,15 @@ footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 24px 0 28
 @media (max-width: 560px) { .row { grid-template-columns: minmax(0, 1fr); } .eco-grid { grid-template-columns: 1fr; } .agy-usage { grid-column: 1; } .agy-usage-windows { grid-template-columns: 1fr; } }
 .gh-top { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--muted); text-decoration: none; }
 .gh-top:hover { color: var(--accent); border-color: var(--accent); }
+
+.limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 10px 0; }
+.limits label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.limits input[type=number] { width: 100%; padding: 6px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
+.chk { display: flex; align-items: center; gap: 6px; }
+.tablewrap { overflow-x: auto; margin-bottom: 8px; }
+.datatable { border-collapse: collapse; width: 100%; font-size: 12px; }
+.datatable th, .datatable td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.datatable th { color: var(--muted); font-weight: 600; }
+.datatable tr.pending { opacity: .6; }
+.datatable .helptext { margin: 0; font-size: 11px; }
+.logbox { font-family: ui-monospace, Menlo, monospace; font-size: 11px; max-height: 320px; overflow: auto; margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; white-space: pre; }

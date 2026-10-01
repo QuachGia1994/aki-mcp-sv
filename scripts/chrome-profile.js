@@ -8,8 +8,8 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { USER_DIR } from './userdata.js';
 
-export const CHROME_CLONES_DIR = path.join(USER_DIR, 'chrome-clones');
-export const SESSION_FILE = path.join(USER_DIR, 'chrome-session.json');
+const CHROME_CLONES_DIR = path.join(USER_DIR, 'chrome-clones');
+const SESSION_FILE = path.join(USER_DIR, 'chrome-session.json');
 
 const EXCLUDE_NAMES = [/^Singleton/, /lock/i, /^LOCK$/, /^Cache$/, /^Code Cache$/, /^GPUCache$/, /^Crashpad$/];
 
@@ -221,7 +221,7 @@ function pruneAndCopyLocalState(srcLocalState, dstLocalState, profileFolder) {
 }
 
 // Clones a profile with atomic-swap (.incoming) and allowlist pruning.
-export function cloneProfile(profileId = 'Default', { browser = 'chrome', refresh = false } = {}) {
+function cloneProfile(profileId = 'Default', { browser = 'chrome', refresh = false } = {}) {
   const { name: browserName, userDataDir } = getBrowserInfo(browser);
   const srcProfileDir = path.join(userDataDir, profileId);
   if (!fs.existsSync(srcProfileDir)) {
@@ -415,6 +415,9 @@ export function getActiveSession() {
   return activeSession;
 }
 
+export const NO_CDP_PORT_MESSAGE =
+  'No CDP port specified and no active Chrome session. Launch a clone with aki__chrome_launch, or attach to a window already running with a remote-debugging port: find the port with aki__port_status (a Chrome process listening on 127.0.0.1), run aki__devtools_targets on it, match the tab by title or url, then pass that port and targetId explicitly.';
+
 // Launches a cloned Chromium instance with stealth flags and dynamic port 0.
 export async function launchChrome(profileId = 'Default', {
   browser = 'chrome',
@@ -516,17 +519,3 @@ export function stopChrome({ pid, profileId } = {}) {
 
   return { stopped: true, pid: targetPid || null };
 }
-
-export default {
-  getBrowserInfo,
-  listInstalledBrowsers,
-  listProfiles,
-  cloneProfile,
-  findAvailableLoopbackPort,
-  waitForCdpEndpoint,
-  waitForDevToolsActivePort,
-  launchChrome,
-  stopChrome,
-  getActivePort,
-  getActiveSession,
-};

@@ -19,6 +19,7 @@ export const CLOUDFLARED_CRED_PATH = path.join(USER_DIR, 'cloudflared-cred.json'
 export const AGY_POOL_SECRETS_PATH = path.join(USER_DIR, 'agy-pool-secrets.json');
 export const AGY_ROLE_CREDENTIAL_PATH = path.join(USER_DIR, 'agy-role-credential.clixml');
 export const AGY_ROLE_LEGACY_CREDENTIAL_PATH = path.join(USER_DIR, 'agy-role-credential.dpapi');
+export const SECURITY_LOG_PATH = path.join(USER_DIR, 'security.log');
 
 mkdirSync(USER_DIR, { recursive: true, mode: 0o700 });
 

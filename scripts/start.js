@@ -55,18 +55,19 @@ import { startPanel } from './panel.js';
 import { warmToolsServer } from './streamable-bridge.js';
 import { checkForUpdate, writeStatusFile } from './update-check.js';
 import { USER_DIR, IS_DEV, readIngressConfig } from './userdata.js';
-import { killPostmanDaemon } from './postman-mcp.js';
+import { killPostmanDaemon } from './postman/postman-mcp.js';
 import { readLock, isPidAlive, writeLock, clearLock, killAndWait } from './instance-lock.js';
 
 const isDev = IS_DEV;
 const version = readVersion();
+const sourceRoot = new URL('..', import.meta.url).href;
 const customGatePort = argOf('--port');
 const customPanelPort = argOf('--panel-port');
 
-// Never fight a running instance for its ports (that produced the token-403 bug): reuse it if same version, replace it if older.
+// Never fight a running instance for its ports: reuse only the exact same version from the exact same source checkout.
 const existingLock = readLock();
 if (existingLock && existingLock.pid !== process.pid && isPidAlive(existingLock.pid)) {
-  if (existingLock.version === version) {
+  if (existingLock.version === version && existingLock.sourceRoot === sourceRoot) {
     const url = `http://127.0.0.1:${existingLock.panelPort}/?t=${existingLock.token}`;
     console.log(`[start] akimcp v${version} is already running (pid ${existingLock.pid}) — opening its panel`);
     if (process.argv.includes('--no-browser')) {
@@ -76,7 +77,7 @@ if (existingLock && existingLock.pid !== process.pid && isPidAlive(existingLock.
     }
     process.exit(0);
   } else {
-    console.log(`[start] stopping older akimcp v${existingLock.version} (pid ${existingLock.pid}) to start v${version}`);
+    console.log(`[start] stopping akimcp v${existingLock.version} from a different version/source (pid ${existingLock.pid}) to start v${version} from ${sourceRoot}`);
     await killAndWait(existingLock.pid);
     clearLock();
   }
@@ -158,7 +159,7 @@ const updateInfo = await checkForUpdate();
 writeStatusFile(updateInfo);
 const bar = (s) => console.log(`\x1b[43m\x1b[30m ${s} \x1b[0m`);
 if (updateInfo.mcp.updateAvailable) bar(`[update] @akinet/akimcp ${updateInfo.mcp.current} → ${updateInfo.mcp.latest} — run \`npm i -g @akinet/akimcp\` or pull & restart`);
-if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel, then re-paste the Instructions (panel section 3) into the custom-instructions setting of each AI`);
+if (updateInfo.rule.updateAvailable) bar(`[update] akidevrule ${updateInfo.rule.current} → ${updateInfo.rule.latest} — update in panel`);
 
 let panel;
 let cloudflared = null;
@@ -214,7 +215,7 @@ await Promise.all([gateServer, panel].filter(Boolean).map(bound));
 // (panel.js); the gatekeeper port stays fixed since Tailscale/cloudflared ingress is mapped to it.
 const actualPanelPort = panel.actualPort ?? Number(panelPort);
 const panelUrl = `http://127.0.0.1:${actualPanelPort}/?t=${panelToken}`;
-writeLock({ pid: process.pid, panelPort: actualPanelPort, gatePort: Number(gatePort), token: panelToken, version });
+writeLock({ pid: process.pid, panelPort: actualPanelPort, gatePort: Number(gatePort), token: panelToken, version, sourceRoot });
 // Escape hatch for automated runs (bootstrap smoke tests) that must not pop a browser window — off by default, normal `npm start` is unaffected.
 if (process.env.MCP_SKIP_BROWSER_OPEN) {
   console.log(`[start] MCP_SKIP_BROWSER_OPEN set — not opening a browser (panel: ${panelUrl})`);

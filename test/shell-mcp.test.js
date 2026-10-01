@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { Shell } from '../scripts/shell-mcp.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// userdata.js reads AKI_MCP_DATA_DIR at import: an empty dir means the DEFAULT allowlist, never the machine owner's edited one.
+process.env.AKI_MCP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-mcp-test-'));
+const { Shell } = await import('../scripts/shell-mcp.js');
 
 async function run() {
   const shell = new Shell();
@@ -31,6 +37,31 @@ async function run() {
     /chaining\/redirection/,
     'an unquoted $ must still be rejected',
   );
+
+  // Default allowlist: git's write forms are refused, read forms pass, and the refusal says why.
+  const allowed = (cmd) => { const { bin, args } = shell.parse(cmd); shell.checkPermission(bin, args); };
+  for (const cmd of ['git branch -a', 'git branch', 'git tag', "git tag -l 'v*'", 'git remote -v', 'git remote get-url origin', 'git status', 'git log -5']) {
+    assert.doesNotThrow(() => allowed(cmd), cmd);
+  }
+  for (const cmd of ['git branch -D x', 'git branch newbranch', 'git tag -d v1', 'git tag v9', 'git remote set-url origin x', 'git remote add o x', 'git diff --output=/tmp/x']) {
+    assert.throws(() => allowed(cmd), /write form/, cmd);
+  }
+  assert.throws(() => allowed('git push'), /"git" is limited to: .*status/, 'a blocked subcommand names what is allowed');
+  assert.throws(() => allowed('docker ps'), /not in the allowlist.*control panel/, 'a blocked binary says where to add it');
+
+  // A failing command returns what it printed AND why it failed; a passing one returns stdout only.
+  const node = (code) => shell.run(process.execPath, ['-e', code], process.cwd());
+  const failed = await node('console.log("OUT-LINE");console.error("ERR-LINE");process.exit(3)');
+  assert.equal(failed.isError, true);
+  assert.equal(failed.content[0].text, '[exit code 3]\nOUT-LINE\nERR-LINE', 'stdout, stderr and exit code all survive');
+  const silent = await node('process.exit(1)');
+  assert.equal(silent.content[0].text, '[exit code 1]', 'no output still says why');
+  const passed = await node('console.log("fine");console.error("warn")');
+  assert.equal(passed.isError, undefined);
+  assert.equal(passed.content[0].text, 'fine\n');
+  assert.equal((await node('')).content[0].text, '(no output)');
+  const flood = await node('for (let i=0;i<20000;i++) console.log("line "+i+" "+"z".repeat(30))');
+  assert.match(flood.content[0].text.split('\n')[0], /^\[output cut: /, 'a flood is cut and announced on line 1');
 
   console.log('shell-mcp.test.js: ok');
 }
