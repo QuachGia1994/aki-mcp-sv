@@ -18,6 +18,10 @@ const missingCredential = path.join(root, `missing-${randomUUID()}.clixml`);
 assert.equal(existsSync(missingCredential), false);
 const provisionSource = readFileSync(provisionScript, 'utf8');
 const roleProcessSource = readFileSync(path.join(root, 'scripts', 'agy-role-process.ps1'), 'utf8');
+for (const user of ['agy-researcher', 'agy-tester']) {
+  assert.ok(provisionSource.includes("'" + user + "'"));
+  assert.ok(provisionSource.includes("@{ Sid = $roleSids['" + user + "']; Rights = $read }"));
+}
 assert.match(provisionSource, /Set-LocalUser -Name \$u -Password \$password -AccountNeverExpires -PasswordNeverExpires \$true/);
 assert.doesNotMatch(provisionSource, /Set-LocalUser[^\r\n]*-PasswordNeverExpires(?:\s*(?:\r?\n|$))/);
 assert.match(roleProcessSource, /ValidateSet\('login','worker','logout'\)/);

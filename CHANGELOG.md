@@ -11,6 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Ingress drop-rate benchmark harness** (`bench/drop-rate.mjs`): dependency-free public-edge probing and comparison for Tailscale Funnel vs Cloudflare reliability, with preflight/well-known/real MCP modes and JSONL summaries. The benchmark is contributor tooling only and is excluded from the npm package.
 
 ### Changed
+- **Six-account AGY pool**: add plan-only Researcher and Tester roles on ports 7415 and 7416, including Windows identity provisioning, per-account usage, and dynamic readiness totals. Initialization preserves existing worker secrets and settings and assigns the shared configured workspace root to new roles.
 - **Alibaba Review regression coverage is hermetic and part of `npm test`**: the test now injects a fake launcher instead of spawning a real Claude PM process while verifying the launch contract.
 - **Background-task runner test is cross-platform deterministic**: the short-lived task probe uses `git rev-parse --show-toplevel` instead of `pwd`, avoiding empty MSYS output while still exercising allowlist, logging, and task lifecycle.
 - **Kiro fallback resource bounds tightened**: read-only fallback calls use a shorter timeout and smaller output buffer so hung probes fail sooner and concurrent calls use less memory.

@@ -39,6 +39,17 @@ assert.equal(merged.agy.workers.advisor.root, AGY_POOL_WORKSPACE_ROOT);
 assert.equal(merged.agy.workers.advisor.secretRef, 'advisor');
 assert.notEqual(merged.agy.workers, DEFAULT_AGY_WORKERS, 'worker map must be cloned before mutation');
 
+const legacyRoles = ['advisor', 'executor', 'experiment', 'reviewer'];
+const legacyWorkers = Object.fromEntries(legacyRoles.map((role) => [role, { ...DEFAULT_AGY_WORKERS[role], root: 'D:\\projects' }]));
+const upgraded = withDefaultAgyPool({ agy: { workers: legacyWorkers } });
+assert.equal(Object.keys(upgraded.agy.workers).length, 6);
+for (const role of legacyRoles) assert.deepEqual(upgraded.agy.workers[role], legacyWorkers[role]);
+for (const role of ['researcher', 'tester']) {
+  assert.equal(upgraded.agy.workers[role].root, 'D:\\projects');
+  assert.deepEqual(upgraded.agy.workers[role].allowedModes, ['plan']);
+}
+assert.equal(new Set(Object.values(upgraded.agy.workers).map((worker) => worker.url)).size, 6);
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aki-agy-pool-config-'));
 const settingsPath = path.join(dir, 'setting.json');
 const secretsPath = path.join(dir, 'secrets.json');
@@ -53,8 +64,15 @@ try {
   assert.equal(saved.agy.workers.reviewer.root, AGY_POOL_WORKSPACE_ROOT);
 
   const secrets = JSON.parse(fs.readFileSync(secretsPath, 'utf8'));
-  assert.deepEqual(Object.keys(secrets).sort(), ['advisor', 'executor', 'experiment', 'reviewer']);
+  assert.deepEqual(Object.keys(secrets).sort(), ['advisor', 'executor', 'experiment', 'researcher', 'reviewer', 'tester']);
   assert.ok(Object.values(secrets).every((value) => typeof value === 'string' && value.length === 64));
+
+  const legacySecrets = Object.fromEntries(legacyRoles.map((role) => [role, secrets[role]]));
+  fs.writeFileSync(secretsPath, JSON.stringify(legacySecrets));
+  const migratedSecrets = ensureAgyPoolSecrets({ file: secretsPath });
+  for (const role of legacyRoles) assert.equal(migratedSecrets[role], legacySecrets[role]);
+  assert.equal(Object.keys(migratedSecrets).length, 6);
+  fs.writeFileSync(secretsPath, JSON.stringify(secrets));
 
   const same = ensureAgyPoolSecrets({ file: secretsPath, random: () => 'x'.repeat(64) });
   assert.deepEqual(same, secrets, 'existing secrets must be stable across init');

@@ -50,7 +50,7 @@ try {
     throw 'default AGY workspace is outside the owner home; grant ancestor access manually or choose a workspace inside the owner home'
   }
 
-  $users = @('agy-executor','agy-experiment','agy-reviewer')
+  $users = @('agy-executor','agy-experiment','agy-reviewer','agy-researcher','agy-tester')
   $roleSids = @{}
   $storedCredential = Import-Clixml -LiteralPath $CredentialFile
   if (-not ($storedCredential -is [System.Management.Automation.PSCredential]) -or -not $storedCredential.Password) { throw 'invalid AGY role credential store' }
@@ -122,7 +122,9 @@ try {
       @{ Sid = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'); Rights = $full },
       @{ Sid = $roleSids['agy-executor']; Rights = $modify },
       @{ Sid = $roleSids['agy-experiment']; Rights = $modify },
-      @{ Sid = $roleSids['agy-reviewer']; Rights = $read }
+      @{ Sid = $roleSids['agy-reviewer']; Rights = $read },
+      @{ Sid = $roleSids['agy-researcher']; Rights = $read },
+      @{ Sid = $roleSids['agy-tester']; Rights = $read }
     )
     foreach ($grant in $grants) {
       $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($grant.Sid, $grant.Rights, $inheritance, $propagation, $allow))
@@ -133,8 +135,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "icacls failed for agy-executor on workspace: exit $LASTEXITCODE" }
     & icacls.exe $workspacePath /grant:r "agy-experiment:(OI)(CI)M" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls failed for agy-experiment on workspace: exit $LASTEXITCODE" }
-    & icacls.exe $workspacePath /grant:r "agy-reviewer:(OI)(CI)RX" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "icacls failed for agy-reviewer on workspace: exit $LASTEXITCODE" }
+    foreach ($u in @('agy-reviewer','agy-researcher','agy-tester')) {
+      & icacls.exe $workspacePath /grant:r "${u}:(OI)(CI)RX" | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "icacls failed for $u on workspace: exit $LASTEXITCODE" }
+    }
   }
 
   if ($ResultFile) {

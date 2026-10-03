@@ -276,9 +276,9 @@ aki-mcp-sv/
 │   ├── agy-mcp.js                # local AGY execution + named worker routing
 │   ├── agy-runner.js             # shared AGY argv/process runner
 │   ├── agy-worker.js             # loopback worker server for an isolated AGY account context
-│   ├── agy-pool-config.js        # four-role config + local control-secret initialization
+│   ├── agy-pool-config.js        # six-role config + local control-secret initialization
 │   ├── agy-pool-manager.js       # fixed-role provision/login/logout/status/start/stop + Windows runas launcher
-│   ├── agy-provision-users.ps1   # one-UAC creation/repair of the three fixed AGY role identities
+│   ├── agy-provision-users.ps1   # one-UAC creation/repair of the five fixed AGY role identities
 │   ├── shell-mcp.js              # allowlist-gated shell tool (inspection-first defaults)
 │   ├── output-shape.js           # trims run_cmd output for the model, saves the full text under ~/.aki/mcpsv/out/
 │   ├── agy-mcp.js                # register() module for the agy CLI (mounted by tools-server.js)
@@ -337,9 +337,9 @@ Copy `.env.example` to `.env` and uncomment what you need — `start.js` loads i
 
 ### Multiple AGY accounts at once
 
-`aki__agy_run` can optionally target a named loopback worker. The control panel's **8 · AGY multi-account pool** section manages four fixed roles (`advisor`, `executor`, `experiment`, `reviewer`) from one window. Advisor uses the current Windows account; the other three use fixed low-privilege identities (`agy-executor`, `agy-experiment`, `agy-reviewer`) that the panel can create/repair through one UAC flow. All four workers default to the dedicated `~/.aki/mcpsv/agy-workspaces` root; for one-UAC provisioning on another project directory, set **all four** `agy.workers.<role>.root` values to the same directory in `setting.json` before **Create role identities**. Click **Login** for a role to open one visible AGY CLI window under that identity, complete sign-in or paste an authorization code in the CLI, close the window, then click **Start**. To change an account, use **Logout → Login**. Automatic helpers and daily workers run hidden. The panel shows each available AGY account name (the email before `@`) beside its 5-hour and weekly quota bars. Cross-user workers reuse the main installed `agy.exe`, so three extra AGY installs and persistent browser/CDP sessions are not required. Worker-side mode gates keep advisor/reviewer `plan`-only while executor/experiment may explicitly allow `accept-edits`. Setup: [AGY multi-account pool](docs/ref/agy-multi-account.md).
+`aki__agy_run` can optionally target a named loopback worker. The control panel's **8 · AGY multi-account pool** section manages six fixed roles (`advisor`, `executor`, `experiment`, `reviewer`, `researcher`, `tester`) from one window. Advisor uses the current Windows account; the other five use fixed low-privilege identities (`agy-executor`, `agy-experiment`, `agy-reviewer`, `agy-researcher`, `agy-tester`) that the panel can create/repair through one UAC flow. All six workers default to the dedicated `~/.aki/mcpsv/agy-workspaces` root; for one-UAC provisioning on another project directory, set **all six** `agy.workers.<role>.root` values to the same directory in `setting.json` before **Create role identities**. Click **Login** for a role to open one visible AGY CLI window under that identity, complete sign-in or paste an authorization code in the CLI, close the window, then click **Start**. To change an account, use **Logout → Login**. Automatic helpers and daily workers run hidden. The panel shows each available AGY account name (the email before `@`) beside its 5-hour and weekly quota bars. Cross-user workers reuse the main installed `agy.exe`, so five extra AGY installs and persistent browser/CDP sessions are not required. Worker-side mode gates keep advisor/reviewer/researcher/tester `plan`-only while executor/experiment may explicitly allow `accept-edits`. Setup: [AGY multi-account pool](docs/ref/agy-multi-account.md).
 
-The four-account pool currently requires Windows. On macOS and Linux, use the local `aki__agy_run` path without `worker`; the panel's role provisioning and Login flow are not implemented there.
+The six-account pool currently requires Windows. On macOS and Linux, use the local `aki__agy_run` path without `worker`; the panel's role provisioning and Login flow are not implemented there.
 
 ## Exposing to the internet
 

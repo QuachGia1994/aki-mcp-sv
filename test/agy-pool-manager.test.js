@@ -42,6 +42,8 @@ const settings = {
       executor: { ...entry, url: 'http://127.0.0.1:7412', secretRef: 'executor', user: 'agy-executor', allowedModes: ['plan', 'accept-edits'] },
       experiment: { ...entry, url: 'http://127.0.0.1:7413', secretRef: 'experiment', user: 'agy-experiment', allowedModes: ['plan', 'accept-edits'] },
       reviewer: { ...entry, url: 'http://127.0.0.1:7414', secretRef: 'reviewer', user: 'agy-reviewer' },
+      researcher: { ...entry, url: 'http://127.0.0.1:7415', secretRef: 'researcher', user: 'agy-researcher' },
+      tester: { ...entry, url: 'http://127.0.0.1:7416', secretRef: 'tester', user: 'agy-tester' },
     },
   },
 };
@@ -107,7 +109,10 @@ try {
   writeFileSync(credentialFile, '0'.repeat(120) + '\r\n' + '0'.repeat(120));
   const initial = await getAgyPoolStatus({ settings, fetchImpl, execFileImpl, credentialFile });
   assert.equal(initial.initialized, true);
-  assert.equal(initial.missingIdentityCount, process.platform === 'win32' ? 0 : 3);
+  assert.equal(Object.keys(initial.roles).length, 6);
+  assert.equal(initial.roles.researcher.url, 'http://127.0.0.1:7415');
+  assert.equal(initial.roles.tester.url, 'http://127.0.0.1:7416');
+  assert.equal(initial.missingIdentityCount, process.platform === 'win32' ? 0 : 5);
   assert.equal(initial.roles.executor.identityExists, process.platform === 'win32');
   assert.equal(initial.roleCredentialReady, process.platform !== 'win32', 'only Windows checks the role credential');
   assert.equal(initial.provisionRequired, true, 'panel must offer Create role identities to repair a missing role credential');

@@ -318,7 +318,7 @@ async function loadPostmanDaemon() {
   say('msgPmDaemon', postmanStatusMessage(s), s.attached);
 }
 
-const AGY_ROLES = ['advisor', 'executor', 'experiment', 'reviewer'];
+const AGY_ROLES = Array.from(document.querySelectorAll('[data-agy-role]'), (row) => row.dataset.agyRole);
 const AGY_USAGE_FAMILIES = [['gemini', 'Gemini'], ['claudeGpt', 'Claude/GPT']];
 const AGY_USAGE_WINDOWS = [['fiveHour', '5h'], ['weekly', 'Week']];
 const lastAgyUsage = new Map();
@@ -416,7 +416,7 @@ function renderAgyPool(status) {
       ? status.missingIdentityCount + ' role identities missing — click Create role identities'
       : !status.roleCredentialReady
         ? 'role credential missing — click Create role identities'
-        : readyCount + '/4 ready · ' + runningCount + '/4 workers running · controller ' + status.currentUser;
+        : readyCount + '/' + AGY_ROLES.length + ' ready · ' + runningCount + '/' + AGY_ROLES.length + ' workers running · controller ' + status.currentUser;
   say('msgAgyPool', poolMsg, initialized && !status.provisionRequired && readyCount === AGY_ROLES.length);
 
   for (const role of AGY_ROLES) {
@@ -626,7 +626,7 @@ const ACTIONS = {
   refreshAgyPool: (btn) => act(btn, 'msgAgyPool', async () => {
     const status = await loadAgyPool();
     await loadAgyUsage(true);
-    return status.readyCount + '/4 ready';
+    return status.readyCount + '/' + AGY_ROLES.length + ' ready';
   }),
   provisionAgyRoles: (btn) => act(btn, 'msgAgyPool', async () => {
     await api('POST', '/api/agy-pool/init');
@@ -656,7 +656,7 @@ const ACTIONS = {
       }
       const failed = Object.values(result.results || {}).filter((item) => !item.ok).length;
       void loadAgyUsage().catch(() => {});
-      return failed ? failed + ' role(s) need Login or account eligibility fix' : 'all four workers ready';
+      return failed ? failed + ' role(s) need Login or account eligibility fix' : 'all ' + AGY_ROLES.length + ' workers ready';
     } finally {
       clearInterval(timer);
     }

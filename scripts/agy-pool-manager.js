@@ -22,7 +22,7 @@ const WORKER_BIN = path.join(REPO_ROOT, 'bin', 'aki-agy-worker.js');
 const PROVISION_SCRIPT = path.join(REPO_ROOT, 'scripts', 'agy-provision-users.ps1');
 const ROLE_PROCESS_SCRIPT = path.join(REPO_ROOT, 'scripts', 'agy-role-process.ps1');
 const PROVISION_MARKER_PATH = path.join(path.dirname(path.resolve(AGY_POOL_WORKSPACE_ROOT)), 'agy-pool-provisioned.json');
-const FIXED_ROLE_USERS = Object.freeze(['agy-executor', 'agy-experiment', 'agy-reviewer']);
+const FIXED_ROLE_USERS = Object.freeze(AGY_POOL_ROLES.map((role) => DEFAULT_AGY_WORKERS[role].user).filter(Boolean));
 const HEALTH_TIMEOUT_MS = 1_200;
 const START_WAIT_MS = 8_000;
 const READY_WAIT_MS = 65_000;

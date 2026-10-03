@@ -1,12 +1,12 @@
 # AGY multi-account pool
 
-One AKIMCP panel controls four concurrent AGY CLI workers: Advisor, Executor, Experiment, and Reviewer. Each worker can run under a different Windows login identity, so AGY sees four separate Windows Credential Manager vaults while the owner uses one panel instead of four permanent terminals or four browser/CDP sessions.
+One AKIMCP panel controls six concurrent AGY CLI workers: Advisor, Executor, Experiment, Reviewer, Researcher, and Tester. Each worker can run under a different Windows login identity, so AGY sees six separate Windows Credential Manager vaults while the owner uses one panel instead of six permanent terminals or six browser/CDP sessions.
 
-This four-account pool is currently Windows-only. On macOS and Linux, the local `agy_run` path without `worker` remains available; role provisioning and interactive role Login are not implemented there.
+This six-account pool is currently Windows-only. On macOS and Linux, the local `agy_run` path without `worker` remains available; role provisioning and interactive role Login are not implemented there.
 
 ## Why the Windows identities still exist
 
-Opening four terminals under the same Windows user does not create four AGY accounts. AGY authentication is tied to the Windows user's credential vault. Separate logon identities provide the isolation; the pool manager hides the day-to-day process handling.
+Opening six terminals under the same Windows user does not create six AGY accounts. AGY authentication is tied to the Windows user's credential vault. Separate logon identities provide the isolation; the pool manager hides the day-to-day process handling.
 
 ## Roles
 
@@ -16,21 +16,23 @@ Opening four terminals under the same Windows user does not create four AGY acco
 | Executor | `plan,accept-edits` | `agy-executor` |
 | Experiment | `plan,accept-edits` | `agy-experiment` |
 | Reviewer | `plan` | `agy-reviewer` |
+| Researcher | `plan` | `agy-researcher` |
+| Tester | `plan` | `agy-tester` |
 
 Executor and Experiment should use separate Git worktrees when both may edit the same project.
 
 ## Worker workspace roots
 
-All four roles default to the dedicated `USER_DIR/agy-workspaces` folder (`~/.aki/mcpsv/agy-workspaces` in the standard profile). Initialize records this root in `setting.json`; Create role identities creates it and grants the role users access there. The default does not grant role users access to the owner's whole Windows profile. Existing `agy.workers.<role>.root` values are preserved, including values written by an earlier pool setup. If an older entry points at the owner's home directory, change it explicitly before provisioning; the owner-home guard rejects that root.
+All six roles default to the dedicated `USER_DIR/agy-workspaces` folder (`~/.aki/mcpsv/agy-workspaces` in the standard profile). Initialize records this root in `setting.json`; Create role identities creates it and grants the role users access there. The default does not grant role users access to the owner's whole Windows profile. Existing `agy.workers.<role>.root` values are preserved, including values written by an earlier pool setup. If an older entry points at the owner's home directory, change it explicitly before provisioning; the owner-home guard rejects that root.
 
-For the `D:\LacViet` dispatch examples below, edit the existing `~/.aki/mcpsv/setting.json` **after Initialize and before Create role identities**: set `agy.workers.<role>.root` to `D:\LacViet` for **all four roles**. The worktrees in the examples are subdirectories of that common root. Ensure the directory exists and add it to the panel's section 5 allowed folders so `agy_run(cwd=...)` can route those paths. Automatic one-UAC provisioning requires one common resolved root and grants Executor/Experiment Modify and Reviewer read/execute there; choose a narrower shared project folder when possible. Different per-role roots require separate Windows ACL setup after provisioning.
+For the `D:\LacViet` dispatch examples below, edit the existing `~/.aki/mcpsv/setting.json` **after Initialize and before Create role identities**: set `agy.workers.<role>.root` to `D:\LacViet` for **all six roles**. The worktrees in the examples are subdirectories of that common root. Ensure the directory exists and add it to the panel's section 5 allowed folders so `agy_run(cwd=...)` can route those paths. Automatic one-UAC provisioning requires one common resolved root and grants Executor/Experiment Modify and Reviewer/Researcher/Tester read/execute there; choose a narrower shared project folder when possible. Different per-role roots require separate Windows ACL setup after provisioning.
 
 ## First-time setup
 
 1. Open the AKIMCP panel and go to **8 · AGY multi-account pool**.
-2. Click **Initialize**. This creates/repairs the four worker entries in `~/.aki/mcpsv/setting.json` with the dedicated default workspace root and generates four random worker bearer secrets in `~/.aki/mcpsv/agy-pool-secrets.json`. Existing unrelated settings and custom worker roots are preserved; the four role identities are fixed.
-3. Keep the fixed identities: Advisor uses the current Windows user; Executor/Experiment/Reviewer use `agy-executor`, `agy-experiment`, and `agy-reviewer`. Set any common custom root now, as described above.
-4. When the panel shows **Create role identities**, click it even if the Windows users already exist: it also provisions the common workspace and its permissions. Windows may show one UAC consent dialog; automatic CMD/PowerShell helpers stay hidden. A random internal Windows password is DPAPI-protected under the current user. Provisioning grants the role users read/execute on the shared AGY install, Executor/Experiment Modify on the common workspace root, and Reviewer read/execute there.
+2. Click **Initialize**. This creates/repairs the six worker entries in `~/.aki/mcpsv/setting.json` with the dedicated default workspace root and generates six random worker bearer secrets in `~/.aki/mcpsv/agy-pool-secrets.json`. Existing unrelated settings and custom worker roots are preserved; the six role identities are fixed.
+3. Keep the fixed identities: Advisor uses the current Windows user; Executor/Experiment/Reviewer/Researcher/Tester use `agy-executor`, `agy-experiment`, `agy-reviewer`, `agy-researcher`, and `agy-tester`. Set any common custom root now, as described above.
+4. When the panel shows **Create role identities**, click it even if the Windows users already exist: it also provisions the common workspace and its permissions. Windows may show one UAC consent dialog; automatic CMD/PowerShell helpers stay hidden. A random internal Windows password is DPAPI-protected under the current user. Provisioning grants the role users read/execute on the shared AGY install, Executor/Experiment Modify on the common workspace root, and Reviewer/Researcher/Tester read/execute there.
 5. Back in the panel, click **Login** for each role that needs an AGY account (including Advisor if it is not signed in). The click opens one visible AGY CLI window under that role's Windows identity, without a hidden cleanup process before launch. Complete Google/AGY sign-in there; if AGY asks for an authorization code, paste it into the CLI. Close the AGY CLI window when sign-in is complete. Automatic CMD/PowerShell helpers remain hidden.
 6. Click **Start** for each role, or **Start all**, after closing its login window. Start checks AGY login and account eligibility before reporting the worker ready. Daily execution is headless `agy` CLI; no persistent browser/CDP process is required.
 7. To change the Gemini/AGY account bound to a role, click **Logout** for that role. Logout runs in the background, clears only that role user's AGY Credential Manager entries, stops its worker, and keeps the fixed Windows role identity. Then click **Login** and choose the replacement account. If AGY says the selected account is not eligible for Antigravity, use Logout → Login and select another eligible personal Google account.
@@ -47,18 +49,22 @@ From a source checkout:
 node D:\LacViet\aki-mcp-sv\bin\aki-agy-pool-init.js
 ```
 
+## Upgrade an existing pool
+
+Initialize adds Researcher (port 7415) and Tester (port 7416), preserving the original four roles and their worker secrets. New roles inherit the common root when the configured roles share one. Run Create role identities again to provision the two new Windows identities and their read/execute workspace access, then Login to each new AGY account. Existing AGY sign-ins are unchanged.
+
 ## Daily use
 
 The panel is the control surface:
 
-- **Start all** launches all four worker roles.
+- **Start all** launches all six worker roles.
 - **Stop all** asks each running worker to shut itself down.
 - **Recheck** reads live `/health` state and forces a new quota read for each running role.
 - Each role also has Login, Logout, Start, and Stop controls. Login intentionally opens one visible AGY CLI window for interactive sign-in; close it before Start.
 - The role Windows identities are fixed; there is no editable user mapping.
 - Status shows whether each role identity exists, plus worker PID and allowed modes. Provisioning is considered ready only when the configured common root has a successful-provision marker; creating the folder alone does not clear **Create role identities**.
 
-No four-terminal or four-browser workflow is required after first-time account setup. Sign-in, including any code entry, happens in the AGY CLI window opened by **Login**. Daily execution is CLI-only.
+No multi-terminal or multi-browser workflow is required after first-time account setup. Sign-in, including any code entry, happens in the AGY CLI window opened by **Login**. Daily execution is CLI-only.
 
 ## Usage limits
 
@@ -88,13 +94,13 @@ agy_run(worker="reviewer", mode="plan", cwd="D:\LacViet\worktrees\executor", pro
 - Workers bind only to `127.0.0.1`.
 - Worker URLs must use literal `http://127.0.0.1`; remote hosts are rejected.
 - `/run`, `/stop`, `/usage`, and `/identity` require the role bearer secret.
-- Advisor/Reviewer cannot be promoted to write mode by a caller; worker-side mode gates enforce the restriction again.
+- Advisor/Reviewer/Researcher/Tester cannot be promoted to write mode by a caller; worker-side mode gates enforce the restriction again.
 - The main `agy.allowedModes` gate still runs before worker routing.
 - Each worker restricts requested `cwd` to its configured root, runs one AGY job at a time, and applies request-size, process-timeout, and output-buffer limits. Named-worker dispatch also preflights an explicit `cwd` against that configured root so out-of-scope requests fail immediately with the effective scope instead of waiting for the worker round-trip. Stop aborts the active AGY process before closing the worker listener.
-- All four roles default to `USER_DIR/agy-workspaces`; a custom root is explicit per role in `setting.json`. Automatic provisioning requires all four resolved roots to match and grants cross-user identities access there. The owner's home directory is rejected as a provisioning root; distinct per-role roots need separate Windows ACL setup.
+- All six roles default to `USER_DIR/agy-workspaces`; a custom root is explicit per role in `setting.json`. Automatic provisioning requires all six resolved roots to match and grants cross-user identities access there. The owner's home directory is rejected as a provisioning root; distinct per-role roots need separate Windows ACL setup.
 - For the default workspace, the fixed role users receive only non-inheriting Traverse (X), ReadAttributes (RA), and Synchronize (S) on its `.aki` and `mcpsv` parent directories. These parent grants do not include file read or directory listing; access to the workspace itself remains on its protected DACL.
 - AGY OAuth credentials are neither read nor copied by AKIMCP; AGY continues to own them in each fixed Windows role user's credential vault. Logout deletes only that role user's AGY Credential Manager entries.
-- AKIMCP resolves the main account's installed `agy.exe` and passes its explicit path to all workers. Provisioning grants the fixed role users read/execute access to that shared AGY install, avoiding three extra AGY installs.
+- AKIMCP resolves the main account's installed `agy.exe` and passes its explicit path to all workers. Provisioning grants the fixed role users read/execute access to that shared AGY install, avoiding five extra AGY installs.
 - The pool's generated bearer secrets are local control secrets, not AGY credentials. Same-user workers receive them through process environment; cross-user launches use a short-lived ACL-restricted token file that the worker deletes after reading, so the bearer value is not placed on the worker command line.
 - A local administrator already controlling the machine can still inspect processes and protected files; the bearer layer protects the loopback worker interface from ordinary accidental local calls, not from an administrator.
 
@@ -104,7 +110,7 @@ agy_run(worker="reviewer", mode="plan", cwd="D:\LacViet\worktrees\executor", pro
 - `scripts/agy-worker.js`: loopback worker HTTP server.
 - `scripts/agy-pool-config.js`: role config and secret initialization.
 - `scripts/agy-pool-manager.js`: status/provision/login/logout/start/stop and Windows role launcher; Login opens the visible AGY CLI.
-- `scripts/agy-provision-users.ps1`: one-UAC, non-interactive provisioning of the three fixed standard Windows role identities.
+- `scripts/agy-provision-users.ps1`: one-UAC, non-interactive provisioning of the five fixed standard Windows role identities.
 - `scripts/agy-role-process.ps1`: hidden cross-user helper using the DPAPI-protected role credential; its Login action opens the visible AGY CLI.
 - `bin/aki-agy-worker.js`: worker CLI.
 - `bin/aki-agy-pool-init.js`: optional setup CLI.
